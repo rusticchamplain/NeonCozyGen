@@ -16,7 +16,7 @@ function getParamType(input) {
   return 'STRING';
 }
 
-function resolveLabel(input) {
+export function resolveLabel(input) {
   const i = input?.inputs || {};
   return (
     i.label ||
@@ -40,7 +40,7 @@ function resolveDescription(input) {
   );
 }
 
-function resolveParamName(input) {
+export function resolveParamName(input) {
   const i = input?.inputs || {};
   return (
     i.param_name ||
@@ -51,7 +51,7 @@ function resolveParamName(input) {
   );
 }
 
-function resolveConfig(input) {
+export function resolveConfig(input) {
   const i = input?.inputs || {};
   return {
     paramName: resolveParamName(input),
@@ -196,9 +196,15 @@ export default function DynamicForm({
             if (lowParam) handleBypassChange(lowParam, next);
           };
 
+          const anchorId = paramName ? `param-${paramName}` : undefined;
+
           return (
             <div
               key={`lora_pair_${id || highParam}`}
+              id={anchorId}
+              data-param-name={paramName}
+              data-param-label={label || cfg.label}
+              data-param-type="lora_pair"
               className="rounded-xl border border-[#2A2E4A] bg-[#050716] px-3 py-2.5 shadow-[0_0_18px_rgba(5,7,22,0.9)]"
             >
               <div className="flex items-start justify-between gap-3">
@@ -327,9 +333,15 @@ export default function DynamicForm({
           );
         }
 
+        const anchorId = paramName ? `param-${paramName}` : undefined;
+
         return (
           <div
             key={paramName}
+            id={anchorId}
+            data-param-name={paramName}
+            data-param-label={cfg.label}
+            data-param-type="single"
             className="rounded-xl border border-[#2A2E4A] bg-[#050716] px-3 py-2.5 shadow-[0_0_18px_rgba(5,7,22,0.9)]"
           >
             <div className="flex items-start justify-between gap-3">

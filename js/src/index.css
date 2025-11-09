@@ -162,6 +162,15 @@ body::before {
   border-radius: 999px;
 }
 
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 /* ---- App layout helpers ---- */
 .app-shell {
   min-height: 100vh;

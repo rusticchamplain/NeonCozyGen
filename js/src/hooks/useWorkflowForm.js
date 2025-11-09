@@ -1,0 +1,259 @@
+// js/src/hooks/useWorkflowForm.js
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { getWorkflow, getChoices } from '../api';
+import {
+  loadFormState,
+  saveFormState,
+  loadRandomizeState,
+  saveRandomizeState,
+  loadBypassedState,
+  saveBypassedState,
+} from '../utils/storage';
+
+// Map known param names to choice types for dynamic dropdowns
+const choiceTypeMapping = {
+  clip_name1: 'clip',
+  clip_name2: 'clip',
+  unet_name: 'unet',
+  vae_name: 'vae',
+  sampler_name: 'sampler',
+  scheduler: 'scheduler',
+};
+
+const COZYGEN_INPUT_TYPES = [
+  'CozyGenDynamicInput',
+  'CozyGenImageInput',
+  'CozyGenFloatInput',
+  'CozyGenIntInput',
+  'CozyGenStringInput',
+  'CozyGenChoiceInput',
+];
+
+export function useWorkflowForm(selectedWorkflow) {
+  const [workflowData, setWorkflowData] = useState(null);
+  const [dynamicInputs, setDynamicInputs] = useState([]);
+
+  const [formData, setFormData] = useState({});
+  const [randomizeState, setRandomizeState] = useState({});
+  const [bypassedState, setBypassedState] = useState({});
+
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  // Load workflow + inputs whenever the selected workflow changes
+  useEffect(() => {
+    if (!selectedWorkflow) {
+      setWorkflowData(null);
+      setDynamicInputs([]);
+      setFormData({});
+      setRandomizeState({});
+      setBypassedState({});
+      return;
+    }
+
+    let cancelled = false;
+
+    async function load() {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const data = await getWorkflow(selectedWorkflow);
+        if (cancelled) return;
+
+        // Normalize ids & ensure param_name for image nodes
+        for (const nodeId in data) {
+          const node = data[nodeId];
+          if (node.class_type === 'CozyGenImageInput' && !node.inputs.param_name) {
+            node.inputs.param_name = 'Image Input';
+          }
+          data[nodeId].id = nodeId;
+        }
+
+        setWorkflowData(data);
+
+        const allInputs = Object.values(data).filter((node) =>
+          COZYGEN_INPUT_TYPES.includes(node.class_type)
+        );
+
+        // Fetch choices for dynamic dropdown/choice nodes
+        const inputsWithChoices = await Promise.all(
+          allInputs.map(async (input) => {
+            const isDynamicDropdown =
+              input.class_type === 'CozyGenDynamicInput' &&
+              input.inputs.param_type === 'DROPDOWN';
+            const isChoiceNode = input.class_type === 'CozyGenChoiceInput';
+
+            if (isDynamicDropdown || isChoiceNode) {
+              const pn = input.inputs.param_name;
+              let choiceType =
+                input.inputs.choice_type ||
+                (input.properties && input.properties.choice_type);
+
+              if (!choiceType && isDynamicDropdown) {
+                choiceType = choiceTypeMapping[pn];
+              }
+
+              if (choiceType) {
+                try {
+                  const choicesData = await getChoices(choiceType);
+                  input.inputs.choices = choicesData.choices || [];
+                } catch (err) {
+                  console.error(`Choices for ${pn} failed`, err);
+                  input.inputs.choices = [];
+                }
+              }
+            }
+            return input;
+          })
+        );
+
+        if (cancelled) return;
+
+        setDynamicInputs(inputsWithChoices);
+
+        // Restore per-workflow state
+        const storedForm = loadFormState(selectedWorkflow);
+        const storedRandom = loadRandomizeState(selectedWorkflow);
+        const storedBypass = loadBypassedState(selectedWorkflow);
+
+        const initialForm = {};
+        inputsWithChoices.forEach((input) => {
+          const pn = input.inputs.param_name;
+          if (!pn) return;
+
+          if (storedForm[pn] !== undefined) {
+            initialForm[pn] = storedForm[pn];
+            return;
+          }
+
+          let defv;
+          if (
+            [
+              'CozyGenDynamicInput',
+              'CozyGenFloatInput',
+              'CozyGenIntInput',
+              'CozyGenStringInput',
+            ].includes(input.class_type)
+          ) {
+            defv = input.inputs.default_value;
+            if (input.class_type === 'CozyGenIntInput') {
+              const n = parseInt(defv, 10);
+              defv = Number.isNaN(n) ? 0 : n;
+            } else if (input.class_type === 'CozyGenFloatInput') {
+              const n = parseFloat(defv);
+              defv = Number.isNaN(n) ? 0 : n;
+            }
+          } else if (input.class_type === 'CozyGenChoiceInput') {
+            const choices = input.inputs.choices || [];
+            defv = choices.length ? choices[0] : '';
+          } else if (input.class_type === 'CozyGenImageInput') {
+            defv = '';
+          } else {
+            defv = '';
+          }
+
+          initialForm[pn] = defv;
+        });
+
+        setFormData(initialForm);
+        setRandomizeState(storedRandom);
+        setBypassedState(storedBypass);
+      } catch (e) {
+        if (cancelled) return;
+        console.error('Failed to load workflow', e);
+        setError(e);
+        setWorkflowData(null);
+        setDynamicInputs([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    load();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedWorkflow]);
+
+  // Derived sets
+  const imageInputs = useMemo(
+    () =>
+      dynamicInputs.filter((i) => i.class_type === 'CozyGenImageInput'),
+    [dynamicInputs]
+  );
+  const primaryImageInput = imageInputs[0] || null;
+
+  // Handlers that also persist to localStorage via utils/storage
+
+  const handleFormChange = useCallback(
+    (name, value) => {
+      setFormData((prev) => {
+        const next = { ...prev, [name]: value };
+        if (selectedWorkflow) {
+          saveFormState(selectedWorkflow, next);
+        }
+        return next;
+      });
+    },
+    [selectedWorkflow]
+  );
+
+  const handleRandomizeToggle = useCallback(
+    (name, isRandom) => {
+      setRandomizeState((prev) => {
+        const next = { ...prev, [name]: isRandom };
+        if (selectedWorkflow) {
+          saveRandomizeState(selectedWorkflow, next);
+        }
+        return next;
+      });
+    },
+    [selectedWorkflow]
+  );
+
+  const handleBypassToggle = useCallback(
+    (name, isBypassed) => {
+      setBypassedState((prev) => {
+        const next = { ...prev, [name]: isBypassed };
+        if (selectedWorkflow) {
+          saveBypassedState(selectedWorkflow, next);
+        }
+        return next;
+      });
+    },
+    [selectedWorkflow]
+  );
+
+  return {
+    // raw workflow
+    workflowData,
+
+    // all CozyGen input nodes
+    dynamicInputs,
+
+    // image-specific inputs
+    imageInputs,
+    primaryImageInput,
+
+    // state
+    formData,
+    randomizeState,
+    bypassedState,
+
+    // setters (for presets, etc.)
+    setFormData,
+    setRandomizeState,
+    setBypassedState,
+
+    // helpers
+    handleFormChange,
+    handleRandomizeToggle,
+    handleBypassToggle,
+
+    // status
+    loading,
+    error,
+  };
+}

@@ -1,0 +1,32 @@
+from aiohttp import web
+import os
+
+# Import your API route table
+from . import api  # api.routes must exist
+
+def setup(app: web.Application):
+    # 1) API routes FIRST (includes /cozygen/api/presets, /cozygen/gallery, etc.)
+    app.add_routes(api.routes)
+
+    # 2) Static UI (built Vite app)
+    ext_dir = os.path.dirname(os.path.abspath(__file__))
+    dist_dir = os.path.join(ext_dir, "dist")
+    assets_dir = os.path.join(dist_dir, "assets")
+
+    if os.path.isdir(assets_dir):
+        app.router.add_static("/cozygen/assets", assets_dir, show_index=False)
+
+    async def serve_index(request: web.Request):
+        index_path = os.path.join(dist_dir, "index.html")
+        if not os.path.isfile(index_path):
+            raise web.HTTPNotFound(text="CozyGen UI not built. Run `npm run build` in js/ first.")
+        return web.FileResponse(index_path)
+
+    # Only the exact base paths map to index.html.
+    app.router.add_get("/cozygen", serve_index)
+    app.router.add_get("/cozygen/", serve_index)
+
+# ComfyUI extension entrypoint (called by Comfy)
+def webui():
+    return setup
+

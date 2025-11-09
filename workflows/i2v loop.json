@@ -1,0 +1,914 @@
+{
+  "11": {
+    "inputs": {
+      "model_name": "umt5-xxl-enc-bf16.safetensors",
+      "precision": "bf16",
+      "load_device": "offload_device",
+      "quantization": "fp8_e4m3fn"
+    },
+    "class_type": "LoadWanVideoT5TextEncoder",
+    "_meta": {
+      "title": "WanVideo T5 Text Encoder Loader"
+    }
+  },
+  "16": {
+    "inputs": {
+      "positive_prompt": [
+        "59",
+        0
+      ],
+      "negative_prompt": "still image, slowmotion, 色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走, ",
+      "force_offload": true,
+      "use_disk_cache": true,
+      "device": "gpu",
+      "t5": [
+        "11",
+        0
+      ]
+    },
+    "class_type": "WanVideoTextEncode",
+    "_meta": {
+      "title": "WanVideo TextEncode"
+    }
+  },
+  "28": {
+    "inputs": {
+      "enable_vae_tiling": false,
+      "tile_x": 512,
+      "tile_y": 512,
+      "tile_stride_x": 256,
+      "tile_stride_y": 256,
+      "normalization": "default",
+      "vae": [
+        "38",
+        0
+      ],
+      "samples": [
+        "581",
+        1
+      ]
+    },
+    "class_type": "WanVideoDecode",
+    "_meta": {
+      "title": "WanVideo Decode"
+    }
+  },
+  "30": {
+    "inputs": {
+      "frame_rate": 24,
+      "loop_count": 0,
+      "filename_prefix": "WAN 2.2 I2V",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 0,
+      "save_metadata": false,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": true,
+      "images": [
+        "541",
+        0
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "Video Combine 🎥🅥🅗🅢"
+    }
+  },
+  "38": {
+    "inputs": {
+      "model_name": "wan_2.1_vae.safetensors",
+      "precision": "bf16"
+    },
+    "class_type": "WanVideoVAELoader",
+    "_meta": {
+      "title": "WanVideo VAE Loader"
+    }
+  },
+  "55": {
+    "inputs": {
+      "weight": 2.0000000000000004,
+      "start_percent": 0,
+      "end_percent": 1
+    },
+    "class_type": "WanVideoEnhanceAVideo",
+    "_meta": {
+      "title": "WanVideo Enhance-A-Video"
+    }
+  },
+  "59": {
+    "inputs": {
+      "text": [
+        "612",
+        0
+      ]
+    },
+    "class_type": "Textbox",
+    "_meta": {
+      "title": "Prompt"
+    }
+  },
+  "219": {
+    "inputs": {
+      "mode": "always",
+      "volume": 0.5,
+      "file": "notify.mp3",
+      "any": [
+        "30",
+        0
+      ]
+    },
+    "class_type": "PlaySound|pysssss",
+    "_meta": {
+      "title": "PlaySound 🐍"
+    }
+  },
+  "433": {
+    "inputs": {
+      "image": "22536.jpg"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Load Image"
+    }
+  },
+  "439": {
+    "inputs": {
+      "Xi": 81,
+      "Xf": 81,
+      "isfloatX": 0
+    },
+    "class_type": "mxSlider",
+    "_meta": {
+      "title": "Desired Frame Count"
+    }
+  },
+  "440": {
+    "inputs": {
+      "Xi": 8,
+      "Xf": 8,
+      "isfloatX": 0
+    },
+    "class_type": "mxSlider",
+    "_meta": {
+      "title": "Desired STEPS"
+    }
+  },
+  "443": {
+    "inputs": {
+      "divisor": 2,
+      "float": 0,
+      "int": [
+        "440",
+        0
+      ]
+    },
+    "class_type": "Divide [DVB]",
+    "_meta": {
+      "title": "÷ Divide"
+    }
+  },
+  "521": {
+    "inputs": {
+      "folder_path": "/home/phoenix/ComfyUI/ComfyUI/output",
+      "subfolder_name": "Loops",
+      "filename": [
+        "614",
+        0
+      ],
+      "fps": 16,
+      "frames_limit": -1,
+      "activate": true,
+      "image": [
+        "541",
+        0
+      ]
+    },
+    "class_type": "SaveVideoWithPath",
+    "_meta": {
+      "title": "Save Video With Path (CRT)"
+    }
+  },
+  "522": {
+    "inputs": {
+      "images": [
+        "525",
+        1
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "LastFrame"
+    }
+  },
+  "523": {
+    "inputs": {
+      "boolean": [
+        "542",
+        0
+      ],
+      "on_true": [
+        "531",
+        0
+      ],
+      "on_false": [
+        "609",
+        0
+      ]
+    },
+    "class_type": "Switch image [Crystools]",
+    "_meta": {
+      "title": "🪛 Switch image"
+    }
+  },
+  "525": {
+    "inputs": {
+      "images": [
+        "523",
+        0
+      ]
+    },
+    "class_type": "CRTFirstLastFrameSelector",
+    "_meta": {
+      "title": "Get First & Last Frame (CRT)"
+    }
+  },
+  "531": {
+    "inputs": {
+      "folder_path": "/home/phoenix/ComfyUI/ComfyUI/output/Loops",
+      "sort_by": "date",
+      "invert_order": true,
+      "frame_load_cap": 0,
+      "skip_first_frames": 0,
+      "select_every_nth": 1
+    },
+    "class_type": "CRTLoadLastVideo",
+    "_meta": {
+      "title": "Load Last Video (CRT)"
+    }
+  },
+  "535": {
+    "inputs": {
+      "text": "Render a video first, then hit \"True\""
+    },
+    "class_type": "FancyNoteNode",
+    "_meta": {
+      "title": "Fancy Note (CRT)"
+    }
+  },
+  "538": {
+    "inputs": {
+      "width": [
+        "609",
+        1
+      ],
+      "height": [
+        "609",
+        2
+      ],
+      "num_frames": [
+        "613",
+        0
+      ],
+      "noise_aug_strength": 0,
+      "start_latent_strength": 1,
+      "end_latent_strength": 1,
+      "force_offload": true,
+      "fun_or_fl2v_model": false,
+      "tiled_vae": false,
+      "vae": [
+        "38",
+        0
+      ],
+      "start_image": [
+        "525",
+        1
+      ]
+    },
+    "class_type": "WanVideoImageToVideoEncode",
+    "_meta": {
+      "title": "WanVideo ImageToVideo Encode"
+    }
+  },
+  "540": {
+    "inputs": {
+      "image1": [
+        "531",
+        0
+      ],
+      "image2": [
+        "28",
+        0
+      ]
+    },
+    "class_type": "ImageBatch",
+    "_meta": {
+      "title": "Batch Images"
+    }
+  },
+  "541": {
+    "inputs": {
+      "boolean": [
+        "542",
+        0
+      ],
+      "on_true": [
+        "540",
+        0
+      ],
+      "on_false": [
+        "28",
+        0
+      ]
+    },
+    "class_type": "Switch image [Crystools]",
+    "_meta": {
+      "title": "🪛 Switch image"
+    }
+  },
+  "542": {
+    "inputs": {
+      "value": [
+        "611",
+        0
+      ]
+    },
+    "class_type": "easy boolean",
+    "_meta": {
+      "title": "CONTINUE THE VIDEO"
+    }
+  },
+  "543": {
+    "inputs": {
+      "text": "Load your image input\nPress RUN\n\n-While it's running, you can already set \"CONTINUE THE VIDEO\" (the node with the red header on the end of the workflow) on true.\n-Click a bunch of times on the RUN button, to batch the number of videos you want to add\nOR \n-Set the \"Run (Instant)\" to continue generating new videos until you stop it.\n\n\nYou can reset by disabling the \"CONTINUE THE VIDEO\", run, and enabling again.\n\n\nThis method is, by nature, destructive over time, since the last frame of the previous video is used as first frame for the next one.\nSo keep the resolution and steps as higher as you can if you don't want the video looks coocked after (x)+ repeats. \n\n\nHow it works?\nAfter ticking \"CONTINUE THE VIDEO\", the generated video will be added af the end of the previous one, continuously, the previous video is replaced by the new one on the \"temp\" folder after each run, here \"C:\\tmp\\loop\".\n\nYou can access to your video in this folder OR, in your regular comfyUI output folder. Where each states have been saved. \n\nThis means that, if you have a bad seed for your 5th repeat, you can just copy the video that was good before the 5th run, and replace the video in the temp folder by the one ou just copyed. The workflow will use it to start from this state, (you need to have \"CONTINUE THE VIDEO\" enabled)\n\nClear the temp folder before using another image"
+    },
+    "class_type": "Textbox",
+    "_meta": {
+      "title": "HOW TO USE"
+    }
+  },
+  "571": {
+    "inputs": {
+      "model": [
+        "604",
+        0
+      ],
+      "block_swap_args": [
+        "585",
+        0
+      ]
+    },
+    "class_type": "WanVideoSetBlockSwap",
+    "_meta": {
+      "title": "WanVideo Set BlockSwap"
+    }
+  },
+  "572": {
+    "inputs": {
+      "model": [
+        "571",
+        0
+      ],
+      "lora": [
+        "582",
+        0
+      ]
+    },
+    "class_type": "WanVideoSetLoRAs",
+    "_meta": {
+      "title": "WanVideo Set LoRAs"
+    }
+  },
+  "573": {
+    "inputs": {
+      "model": [
+        "606",
+        0
+      ],
+      "block_swap_args": [
+        "585",
+        0
+      ]
+    },
+    "class_type": "WanVideoSetBlockSwap",
+    "_meta": {
+      "title": "WanVideo Set BlockSwap"
+    }
+  },
+  "574": {
+    "inputs": {
+      "model": [
+        "573",
+        0
+      ],
+      "lora": [
+        "583",
+        0
+      ]
+    },
+    "class_type": "WanVideoSetLoRAs",
+    "_meta": {
+      "title": "WanVideo Set LoRAs"
+    }
+  },
+  "579": {
+    "inputs": {
+      "steps": [
+        "440",
+        0
+      ],
+      "cfg": 1.0000000000000002,
+      "shift": 5,
+      "seed": 11,
+      "force_offload": true,
+      "scheduler": "lcm",
+      "riflex_freq_index": 0,
+      "denoise_strength": 1,
+      "batched_cfg": false,
+      "rope_function": "comfy",
+      "start_step": 0,
+      "end_step": [
+        "608",
+        0
+      ],
+      "add_noise_to_samples": false,
+      "model": [
+        "572",
+        0
+      ],
+      "image_embeds": [
+        "538",
+        0
+      ],
+      "text_embeds": [
+        "16",
+        0
+      ],
+      "feta_args": [
+        "55",
+        0
+      ]
+    },
+    "class_type": "WanVideoSampler",
+    "_meta": {
+      "title": "WanVideo Sampler"
+    }
+  },
+  "581": {
+    "inputs": {
+      "steps": [
+        "440",
+        0
+      ],
+      "cfg": 1.0000000000000002,
+      "shift": 5,
+      "seed": 0,
+      "force_offload": true,
+      "scheduler": "lcm",
+      "riflex_freq_index": 0,
+      "denoise_strength": 1,
+      "batched_cfg": false,
+      "rope_function": "comfy",
+      "start_step": [
+        "608",
+        0
+      ],
+      "end_step": -1,
+      "add_noise_to_samples": false,
+      "model": [
+        "574",
+        0
+      ],
+      "image_embeds": [
+        "538",
+        0
+      ],
+      "text_embeds": [
+        "16",
+        0
+      ],
+      "samples": [
+        "579",
+        0
+      ],
+      "feta_args": [
+        "55",
+        0
+      ]
+    },
+    "class_type": "WanVideoSampler",
+    "_meta": {
+      "title": "WanVideo Sampler"
+    }
+  },
+  "582": {
+    "inputs": {
+      "lora_0": "WAN/I2V/Wan2.2-Lightning_I2V-A14B-4steps-lora_HIGH_fp16.safetensors",
+      "strength_0": 1,
+      "lora_1": [
+        "615",
+        0
+      ],
+      "strength_1": [
+        "618",
+        0
+      ],
+      "lora_2": [
+        "616",
+        0
+      ],
+      "strength_2": [
+        "619",
+        0
+      ],
+      "lora_3": [
+        "617",
+        0
+      ],
+      "strength_3": [
+        "620",
+        0
+      ],
+      "lora_4": "none",
+      "strength_4": 1,
+      "low_mem_load": false,
+      "merge_loras": false
+    },
+    "class_type": "WanVideoLoraSelectMulti",
+    "_meta": {
+      "title": "WanVideo Lora Select Multi"
+    }
+  },
+  "583": {
+    "inputs": {
+      "lora_0": "WAN/I2V/Wan2.2-Lightning_I2V-A14B-4steps-lora_LOW_fp16.safetensors",
+      "strength_0": 1,
+      "lora_1": [
+        "624",
+        0
+      ],
+      "strength_1": [
+        "621",
+        0
+      ],
+      "lora_2": [
+        "625",
+        0
+      ],
+      "strength_2": [
+        "622",
+        0
+      ],
+      "lora_3": [
+        "626",
+        0
+      ],
+      "strength_3": [
+        "623",
+        0
+      ],
+      "lora_4": "none",
+      "strength_4": 1,
+      "low_mem_load": false,
+      "merge_loras": false
+    },
+    "class_type": "WanVideoLoraSelectMulti",
+    "_meta": {
+      "title": "WanVideo Lora Select Multi"
+    }
+  },
+  "585": {
+    "inputs": {
+      "blocks_to_swap": 15,
+      "offload_img_emb": false,
+      "offload_txt_emb": false,
+      "use_non_blocking": true,
+      "vace_blocks_to_swap": 0,
+      "prefetch_blocks": 0,
+      "block_swap_debug": false
+    },
+    "class_type": "WanVideoBlockSwap",
+    "_meta": {
+      "title": "WanVideo Block Swap"
+    }
+  },
+  "586": {
+    "inputs": {
+      "backend": "inductor",
+      "fullgraph": false,
+      "mode": "default",
+      "dynamic": false,
+      "dynamo_cache_size_limit": 64,
+      "compile_transformer_blocks_only": true,
+      "dynamo_recompile_limit": 128,
+      "force_parameter_static_shapes": true
+    },
+    "class_type": "WanVideoTorchCompileSettings",
+    "_meta": {
+      "title": "WanVideo Torch Compile Settings"
+    }
+  },
+  "601": {
+    "inputs": {
+      "Xi": 576,
+      "Xf": 576,
+      "isfloatX": 0
+    },
+    "class_type": "mxSlider",
+    "_meta": {
+      "title": "Desired Resolution"
+    }
+  },
+  "604": {
+    "inputs": {
+      "model": "Wan2_2-I2V-A14B-HIGH_fp8_e4m3fn_scaled_KJ.safetensors",
+      "base_precision": "fp16_fast",
+      "quantization": "fp8_e4m3fn_scaled",
+      "load_device": "offload_device",
+      "attention_mode": "sageattn",
+      "rms_norm_function": "default",
+      "compile_args": [
+        "586",
+        0
+      ]
+    },
+    "class_type": "WanVideoModelLoader",
+    "_meta": {
+      "title": "WanVideo Model Loader"
+    }
+  },
+  "606": {
+    "inputs": {
+      "model": "Wan2_2-I2V-A14B-LOW_fp8_e4m3fn_scaled_KJ.safetensors",
+      "base_precision": "fp16_fast",
+      "quantization": "fp8_e4m3fn_scaled",
+      "load_device": "offload_device",
+      "attention_mode": "sageattn",
+      "rms_norm_function": "default",
+      "compile_args": [
+        "586",
+        0
+      ]
+    },
+    "class_type": "WanVideoModelLoader",
+    "_meta": {
+      "title": "WanVideo Model Loader"
+    }
+  },
+  "608": {
+    "inputs": {
+      "sigma": 0.9
+    },
+    "class_type": "WanVideoSigmaToStep",
+    "_meta": {
+      "title": "WanVideo Sigma To Step"
+    }
+  },
+  "609": {
+    "inputs": {
+      "max_side_length": [
+        "601",
+        0
+      ],
+      "image": [
+        "610",
+        0
+      ]
+    },
+    "class_type": "CRT_QuantizeAndCropImage",
+    "_meta": {
+      "title": "Desired Resolution"
+    }
+  },
+  "610": {
+    "inputs": {
+      "param_name": "Image Input",
+      "image_filename": ""
+    },
+    "class_type": "CozyGenImageInput",
+    "_meta": {
+      "title": "CozyGen Image Input"
+    }
+  },
+  "611": {
+    "inputs": {
+      "param_name": "Continue Generation",
+      "priority": 99,
+      "param_type": "BOOLEAN",
+      "default_value": false
+    },
+    "class_type": "CozyGenDynamicInput",
+    "_meta": {
+      "title": "CozyGen Dynamic Input"
+    }
+  },
+  "612": {
+    "inputs": {
+      "param_name": "Prompt",
+      "priority": 98,
+      "param_type": "STRING",
+      "default_value": "",
+      "Multiline": true
+    },
+    "class_type": "CozyGenDynamicInput",
+    "_meta": {
+      "title": "CozyGen Dynamic Input"
+    }
+  },
+  "613": {
+    "inputs": {
+      "param_name": "Frames",
+      "priority": 97,
+      "default_value": 81,
+      "min_value": 30,
+      "max_value": 400,
+      "step": 10,
+      "add_randomize_toggle": false
+    },
+    "class_type": "CozyGenIntInput",
+    "_meta": {
+      "title": "CozyGen Int Input"
+    }
+  },
+  "614": {
+    "inputs": {
+      "param_name": "Filename",
+      "priority": 95,
+      "param_type": "STRING",
+      "default_value": "",
+      "Multiline": false
+    },
+    "class_type": "CozyGenDynamicInput",
+    "_meta": {
+      "title": "CozyGen Dynamic Input"
+    }
+  },
+  "615": {
+    "inputs": {
+      "param_name": "Lora High 1",
+      "priority": 11,
+      "choice_type": "loras",
+      "default_choice": "None",
+      "display_bypass": false
+    },
+    "class_type": "CozyGenChoiceInput",
+    "_meta": {
+      "title": "CozyGen Choice Input"
+    }
+  },
+  "616": {
+    "inputs": {
+      "param_name": "Lora High 2",
+      "priority": 13,
+      "choice_type": "loras",
+      "default_choice": "None",
+      "display_bypass": false
+    },
+    "class_type": "CozyGenChoiceInput",
+    "_meta": {
+      "title": "CozyGen Choice Input"
+    }
+  },
+  "617": {
+    "inputs": {
+      "param_name": "Lora High 3",
+      "priority": 15,
+      "choice_type": "loras",
+      "default_choice": "None",
+      "display_bypass": false
+    },
+    "class_type": "CozyGenChoiceInput",
+    "_meta": {
+      "title": "CozyGen Choice Input"
+    }
+  },
+  "618": {
+    "inputs": {
+      "param_name": "Lora High 1 Strength",
+      "priority": 12,
+      "default_value": 0.7,
+      "min_value": 0,
+      "max_value": 1,
+      "step": 0.1,
+      "add_randomize_toggle": false
+    },
+    "class_type": "CozyGenFloatInput",
+    "_meta": {
+      "title": "CozyGen Float Input"
+    }
+  },
+  "619": {
+    "inputs": {
+      "param_name": "Lora High 2 Strength",
+      "priority": 14,
+      "default_value": 0.7,
+      "min_value": 0,
+      "max_value": 1,
+      "step": 0.1,
+      "add_randomize_toggle": false
+    },
+    "class_type": "CozyGenFloatInput",
+    "_meta": {
+      "title": "CozyGen Float Input"
+    }
+  },
+  "620": {
+    "inputs": {
+      "param_name": "Lora High 3 Strength",
+      "priority": 16,
+      "default_value": 0.7,
+      "min_value": 0,
+      "max_value": 1,
+      "step": 0.1,
+      "add_randomize_toggle": false
+    },
+    "class_type": "CozyGenFloatInput",
+    "_meta": {
+      "title": "CozyGen Float Input"
+    }
+  },
+  "621": {
+    "inputs": {
+      "param_name": "Lora Low 1 Strength",
+      "priority": 18,
+      "default_value": 0.7,
+      "min_value": 0,
+      "max_value": 1,
+      "step": 0.1,
+      "add_randomize_toggle": false
+    },
+    "class_type": "CozyGenFloatInput",
+    "_meta": {
+      "title": "CozyGen Float Input"
+    }
+  },
+  "622": {
+    "inputs": {
+      "param_name": "Lora Low 2 Strength",
+      "priority": 20,
+      "default_value": 0.7,
+      "min_value": 0,
+      "max_value": 1,
+      "step": 0.1,
+      "add_randomize_toggle": false
+    },
+    "class_type": "CozyGenFloatInput",
+    "_meta": {
+      "title": "CozyGen Float Input"
+    }
+  },
+  "623": {
+    "inputs": {
+      "param_name": "Lora Low 3 Strength",
+      "priority": 22,
+      "default_value": 0.7,
+      "min_value": 0,
+      "max_value": 1,
+      "step": 0.1,
+      "add_randomize_toggle": false
+    },
+    "class_type": "CozyGenFloatInput",
+    "_meta": {
+      "title": "CozyGen Float Input"
+    }
+  },
+  "624": {
+    "inputs": {
+      "param_name": "Lora Low 1",
+      "priority": 17,
+      "choice_type": "loras",
+      "default_choice": "None",
+      "display_bypass": false
+    },
+    "class_type": "CozyGenChoiceInput",
+    "_meta": {
+      "title": "CozyGen Choice Input"
+    }
+  },
+  "625": {
+    "inputs": {
+      "param_name": "Lora Low 2",
+      "priority": 19,
+      "choice_type": "loras",
+      "default_choice": "None",
+      "display_bypass": false
+    },
+    "class_type": "CozyGenChoiceInput",
+    "_meta": {
+      "title": "CozyGen Choice Input"
+    }
+  },
+  "626": {
+    "inputs": {
+      "param_name": "Lora Low 3",
+      "priority": 21,
+      "choice_type": "loras",
+      "default_choice": "None",
+      "display_bypass": false
+    },
+    "class_type": "CozyGenChoiceInput",
+    "_meta": {
+      "title": "CozyGen Choice Input"
+    }
+  }
+}

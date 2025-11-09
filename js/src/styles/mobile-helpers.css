@@ -1,0 +1,15 @@
+/* Mobile helpers (non-invasive) */
+.hide-scrollbar::-webkit-scrollbar { display: none; }
+.hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* Thumb-first tap targets */
+.btn-touch { min-height: 44px; min-width: 44px; border-radius: 14px; }
+
+/* Soft tile styling that matches your theme tokens */
+.tile {
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(0,0,0,0.08);
+}
+.tile:focus-visible { outline: none; box-shadow: 0 0 0 2px hsl(var(--p)); }
+

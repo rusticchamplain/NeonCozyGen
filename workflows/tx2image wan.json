@@ -1,0 +1,411 @@
+{
+  "13": {
+    "inputs": {
+      "text": [
+        "132",
+        0
+      ],
+      "clip": [
+        "113",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Positive"
+    }
+  },
+  "14": {
+    "inputs": {
+      "text": "",
+      "clip": [
+        "113",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Negative"
+    }
+  },
+  "15": {
+    "inputs": {
+      "width": [
+        "133",
+        0
+      ],
+      "height": [
+        "134",
+        0
+      ],
+      "length": 1,
+      "batch_size": 1
+    },
+    "class_type": "EmptyHunyuanLatentVideo",
+    "_meta": {
+      "title": "EmptyHunyuanLatentVideo"
+    }
+  },
+  "60": {
+    "inputs": {
+      "samples": [
+        "92",
+        0
+      ],
+      "vae": [
+        "112",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "61": {
+    "inputs": {
+      "mode": "always",
+      "volume": 0.5,
+      "file": "notify.mp3",
+      "any": [
+        "60",
+        0
+      ]
+    },
+    "class_type": "PlaySound|pysssss",
+    "_meta": {
+      "title": "PlaySound 🐍"
+    }
+  },
+  "80": {
+    "inputs": {
+      "filename_prefix": "ComfyUI",
+      "images": [
+        "60",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "Save Image"
+    }
+  },
+  "92": {
+    "inputs": {
+      "boundary": 0.875,
+      "add_noise": "enable",
+      "noise_seed": [
+        "136",
+        0
+      ],
+      "steps": 10,
+      "cfg_high_noise": 1,
+      "cfg_low_noise": 1,
+      "sampler_name": "deis_2m",
+      "scheduler": "bong_tangent",
+      "sigma_shift": 5,
+      "start_at_step": 0,
+      "end_at_step": 10000,
+      "return_with_leftover_noise": "disable",
+      "model_high_noise": [
+        "118",
+        0
+      ],
+      "model_low_noise": [
+        "129",
+        0
+      ],
+      "positive": [
+        "13",
+        0
+      ],
+      "negative": [
+        "14",
+        0
+      ],
+      "latent_image": [
+        "15",
+        0
+      ]
+    },
+    "class_type": "WanMoeKSamplerAdvanced",
+    "_meta": {
+      "title": "Wan MoE KSampler (Advanced)"
+    }
+  },
+  "102": {
+    "inputs": {
+      "images": [
+        "60",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "Preview Image"
+    }
+  },
+  "112": {
+    "inputs": {
+      "vae_name": "wan_2.1_vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load VAE"
+    }
+  },
+  "113": {
+    "inputs": {
+      "clip_name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "type": "wan",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "Load CLIP"
+    }
+  },
+  "114": {
+    "inputs": {
+      "unet_name": "Wan2_2-T2V-A14B-LOW_fp8_e4m3fn_scaled_KJ.safetensors",
+      "weight_dtype": "fp8_e4m3fn"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "Low"
+    }
+  },
+  "116": {
+    "inputs": {
+      "sage_attention": "auto",
+      "model": [
+        "126",
+        0
+      ]
+    },
+    "class_type": "PathchSageAttentionKJ",
+    "_meta": {
+      "title": "Patch Sage Attention KJ"
+    }
+  },
+  "118": {
+    "inputs": {
+      "backend": "inductor",
+      "fullgraph": false,
+      "mode": "default",
+      "dynamic": false,
+      "compile_transformer_blocks_only": true,
+      "dynamo_cache_size_limit": 64,
+      "model": [
+        "131",
+        0
+      ]
+    },
+    "class_type": "TorchCompileModelWanVideoV2",
+    "_meta": {
+      "title": "TorchCompileModelWanVideoV2"
+    }
+  },
+  "119": {
+    "inputs": {
+      "unet_name": "Wan2_2-T2V-A14B_HIGH_fp8_e4m3fn_scaled_KJ.safetensors",
+      "weight_dtype": "fp8_e4m3fn"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "High"
+    }
+  },
+  "122": {
+    "inputs": {
+      "enable_fp16_accumulation": true,
+      "model": [
+        "125",
+        0
+      ]
+    },
+    "class_type": "ModelPatchTorchSettings",
+    "_meta": {
+      "title": "Model Patch Torch Settings"
+    }
+  },
+  "123": {
+    "inputs": {
+      "patch_order": "weight_patch_first",
+      "full_load": "auto",
+      "model": [
+        "114",
+        0
+      ]
+    },
+    "class_type": "PatchModelPatcherOrder",
+    "_meta": {
+      "title": "Patch Model Patcher Order"
+    }
+  },
+  "124": {
+    "inputs": {
+      "enable_fp16_accumulation": true,
+      "model": [
+        "116",
+        0
+      ]
+    },
+    "class_type": "ModelPatchTorchSettings",
+    "_meta": {
+      "title": "Model Patch Torch Settings"
+    }
+  },
+  "125": {
+    "inputs": {
+      "sage_attention": "auto",
+      "model": [
+        "123",
+        0
+      ]
+    },
+    "class_type": "PathchSageAttentionKJ",
+    "_meta": {
+      "title": "Patch Sage Attention KJ"
+    }
+  },
+  "126": {
+    "inputs": {
+      "patch_order": "weight_patch_first",
+      "full_load": "auto",
+      "model": [
+        "119",
+        0
+      ]
+    },
+    "class_type": "PatchModelPatcherOrder",
+    "_meta": {
+      "title": "Patch Model Patcher Order"
+    }
+  },
+  "129": {
+    "inputs": {
+      "backend": "inductor",
+      "fullgraph": false,
+      "mode": "default",
+      "dynamic": false,
+      "compile_transformer_blocks_only": true,
+      "dynamo_cache_size_limit": 64,
+      "model": [
+        "130",
+        0
+      ]
+    },
+    "class_type": "TorchCompileModelWanVideoV2",
+    "_meta": {
+      "title": "TorchCompileModelWanVideoV2"
+    }
+  },
+  "130": {
+    "inputs": {
+      "PowerLoraLoaderHeaderWidget": {
+        "type": "PowerLoraLoaderHeaderWidget"
+      },
+      "lora_1": {
+        "on": true,
+        "lora": "Wan2.2-Lightning_T2V-v1.1-A14B-4steps-lora_LOW_fp16.safetensors",
+        "strength": 1
+      },
+      "➕ Add Lora": "",
+      "model": [
+        "122",
+        0
+      ]
+    },
+    "class_type": "Power Lora Loader (rgthree)",
+    "_meta": {
+      "title": "LOW NOISE LORA"
+    }
+  },
+  "131": {
+    "inputs": {
+      "PowerLoraLoaderHeaderWidget": {
+        "type": "PowerLoraLoaderHeaderWidget"
+      },
+      "lora_1": {
+        "on": true,
+        "lora": "Wan2.2-Lightning_T2V-v1.1-A14B-4steps-lora_HIGH_fp16.safetensors",
+        "strength": 1
+      },
+      "➕ Add Lora": "",
+      "model": [
+        "124",
+        0
+      ]
+    },
+    "class_type": "Power Lora Loader (rgthree)",
+    "_meta": {
+      "title": "HIGH NOISE LORA"
+    }
+  },
+  "132": {
+    "inputs": {
+      "param_name": "Prompt",
+      "priority": 10,
+      "param_type": "STRING",
+      "default_value": "",
+      "Multiline": true
+    },
+    "class_type": "CozyGenDynamicInput",
+    "_meta": {
+      "title": "CozyGen Dynamic Input"
+    }
+  },
+  "133": {
+    "inputs": {
+      "param_name": "Width",
+      "priority": 10,
+      "param_type": "INT",
+      "default_value": 512,
+      "min_value": 256,
+      "max_value": 1024,
+      "increment": 64
+    },
+    "class_type": "CozyGenDynamicInput",
+    "_meta": {
+      "title": "CozyGen Dynamic Input"
+    }
+  },
+  "134": {
+    "inputs": {
+      "param_name": "Height",
+      "priority": 10,
+      "param_type": "INT",
+      "default_value": 768,
+      "min_value": 256,
+      "max_value": 1024,
+      "increment": 64
+    },
+    "class_type": "CozyGenDynamicInput",
+    "_meta": {
+      "title": "CozyGen Dynamic Input"
+    }
+  },
+  "136": {
+    "inputs": {
+      "seed": -1
+    },
+    "class_type": "Seed (rgthree)",
+    "_meta": {
+      "title": "Seed (rgthree)"
+    }
+  },
+  "137": {
+    "inputs": {
+      "filename_prefix": "T2I",
+      "images": [
+        "60",
+        0
+      ]
+    },
+    "class_type": "CozyGenOutput",
+    "_meta": {
+      "title": "CozyGen Output"
+    }
+  }
+}

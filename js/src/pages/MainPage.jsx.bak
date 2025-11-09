@@ -1,0 +1,797 @@
+import React, { useState, useEffect, useRef } from 'react';
+import WorkflowSelector from '../components/WorkflowSelector';
+import DynamicForm from '../components/DynamicForm';
+import ImageInput from '../components/ImageInput';
+import PresetSelector from '../components/PresetSelector';
+import { getWorkflows, getWorkflow, queuePrompt, getChoices } from '../api';
+import Modal from 'react-modal';
+import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
+
+Modal.setAppElement('#root');
+
+const isVideo = (url) => /\.(mp4|webm)/i.test(url || '');
+
+const renderPreviewContent = (url) => {
+  if (!url) return null;
+  if (isVideo(url)) {
+    return (
+      <video
+      src={url}
+      controls
+      autoPlay
+      loop
+      muted
+      className="max-w-full max-h-full object-contain rounded-lg"
+      />
+    );
+  }
+  return (
+    <img
+    src={url}
+    alt="Generated preview"
+    className="max-w-full max-h-full object-contain rounded-lg cursor-pointer"
+    />
+  );
+};
+
+const renderModalContent = (url) => {
+  if (!url) return null;
+  if (isVideo(url)) {
+    return (
+      <video
+      src={url}
+      controls
+      autoPlay
+      loop
+      className="max-w-full max-h-full object-contain rounded-lg"
+      />
+    );
+  }
+  return (
+    <TransformWrapper
+    initialScale={1}
+    minScale={0.5}
+    maxScale={5}
+    limitToBounds={false}
+    doubleClick={{ disabled: true }}
+    wheel={true}
+    >
+    <TransformComponent>
+    <img
+    src={url}
+    alt="Generated preview"
+    className="max-w-full max-h-full object-contain rounded-lg"
+    />
+    </TransformComponent>
+    </TransformWrapper>
+  );
+};
+
+// choices mapping for dynamic dropdowns
+const choiceTypeMapping = {
+  clip_name1: 'clip',
+  clip_name2: 'clip',
+  unet_name: 'unet',
+  vae_name: 'vae',
+  sampler_name: 'sampler',
+  scheduler: 'scheduler',
+};
+
+// Simple collapsible card section
+function CollapsibleSection({ title, defaultOpen = true, children }) {
+  const [open, setOpen] = useState(defaultOpen);
+
+  return (
+    <section className="rounded-2xl border border-base-300 bg-base-200 p-3 sm:p-4 shadow-lg">
+    <button
+    type="button"
+    onClick={() => setOpen((v) => !v)}
+    className="w-full flex items-center justify-between gap-2 mb-2"
+    >
+    <h3 className="text-lg sm:text-xl font-semibold text-base-content text-left">
+    {title}
+    </h3>
+    <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-base-300 text-sm">
+    {open ? '−' : '+'}
+    </span>
+    </button>
+    {open && <div className="pt-1">{children}</div>}
+    </section>
+  );
+}
+
+function App() {
+  const [workflows, setWorkflows] = useState([]);
+  const [selectedWorkflow, setSelectedWorkflow] = useState(
+    localStorage.getItem('selectedWorkflow') || null
+  );
+  const [workflowData, setWorkflowData] = useState(null);
+  const [dynamicInputs, setDynamicInputs] = useState([]);
+  const [formData, setFormData] = useState({});
+  const [randomizeState, setRandomizeState] = useState({});
+  const [bypassedState, setBypassedState] = useState({});
+  const [previewImages, setPreviewImages] = useState(
+    JSON.parse(localStorage.getItem('lastPreviewImages')) || []
+  );
+  const [selectedPreviewImage, setSelectedPreviewImage] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const websocketRef = useRef(null);
+  const [progressValue, setProgressValue] = useState(0);
+  const [progressMax, setProgressMax] = useState(0);
+  const [modalIsOpen, setModalIsOpen] = useState(false);
+  const [statusText, setStatusText] = useState('Generating...');
+  const workflowDataRef = useRef(null);
+
+  // force-remount key for DynamicForm after preset apply
+  const [formVersion, setFormVersion] = useState(0);
+
+  // collapsible toggles
+  const [previewOpen, setPreviewOpen] = useState(true);
+  const [presetsOpen, setPresetsOpen] = useState(true);
+  const [paramsOpen, setParamsOpen] = useState(true);
+  const [imagesOpen, setImagesOpen] = useState(true);
+
+  useEffect(() => {
+    workflowDataRef.current = workflowData;
+  }, [workflowData]);
+
+  const openModalWithImage = (imageSrc) => {
+    setSelectedPreviewImage(imageSrc);
+    setModalIsOpen(true);
+  };
+
+  // WebSocket
+  useEffect(() => {
+    const connectWebSocket = () => {
+      const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+      const host = window.location.host;
+      const wsUrl = `${protocol}://${host}/ws`;
+      websocketRef.current = new WebSocket(wsUrl);
+
+      websocketRef.current.onmessage = (event) => {
+        if (typeof event.data !== 'string') return;
+        const msg = JSON.parse(event.data);
+
+        if (msg.type === 'cozygen_batch_ready') {
+          const imageUrls = msg.data.images.map((image) => image.url);
+          if (imageUrls.length > 0) {
+            setPreviewImages(imageUrls);
+            localStorage.setItem(
+              'lastPreviewImages',
+              JSON.stringify(imageUrls)
+            );
+          }
+          setIsLoading(false);
+          setProgressValue(0);
+          setProgressMax(0);
+          setStatusText('Finished');
+        } else if (msg.type === 'executing') {
+          const nodeId = msg.data.node;
+          if (
+            nodeId &&
+            workflowDataRef.current &&
+            workflowDataRef.current[nodeId]
+          ) {
+            const node = workflowDataRef.current[nodeId];
+            const nodeName = node.title || node.class_type;
+            setStatusText(`Executing: ${nodeName}`);
+          }
+        } else if (msg.type === 'progress') {
+          setProgressValue(msg.data.value);
+          setProgressMax(msg.data.max);
+        }
+      };
+
+      websocketRef.current.onclose = () => {
+        setTimeout(connectWebSocket, 1000);
+      };
+
+      websocketRef.current.onerror = (err) => {
+        console.error('CozyGen: WebSocket error:', err);
+        websocketRef.current.close();
+      };
+    };
+
+    connectWebSocket();
+    return () => {
+      if (websocketRef.current) websocketRef.current.close();
+    };
+  }, []);
+
+  // Fetch workflows
+  useEffect(() => {
+    (async () => {
+      try {
+        const data = await getWorkflows();
+        setWorkflows(data.workflows || []);
+      } catch (e) {
+        console.error(e);
+      }
+    })();
+  }, []);
+
+  // Load a workflow
+  useEffect(() => {
+    if (!selectedWorkflow) return;
+    (async () => {
+      try {
+        const data = await getWorkflow(selectedWorkflow);
+        setWorkflowData(data);
+
+        // Ensure param_name for image inputs and add id to every node
+        for (const nodeId in data) {
+          const node = data[nodeId];
+          if (node.class_type === 'CozyGenImageInput' && !node.inputs.param_name) {
+            node.inputs.param_name = 'Image Input';
+          }
+          data[nodeId].id = nodeId;
+        }
+
+        const COZYGEN_INPUT_TYPES = [
+          'CozyGenDynamicInput',
+          'CozyGenImageInput',
+          'CozyGenFloatInput',
+          'CozyGenIntInput',
+          'CozyGenStringInput',
+          'CozyGenChoiceInput',
+        ];
+        const allInputs = Object.values(data).filter((n) =>
+        COZYGEN_INPUT_TYPES.includes(n.class_type)
+        );
+
+        // sort by priority
+        allInputs.sort(
+          (a, b) => (a.inputs.priority || 0) - (b.inputs.priority || 0)
+        );
+
+        // populate choices
+        const inputsWithChoices = await Promise.all(
+          allInputs.map(async (input) => {
+            const isDynDrop =
+            input.class_type === 'CozyGenDynamicInput' &&
+            input.inputs.param_type === 'DROPDOWN';
+            const isChoice = input.class_type === 'CozyGenChoiceInput';
+
+          if (isDynDrop || isChoice) {
+            const pn = input.inputs.param_name;
+            let choiceType =
+            input.inputs.choice_type ||
+            (input.properties && input.properties.choice_type);
+            if (!choiceType && isDynDrop) choiceType = choiceTypeMapping[pn];
+            if (choiceType) {
+              try {
+                const choicesData = await getChoices(choiceType);
+                input.inputs.choices = choicesData.choices || [];
+              } catch (err) {
+                console.error(`Choices for ${pn} failed`, err);
+                input.inputs.choices = [];
+              }
+            }
+          }
+          return input;
+          })
+        );
+
+        setDynamicInputs(inputsWithChoices);
+
+        // Initial formData (from localStorage or defaults)
+        const saved =
+        JSON.parse(
+          localStorage.getItem(`${selectedWorkflow}_formData`)
+        ) || {};
+        const initial = {};
+        inputsWithChoices.forEach((input) => {
+          const pn = input.inputs.param_name;
+          if (saved[pn] !== undefined) {
+            initial[pn] = saved[pn];
+            return;
+          }
+          let defv;
+          if (
+            [
+              'CozyGenDynamicInput',
+              'CozyGenFloatInput',
+              'CozyGenIntInput',
+              'CozyGenStringInput',
+            ].includes(input.class_type)
+          ) {
+            defv = input.inputs.default_value;
+            if (input.class_type === 'CozyGenIntInput') {
+              defv = parseInt(defv, 10);
+            } else if (input.class_type === 'CozyGenFloatInput') {
+              defv = parseFloat(defv);
+            }
+          } else if (input.class_type === 'CozyGenChoiceInput') {
+            defv =
+            input.inputs.choices && input.inputs.choices.length
+            ? input.inputs.choices[0]
+            : '';
+          } else if (input.class_type === 'CozyGenImageInput') {
+            defv = '';
+          }
+          initial[pn] = defv;
+        });
+        setFormData(initial);
+
+        setRandomizeState(
+          JSON.parse(
+            localStorage.getItem(`${selectedWorkflow}_randomizeState`)
+          ) || {}
+        );
+        setBypassedState(
+          JSON.parse(
+            localStorage.getItem(`${selectedWorkflow}_bypassedState`)
+          ) || {}
+        );
+      } catch (e) {
+        console.error(e);
+      }
+    })();
+  }, [selectedWorkflow]);
+
+  // Handlers
+  const handleWorkflowSelect = (wf) => {
+    setSelectedWorkflow(wf);
+    localStorage.setItem('selectedWorkflow', wf);
+    setWorkflowData(null);
+    setDynamicInputs([]);
+    setFormData({});
+    setRandomizeState({});
+    setPreviewImages([]);
+  };
+
+  const handleFormChange = (inputName, value) => {
+    const newData = { ...formData, [inputName]: value };
+    setFormData(newData);
+    if (selectedWorkflow) {
+      localStorage.setItem(
+        `${selectedWorkflow}_formData`,
+        JSON.stringify(newData)
+      );
+    }
+  };
+
+  const handleRandomizeToggle = (inputName, isRandom) => {
+    const rs = { ...randomizeState, [inputName]: isRandom };
+    setRandomizeState(rs);
+    if (selectedWorkflow) {
+      localStorage.setItem(
+        `${selectedWorkflow}_randomizeState`,
+        JSON.stringify(rs)
+      );
+    }
+  };
+
+  const handleBypassToggle = (inputName, isBypassed) => {
+    const bs = { ...bypassedState, [inputName]: isBypassed };
+    setBypassedState(bs);
+    if (selectedWorkflow) {
+      localStorage.setItem(
+        `${selectedWorkflow}_bypassedState`,
+        JSON.stringify(bs)
+      );
+    }
+  };
+
+  const handleGenerate = async () => {
+    if (!workflowData) return;
+    setIsLoading(true);
+    setPreviewImages([]);
+    setStatusText('Queuing prompt...');
+    try {
+      let finalWorkflow = JSON.parse(JSON.stringify(workflowData));
+
+      // BYPASS logic
+      const BYPASSABLE = ['CozyGenDynamicInput', 'CozyGenChoiceInput'];
+      const bypassedNodes = dynamicInputs.filter(
+        (dn) => bypassedState[dn.inputs.param_name] && BYPASSABLE.includes(dn.class_type)
+      );
+
+      for (const bypassedNode of bypassedNodes) {
+        let targetNodeId = Object.keys(finalWorkflow).find((id) =>
+        Object.values(finalWorkflow[id].inputs).some(
+          (inp) => Array.isArray(inp) && inp[0] === bypassedNode.id
+        )
+        );
+        if (!targetNodeId) continue;
+        const targetNode = finalWorkflow[targetNodeId];
+
+        const upstream = {};
+        for (const inputName in targetNode.inputs) {
+          const inp = targetNode.inputs[inputName];
+          if (
+            Array.isArray(inp) &&
+            finalWorkflow[inp[0]] &&
+            !BYPASSABLE.includes(finalWorkflow[inp[0]].class_type)
+          ) {
+            upstream[inputName] = inp;
+          }
+        }
+        if (!Object.keys(upstream).length) continue;
+
+        const downstream = [];
+        for (const nodeId in finalWorkflow) {
+          for (const inputName in finalWorkflow[nodeId].inputs) {
+            const inp = finalWorkflow[nodeId].inputs[inputName];
+            if (Array.isArray(inp) && inp[0] === targetNodeId) {
+              downstream.push({ nodeId, inputName });
+            }
+          }
+        }
+        for (const conn of downstream) {
+          const src = upstream[conn.inputName];
+          if (src) finalWorkflow[conn.nodeId].inputs[conn.inputName] = src;
+        }
+        delete finalWorkflow[targetNodeId];
+        delete finalWorkflow[bypassedNode.id];
+      }
+
+      // Inject values (non-image inputs)
+      let updated = { ...formData };
+      dynamicInputs.forEach((dn) => {
+        if (!finalWorkflow[dn.id]) return;
+        const pn = dn.inputs.param_name;
+        if (dn.class_type === 'CozyGenImageInput') return;
+
+        let v = updated[pn];
+        if (randomizeState[pn]) {
+          if (dn.inputs.param_type === 'FLOAT') {
+            v =
+            Math.random() *
+            ((dn.inputs.max_value || 1) - (dn.inputs.min_value || 0)) +
+            (dn.inputs.min_value || 0);
+          } else {
+            v =
+            Math.floor(
+              Math.random() *
+              ((dn.inputs.max_value || 1) - (dn.inputs.min_value || 0) + 1)
+            ) + (dn.inputs.min_value || 0);
+          }
+        }
+        updated[pn] = v;
+
+        const nodeToUpdate = finalWorkflow[dn.id];
+        if (!nodeToUpdate) return;
+        if (
+          [
+            'CozyGenFloatInput',
+            'CozyGenIntInput',
+            'CozyGenStringInput',
+            'CozyGenDynamicInput',
+          ].includes(dn.class_type)
+        ) {
+          nodeToUpdate.inputs.default_value = v;
+        } else if (dn.class_type === 'CozyGenChoiceInput') {
+          nodeToUpdate.inputs.value = v;
+        }
+      });
+      setFormData(updated);
+      if (selectedWorkflow) {
+        localStorage.setItem(
+          `${selectedWorkflow}_formData`,
+          JSON.stringify(updated)
+        );
+      }
+
+      // image inputs
+      const imageNodes = dynamicInputs.filter(
+        (dn) => dn.class_type === 'CozyGenImageInput'
+      );
+      for (const n of imageNodes) {
+        const filename = formData[n.inputs.param_name];
+        if (!filename) {
+          alert(
+            `Please upload or select an image for "${n.inputs.param_name}" before generating.`
+          );
+          setIsLoading(false);
+          return;
+        }
+        if (finalWorkflow[n.id]) {
+          finalWorkflow[n.id].inputs.image_filename = filename;
+        }
+      }
+
+      await queuePrompt({ prompt: finalWorkflow });
+    } catch (e) {
+      console.error('Failed to queue prompt:', e);
+      setIsLoading(false);
+      setStatusText('Error queuing prompt');
+    }
+  };
+
+  const handleClearPreview = () => {
+    setPreviewImages([]);
+    localStorage.removeItem('lastPreviewImages');
+  };
+
+  // PRESETS
+  function getValuesForPreset() {
+    return formData;
+  }
+
+  function applyPresetValues(values = {}) {
+    if (!values || typeof values !== 'object') return;
+
+    const byName = new Map(dynamicInputs.map((dn) => [dn.inputs.param_name, dn]));
+    const lowerToName = new Map(
+      [...byName.keys()].map((n) => [n.toLowerCase(), n])
+    );
+
+    const next = { ...formData };
+
+    for (const [rawKey, rawVal] of Object.entries(values)) {
+      const kLower = String(rawKey).toLowerCase();
+      const target = byName.has(rawKey) ? rawKey : lowerToName.get(kLower);
+      if (!target) continue;
+
+      const dn = byName.get(target);
+      if (!dn) continue;
+
+      let v = rawVal;
+
+      if (dn.class_type === 'CozyGenFloatInput') {
+        const num = typeof v === 'number' ? v : parseFloat(v);
+        if (!Number.isFinite(num)) continue;
+        v = num;
+      } else if (dn.class_type === 'CozyGenIntInput') {
+        const num = typeof v === 'number' ? v : parseInt(v, 10);
+        if (!Number.isFinite(num)) continue;
+        v = num;
+      } else if (dn.class_type === 'CozyGenChoiceInput') {
+        const choices = Array.isArray(dn.inputs.choices)
+        ? dn.inputs.choices
+        : [];
+        if (choices.length && !choices.includes(v)) continue;
+      }
+
+      next[target] = v;
+    }
+
+    setFormData(next);
+    if (selectedWorkflow) {
+      localStorage.setItem(
+        `${selectedWorkflow}_formData`,
+        JSON.stringify(next)
+      );
+    }
+    setFormVersion((v) => v + 1); // force DynamicForm remount
+  }
+
+  return (
+    <div className="max-w-7xl mx-auto">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 pb-28">
+    {/* Right: Preview (collapsible) */}
+    <div className="flex flex-col space-y-3">
+    <section className="rounded-2xl border border-base-300 bg-base-200 p-3 sm:p-4 shadow-lg">
+    <button
+    type="button"
+    onClick={() => setPreviewOpen((v) => !v)}
+    className="w-full flex items-center justify-between gap-2 mb-2"
+    >
+    <h2 className="text-lg sm:text-xl font-semibold text-white">
+    Preview
+    </h2>
+    <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-base-300 text-sm">
+    {previewOpen ? '−' : '+'}
+    </span>
+    </button>
+    {previewOpen && (
+      <div className="flex flex-col gap-3">
+      <div className="flex justify-end">
+      <button
+      onClick={handleClearPreview}
+      className="px-3 py-1 bg-base-300 text-gray-300 rounded-md text-xs sm:text-sm hover:bg-base-300/70 transition-colors"
+      >
+      Clear
+      </button>
+      </div>
+      <div className="min-h-[260px] sm:min-h-[320px] lg:min-h-[400px] flex items-center justify-center border-2 border-dashed border-base-300 rounded-lg p-2 overflow-y-auto">
+      {isLoading && (
+        <div className="text-center w-full">
+        <p className="text-sm sm:text-lg">{statusText}</p>
+        </div>
+      )}
+      {!isLoading && previewImages.length === 0 && (
+        <p className="text-gray-400 text-sm">
+        Your generated image or video will appear here.
+        </p>
+      )}
+      {!isLoading && previewImages.length === 1 && (
+        <div
+        className="w-full h-full flex items-center justify-center cursor-pointer"
+        onClick={() => openModalWithImage(previewImages[0])}
+        >
+        {renderPreviewContent(previewImages[0])}
+        </div>
+      )}
+      {!isLoading && previewImages.length > 1 && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 w-full h-full">
+        {previewImages.map((src, index) => (
+          <div
+          key={index}
+          className="aspect-square bg-base-300 rounded-lg overflow-hidden cursor-pointer"
+          onClick={() => openModalWithImage(src)}
+          >
+          {renderPreviewContent(src)}
+          </div>
+        ))}
+        </div>
+      )}
+      </div>
+      </div>
+    )}
+    </section>
+    </div>
+
+    {/* Left: Controls (workflow, presets, params, images) */}
+    <div className="flex flex-col space-y-3">
+    <WorkflowSelector
+    workflows={workflows}
+    selectedWorkflow={selectedWorkflow}
+    onSelect={handleWorkflowSelect}
+    />
+
+    {selectedWorkflow && (
+      <section className="rounded-2xl border border-base-300 bg-base-200 p-3 sm:p-4 shadow-lg">
+      <button
+      type="button"
+      onClick={() => setPresetsOpen((v) => !v)}
+      className="w-full flex items-center justify-between gap-2 mb-2"
+      >
+      <h3 className="text-lg sm:text-xl font-semibold text-base-content text-left">
+      Presets
+      </h3>
+      <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-base-300 text-sm">
+      {presetsOpen ? '−' : '+'}
+      </span>
+      </button>
+      {presetsOpen && (
+        <div className="pt-1">
+        <PresetSelector
+        workflow={selectedWorkflow}
+        onApply={applyPresetValues}
+        readCurrentValues={getValuesForPreset}
+        />
+        </div>
+      )}
+      </section>
+    )}
+
+    <section className="rounded-2xl border border-base-300 bg-base-200 p-3 sm:p-4 shadow-lg">
+    <button
+    type="button"
+    onClick={() => setParamsOpen((v) => !v)}
+    className="w-full flex items-center justify-between gap-2 mb-2"
+    >
+    <h3 className="text-lg sm:text-xl font-semibold text-base-content text-left">
+    Parameters
+    </h3>
+    <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-base-300 text-sm">
+    {paramsOpen ? '−' : '+'}
+    </span>
+    </button>
+    {paramsOpen && (
+      <div className="pt-1">
+      <DynamicForm
+      key={formVersion}
+      inputs={dynamicInputs
+        .filter((input) => input.class_type !== 'CozyGenImageInput')
+        .map((input) => {
+          if (
+            [
+              'CozyGenFloatInput',
+              'CozyGenIntInput',
+              'CozyGenStringInput',
+              'CozyGenChoiceInput',
+            ].includes(input.class_type)
+          ) {
+            let param_type = input.class_type
+            .replace('CozyGen', '')
+            .replace('Input', '')
+            .toUpperCase();
+            if (param_type === 'CHOICE') param_type = 'DROPDOWN';
+        return {
+          ...input,
+          inputs: {
+            ...input.inputs,
+            param_type,
+            Multiline: input.inputs.display_multiline || false,
+          },
+        };
+          }
+          return input;
+        })}
+        formData={formData}
+        onFormChange={handleFormChange}
+        randomizeState={randomizeState}
+        onRandomizeToggle={handleRandomizeToggle}
+        bypassedState={bypassedState}
+        onBypassToggle={handleBypassToggle}
+        />
+        </div>
+    )}
+    </section>
+
+    <section className="rounded-2xl border border-base-300 bg-base-200 p-3 sm:p-4 shadow-lg">
+    <button
+    type="button"
+    onClick={() => setImagesOpen((v) => !v)}
+    className="w-full flex items-center justify-between gap-2 mb-2"
+    >
+    <h3 className="text-lg sm:text-xl font-semibold text-base-content text-left">
+    Image Inputs
+    </h3>
+    <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-base-300 text-sm">
+    {imagesOpen ? '−' : '+'}
+    </span>
+    </button>
+    {imagesOpen && (
+      <div className="pt-1 space-y-2">
+      {dynamicInputs
+        .filter((input) => input.class_type === 'CozyGenImageInput')
+        .map((input) => (
+          <ImageInput
+          key={input.id}
+          input={input}
+          value={formData[input.inputs.param_name]}
+          onFormChange={handleFormChange}
+          />
+        ))}
+        </div>
+    )}
+    </section>
+    </div>
+    </div>
+
+    {/* Sticky Generate */}
+    <div className="fixed bottom-0 left-0 right-0 bg-base-100/80 backdrop-blur-sm p-4 border-t border-base-300 z-10 shadow-lg">
+    <div className="max-w-2xl mx-auto">
+    <button
+    onClick={handleGenerate}
+    disabled={isLoading || !workflowData}
+    className="w-full bg-accent text-white font-bold text-lg py-4 px-4 rounded-lg hover:bg-accent-focus transition duration-300 disabled:bg-base-300 disabled:cursor-not-allowed shadow-lg"
+    >
+    {isLoading ? 'Generating...' : 'Generate'}
+    </button>
+    {isLoading && progressMax > 0 && (
+      <div className="w-full bg-base-300 rounded-full h-2.5 mt-2">
+      <div
+      className="bg-accent h-2.5 rounded-full transition-all duration-1000 ease-out"
+      style={{
+        width: `${(progressValue / progressMax) * 100}%`,
+      }}
+      />
+      </div>
+    )}
+    </div>
+    </div>
+
+    {/* Preview Modal */}
+    {selectedPreviewImage && (
+      <Modal
+      isOpen={modalIsOpen}
+      onRequestClose={() => setModalIsOpen(false)}
+      className="react-modal-content"
+      overlayClassName="react-modal-overlay"
+      contentLabel="Image Preview"
+      >
+      <div className="flex flex-col h-full w-full">
+      <div className="flex-grow flex items-center justify-center min-h-0">
+      {renderModalContent(selectedPreviewImage)}
+      </div>
+      <div className="flex-shrink-0 p-2 flex justify-center">
+      <button
+      onClick={() => setModalIsOpen(false)}
+      className="px-4 py-2 bg-accent text-white rounded-md hover:bg-accent-focus transition-colors"
+      >
+      Close
+      </button>
+      </div>
+      </div>
+      </Modal>
+    )}
+    </div>
+  );
+}
+
+export default App;

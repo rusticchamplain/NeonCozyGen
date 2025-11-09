@@ -1,0 +1,674 @@
+import React, { useState, useEffect, useRef } from 'react';
+import WorkflowSelector from '../components/WorkflowSelector';
+import DynamicForm from '../components/DynamicForm';
+import ImageInput from '../components/ImageInput';
+import PresetSelector from '../components/PresetSelector';
+import { getWorkflows, getWorkflow, queuePrompt, getChoices } from '../api';
+
+// Map some known param names to choice types for dynamic dropdowns
+const choiceTypeMapping = {
+  clip_name1: 'clip',
+  clip_name2: 'clip',
+  unet_name: 'unet',
+  vae_name: 'vae',
+  sampler_name: 'sampler',
+  scheduler: 'scheduler',
+};
+
+function App() {
+  const [workflows, setWorkflows] = useState([]);
+  const [selectedWorkflow, setSelectedWorkflow] = useState(
+    localStorage.getItem('selectedWorkflow') || null
+  );
+  const [workflowData, setWorkflowData] = useState(null);
+  const [dynamicInputs, setDynamicInputs] = useState([]);
+
+  const [formData, setFormData] = useState({});
+  const [randomizeState, setRandomizeState] = useState({});
+  const [bypassedState, setBypassedState] = useState({});
+
+  const [isLoading, setIsLoading] = useState(false);
+  const [statusText, setStatusText] = useState('Generating...');
+  const [progressValue, setProgressValue] = useState(0);
+  const [progressMax, setProgressMax] = useState(0);
+
+  const websocketRef = useRef(null);
+  const workflowDataRef = useRef(null);
+
+  // collapsible sections
+  const [presetsOpen, setPresetsOpen] = useState(true);
+  const [paramsOpen, setParamsOpen] = useState(true);
+  const [imagesOpen, setImagesOpen] = useState(true);
+
+  // force-remount key for DynamicForm when presets/bypass change
+  const [formVersion, setFormVersion] = useState(0);
+
+  useEffect(() => {
+    workflowDataRef.current = workflowData;
+  }, [workflowData]);
+
+  // WebSocket: listen for progress + done
+  useEffect(() => {
+    const connectWebSocket = () => {
+      const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+      const host = window.location.host;
+      const wsUrl = `${protocol}://${host}/ws`;
+
+      websocketRef.current = new WebSocket(wsUrl);
+
+      websocketRef.current.onmessage = (event) => {
+        if (typeof event.data !== 'string') return;
+        let msg;
+        try {
+          msg = JSON.parse(event.data);
+        } catch {
+          return;
+        }
+
+        if (msg.type === 'cozygen_batch_ready') {
+          // Generation finished
+          setIsLoading(false);
+          setProgressValue(0);
+          setProgressMax(0);
+          setStatusText('Finished');
+        } else if (msg.type === 'executing') {
+          // Update status with node name
+          const nodeId = msg.data?.node;
+          if (nodeId && workflowDataRef.current && workflowDataRef.current[nodeId]) {
+            const node = workflowDataRef.current[nodeId];
+            const nodeName = node.title || node.class_type;
+            setStatusText(`Executing: ${nodeName}`);
+          }
+        } else if (msg.type === 'progress') {
+          setProgressValue(msg.data?.value ?? 0);
+          setProgressMax(msg.data?.max ?? 0);
+        }
+      };
+
+      websocketRef.current.onclose = () => {
+        setTimeout(connectWebSocket, 1000);
+      };
+
+      websocketRef.current.onerror = () => {
+        try {
+          websocketRef.current.close();
+        } catch {
+          /* ignore */
+        }
+      };
+    };
+
+    connectWebSocket();
+    return () => {
+      if (websocketRef.current) websocketRef.current.close();
+    };
+  }, []);
+
+  // Fetch list of workflows
+  useEffect(() => {
+    (async () => {
+      try {
+        const data = await getWorkflows();
+        setWorkflows(data.workflows || []);
+      } catch (e) {
+        console.error('Failed to load workflows', e);
+      }
+    })();
+  }, []);
+
+  // Load a single workflow and build dynamic inputs
+  useEffect(() => {
+    if (!selectedWorkflow) return;
+
+    (async () => {
+      try {
+        const data = await getWorkflow(selectedWorkflow);
+        setWorkflowData(data);
+
+        // normalize node ids and ensure param_name for image input nodes
+        for (const nodeId in data) {
+          const node = data[nodeId];
+          if (node.class_type === 'CozyGenImageInput' && !node.inputs.param_name) {
+            node.inputs.param_name = 'Image Input';
+          }
+          data[nodeId].id = nodeId;
+        }
+
+        const COZYGEN_INPUT_TYPES = [
+          'CozyGenDynamicInput',
+          'CozyGenImageInput',
+          'CozyGenFloatInput',
+          'CozyGenIntInput',
+          'CozyGenStringInput',
+          'CozyGenChoiceInput',
+        ];
+
+        const allInputs = Object.values(data).filter((node) =>
+          COZYGEN_INPUT_TYPES.includes(node.class_type)
+        );
+
+        // sort by priority
+        allInputs.sort(
+          (a, b) => (a.inputs.priority || 0) - (b.inputs.priority || 0)
+        );
+
+        // attach choices for dropdown-like nodes
+        const inputsWithChoices = await Promise.all(
+          allInputs.map(async (input) => {
+            const isDynamicDropdown =
+              input.class_type === 'CozyGenDynamicInput' &&
+              input.inputs.param_type === 'DROPDOWN';
+            const isChoiceNode = input.class_type === 'CozyGenChoiceInput';
+
+            if (isDynamicDropdown || isChoiceNode) {
+              const pn = input.inputs.param_name;
+              let choiceType =
+                input.inputs.choice_type ||
+                (input.properties && input.properties.choice_type);
+              if (!choiceType && isDynamicDropdown) {
+                choiceType = choiceTypeMapping[pn];
+              }
+
+              if (choiceType) {
+                try {
+                  const choicesData = await getChoices(choiceType);
+                  input.inputs.choices = choicesData.choices || [];
+                } catch (err) {
+                  console.error(`Choices for ${pn} failed`, err);
+                  input.inputs.choices = [];
+                }
+              }
+            }
+            return input;
+          })
+        );
+
+        setDynamicInputs(inputsWithChoices);
+
+        // restore per-workflow state
+        const storedForm =
+          JSON.parse(
+            localStorage.getItem(`${selectedWorkflow}_formData`) || 'null'
+          ) || {};
+        const storedRandom =
+          JSON.parse(
+            localStorage.getItem(`${selectedWorkflow}_randomizeState`) || 'null'
+          ) || {};
+        const storedBypass =
+          JSON.parse(
+            localStorage.getItem(`${selectedWorkflow}_bypassedState`) || 'null'
+          ) || {};
+
+        const initialForm = {};
+        inputsWithChoices.forEach((input) => {
+          const pn = input.inputs.param_name;
+          if (storedForm[pn] !== undefined) {
+            initialForm[pn] = storedForm[pn];
+            return;
+          }
+          let defv;
+          if (
+            [
+              'CozyGenDynamicInput',
+              'CozyGenFloatInput',
+              'CozyGenIntInput',
+              'CozyGenStringInput',
+            ].includes(input.class_type)
+          ) {
+            defv = input.inputs.default_value;
+            if (input.class_type === 'CozyGenIntInput') {
+              defv = parseInt(defv, 10);
+            } else if (input.class_type === 'CozyGenFloatInput') {
+              defv = parseFloat(defv);
+            }
+          } else if (input.class_type === 'CozyGenChoiceInput') {
+            defv =
+              input.inputs.choices && input.inputs.choices.length
+                ? input.inputs.choices[0]
+                : '';
+          } else if (input.class_type === 'CozyGenImageInput') {
+            defv = '';
+          }
+          initialForm[pn] = defv;
+        });
+
+        setFormData(initialForm);
+        setRandomizeState(storedRandom);
+        setBypassedState(storedBypass);
+        setFormVersion((v) => v + 1);
+      } catch (e) {
+        console.error('Failed to load workflow', e);
+      }
+    })();
+  }, [selectedWorkflow]);
+
+  const handleWorkflowSelect = (wf) => {
+    setSelectedWorkflow(wf);
+    localStorage.setItem('selectedWorkflow', wf);
+    setWorkflowData(null);
+    setDynamicInputs([]);
+    setFormData({});
+    setRandomizeState({});
+    setBypassedState({});
+  };
+
+  const handleFormChange = (name, value) => {
+    const next = { ...formData, [name]: value };
+    setFormData(next);
+    if (selectedWorkflow) {
+      localStorage.setItem(
+        `${selectedWorkflow}_formData`,
+        JSON.stringify(next)
+      );
+    }
+  };
+
+  const handleRandomizeToggle = (name, isRandom) => {
+    const next = { ...randomizeState, [name]: isRandom };
+    setRandomizeState(next);
+    if (selectedWorkflow) {
+      localStorage.setItem(
+        `${selectedWorkflow}_randomizeState`,
+        JSON.stringify(next)
+      );
+    }
+  };
+
+  const handleBypassToggle = (name, isBypassed) => {
+    const next = { ...bypassedState, [name]: isBypassed };
+    setBypassedState(next);
+    if (selectedWorkflow) {
+      localStorage.setItem(
+        `${selectedWorkflow}_bypassedState`,
+        JSON.stringify(next)
+      );
+    }
+  };
+
+  // ---- PRESETS: encode/decode values + bypass flags ----
+
+  const getValuesForPreset = () => {
+    const out = { ...formData };
+    Object.entries(bypassedState).forEach(([n, isBy]) => {
+      out[`__bypass__${n}`] = isBy ? 1 : 0;
+    });
+    return out;
+  };
+
+  const applyPresetValues = (valuesObj = {}) => {
+    if (!valuesObj || typeof valuesObj !== 'object') return;
+
+    const byName = new Map(
+      dynamicInputs.map((dn) => [dn.inputs.param_name, dn])
+    );
+    const lowerToName = new Map(
+      [...byName.keys()].map((n) => [n.toLowerCase(), n])
+    );
+
+    const nextForm = { ...formData };
+    const nextBypass = {};
+
+    // reset all to not bypassed
+    dynamicInputs.forEach((dn) => {
+      nextBypass[dn.inputs.param_name] = false;
+    });
+
+    // first pass: bypass flags
+    for (const [rawKey, rawVal] of Object.entries(valuesObj)) {
+      if (!rawKey.startsWith('__bypass__')) continue;
+      const name = rawKey.slice('__bypass__'.length);
+      const keyLower = name.toLowerCase();
+      const resolved =
+        byName.has(name) ? name : lowerToName.get(keyLower) || null;
+      if (resolved) nextBypass[resolved] = !!rawVal;
+    }
+
+    // second pass: normal values
+    for (const [rawKey, rawVal] of Object.entries(valuesObj)) {
+      if (rawKey.startsWith('__bypass__')) continue;
+
+      const keyLower = String(rawKey).toLowerCase();
+      const target =
+        byName.has(rawKey) ? rawKey : lowerToName.get(keyLower) || null;
+      if (!target) continue;
+
+      const dn = byName.get(target);
+      if (!dn) continue;
+
+      let v = rawVal;
+      if (dn.class_type === 'CozyGenFloatInput') {
+        const num = typeof v === 'number' ? v : parseFloat(v);
+        if (!Number.isFinite(num)) continue;
+        v = num;
+      } else if (dn.class_type === 'CozyGenIntInput') {
+        const num = typeof v === 'number' ? v : parseInt(v, 10);
+        if (!Number.isFinite(num)) continue;
+        v = num;
+      } else if (dn.class_type === 'CozyGenChoiceInput') {
+        const choices = Array.isArray(dn.inputs.choices) ? dn.inputs.choices : [];
+        if (choices.length && !choices.includes(v)) continue;
+      }
+
+      nextForm[target] = v;
+    }
+
+    setFormData(nextForm);
+    setBypassedState(nextBypass);
+
+    if (selectedWorkflow) {
+      localStorage.setItem(
+        `${selectedWorkflow}_formData`,
+        JSON.stringify(nextForm)
+      );
+      localStorage.setItem(
+        `${selectedWorkflow}_bypassedState`,
+        JSON.stringify(nextBypass)
+      );
+    }
+
+    setFormVersion((v) => v + 1);
+  };
+
+  const handleGenerate = async () => {
+    if (!workflowData) return;
+
+    setIsLoading(true);
+    setStatusText('Queuing prompt...');
+
+    try {
+      let finalWorkflow = JSON.parse(JSON.stringify(workflowData));
+
+      const BYPASSABLE = ['CozyGenDynamicInput', 'CozyGenChoiceInput'];
+      const bypassedNodes = dynamicInputs.filter(
+        (dn) =>
+          bypassedState[dn.inputs.param_name] &&
+          BYPASSABLE.includes(dn.class_type)
+      );
+
+      // bypass graph rewiring
+      for (const bypassedNode of bypassedNodes) {
+        // find node that consumes this CozyGen node
+        const targetNodeId = Object.keys(finalWorkflow).find((id) =>
+          Object.values(finalWorkflow[id].inputs).some(
+            (inp) => Array.isArray(inp) && inp[0] === bypassedNode.id
+          )
+        );
+        if (!targetNodeId) continue;
+
+        const targetNode = finalWorkflow[targetNodeId];
+
+        // capture non-bypassable upstream connections into target node
+        const upstream = {};
+        for (const inputName in targetNode.inputs) {
+          const inp = targetNode.inputs[inputName];
+          if (
+            Array.isArray(inp) &&
+            finalWorkflow[inp[0]] &&
+            !BYPASSABLE.includes(finalWorkflow[inp[0]].class_type)
+          ) {
+            upstream[inputName] = inp;
+          }
+        }
+        if (!Object.keys(upstream).length) continue;
+
+        // find downstream nodes that read from target node
+        const downstream = [];
+        for (const nodeId in finalWorkflow) {
+          for (const inputName in finalWorkflow[nodeId].inputs) {
+            const inp = finalWorkflow[nodeId].inputs[inputName];
+            if (Array.isArray(inp) && inp[0] === targetNodeId) {
+              downstream.push({ nodeId, inputName });
+            }
+          }
+        }
+
+        // rewire downstream to upstream where names match
+        for (const conn of downstream) {
+          const src = upstream[conn.inputName];
+          if (src) {
+            finalWorkflow[conn.nodeId].inputs[conn.inputName] = src;
+          }
+        }
+
+        delete finalWorkflow[targetNodeId];
+        delete finalWorkflow[bypassedNode.id];
+      }
+
+      // inject non-image values
+      const updatedForm = { ...formData };
+      dynamicInputs.forEach((dn) => {
+        if (!finalWorkflow[dn.id]) return;
+        const pn = dn.inputs.param_name;
+        if (dn.class_type === 'CozyGenImageInput') return;
+
+        let v = updatedForm[pn];
+
+        if (randomizeState[pn]) {
+          const min = dn.inputs.min_value ?? 0;
+          const max = dn.inputs.max_value ?? 1;
+          if (dn.inputs.param_type === 'FLOAT') {
+            v = Math.random() * (max - min) + min;
+          } else {
+            v = Math.floor(Math.random() * (max - min + 1)) + min;
+          }
+        }
+
+        updatedForm[pn] = v;
+        const nodeToUpdate = finalWorkflow[dn.id];
+        if (!nodeToUpdate) return;
+
+        if (
+          [
+            'CozyGenFloatInput',
+            'CozyGenIntInput',
+            'CozyGenStringInput',
+            'CozyGenDynamicInput',
+          ].includes(dn.class_type)
+        ) {
+          nodeToUpdate.inputs.default_value = v;
+        } else if (dn.class_type === 'CozyGenChoiceInput') {
+          nodeToUpdate.inputs.value = v;
+        }
+      });
+
+      setFormData(updatedForm);
+      if (selectedWorkflow) {
+        localStorage.setItem(
+          `${selectedWorkflow}_formData`,
+          JSON.stringify(updatedForm)
+        );
+      }
+
+      // ensure image filenames
+      const imageNodes = dynamicInputs.filter(
+        (dn) => dn.class_type === 'CozyGenImageInput'
+      );
+      for (const node of imageNodes) {
+        const pn = node.inputs.param_name;
+        const filename = formData[pn];
+        if (!filename) {
+          alert(`Please upload or select an image for "${pn}" before generating.`);
+          setIsLoading(false);
+          return;
+        }
+        if (finalWorkflow[node.id]) {
+          finalWorkflow[node.id].inputs.image_filename = filename;
+        }
+      }
+
+      await queuePrompt({ prompt: finalWorkflow });
+    } catch (err) {
+      console.error('Failed to queue prompt', err);
+      setIsLoading(false);
+      setStatusText('Error queuing prompt');
+    }
+  };
+
+  return (
+    <div className="max-w-7xl mx-auto pb-28">
+      {/* Floating Gallery button (mobile-friendly) */}
+      <div className="fixed bottom-24 right-4 z-20">
+        <button
+          type="button"
+          onClick={() => {
+            // Adjust if your gallery route differs
+            window.location.href = '/cozygen/gallery';
+          }}
+          className="btn btn-circle btn-sm sm:btn-md bg-base-200/90 border border-base-300 text-xs sm:text-sm shadow-lg hover:bg-base-300/90"
+          title="Open gallery"
+        >
+          📂
+        </button>
+      </div>
+
+      {/* Single-column layout (Preview removed) */}
+      <div className="flex flex-col gap-4">
+        <WorkflowSelector
+          workflows={workflows}
+          selectedWorkflow={selectedWorkflow}
+          onSelect={handleWorkflowSelect}
+        />
+
+        {selectedWorkflow && (
+          <section className="rounded-2xl border border-base-300 bg-base-200 p-3 sm:p-4 shadow-lg">
+            <button
+              type="button"
+              onClick={() => setPresetsOpen((v) => !v)}
+              className="w-full flex items-center justify-between gap-2 mb-2"
+            >
+              <h3 className="text-lg sm:text-xl font-semibold text-base-content text-left">
+                Presets
+              </h3>
+              <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-base-300 text-sm">
+                {presetsOpen ? '−' : '+'}
+              </span>
+            </button>
+            {presetsOpen && (
+              <div className="pt-1">
+                <PresetSelector
+                  workflow={selectedWorkflow}
+                  onApply={applyPresetValues}
+                  readCurrentValues={getValuesForPreset}
+                />
+              </div>
+            )}
+          </section>
+        )}
+
+        <section className="rounded-2xl border border-base-300 bg-base-200 p-3 sm:p-4 shadow-lg">
+          <button
+            type="button"
+            onClick={() => setParamsOpen((v) => !v)}
+            className="w-full flex items-center justify-between gap-2 mb-2"
+          >
+            <h3 className="text-lg sm:text-xl font-semibold text-base-content text-left">
+              Parameters
+            </h3>
+            <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-base-300 text-sm">
+              {paramsOpen ? '−' : '+'}
+            </span>
+          </button>
+          {paramsOpen && (
+            <div className="pt-1">
+              <DynamicForm
+                key={formVersion}
+                inputs={dynamicInputs
+                  .filter((input) => input.class_type !== 'CozyGenImageInput')
+                  .map((input) => {
+                    if (
+                      [
+                        'CozyGenFloatInput',
+                        'CozyGenIntInput',
+                        'CozyGenStringInput',
+                        'CozyGenChoiceInput',
+                      ].includes(input.class_type)
+                    ) {
+                      let param_type = input.class_type
+                        .replace('CozyGen', '')
+                        .replace('Input', '')
+                        .toUpperCase();
+                      if (param_type === 'CHOICE') param_type = 'DROPDOWN';
+                      return {
+                        ...input,
+                        inputs: {
+                          ...input.inputs,
+                          param_type,
+                          Multiline: input.inputs.display_multiline || false,
+                        },
+                      };
+                    }
+                    return input;
+                  })}
+                formData={formData}
+                onFormChange={handleFormChange}
+                randomizeState={randomizeState}
+                onRandomizeToggle={handleRandomizeToggle}
+                bypassedState={bypassedState}
+                onBypassToggle={handleBypassToggle}
+              />
+            </div>
+          )}
+        </section>
+
+        <section className="rounded-2xl border border-base-300 bg-base-200 p-3 sm:p-4 shadow-lg">
+          <button
+            type="button"
+            onClick={() => setImagesOpen((v) => !v)}
+            className="w-full flex items-center justify-between gap-2 mb-2"
+          >
+            <h3 className="text-lg sm:text-xl font-semibold text-base-content text-left">
+              Image Inputs
+            </h3>
+            <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-base-300 text-sm">
+              {imagesOpen ? '−' : '+'}
+            </span>
+          </button>
+          {imagesOpen && (
+            <div className="pt-1 space-y-2">
+              {dynamicInputs
+                .filter((input) => input.class_type === 'CozyGenImageInput')
+                .map((input) => (
+                  <ImageInput
+                    key={input.id}
+                    input={input}
+                    value={formData[input.inputs.param_name]}
+                    onFormChange={handleFormChange}
+                  />
+                ))}
+            </div>
+          )}
+        </section>
+      </div>
+
+      {/* Sticky Generate bar */}
+      <div className="fixed bottom-0 left-0 right-0 bg-base-100/80 backdrop-blur-sm p-4 border-t border-base-300 z-10 shadow-lg">
+        <div className="max-w-2xl mx-auto">
+          <button
+            onClick={handleGenerate}
+            disabled={isLoading || !workflowData}
+            className="w-full bg-accent text-white font-bold text-lg py-4 px-4 rounded-lg hover:bg-accent-focus transition duration-300 disabled:bg-base-300 disabled:cursor-not-allowed shadow-lg"
+          >
+            {isLoading ? 'Generating...' : 'Generate'}
+          </button>
+          {isLoading && progressMax > 0 && (
+            <div className="w-full bg-base-300 rounded-full h-2.5 mt-2">
+              <div
+                className="bg-accent h-2.5 rounded-full transition-all duration-1000 ease-out"
+                style={{
+                  width: `${(progressValue / progressMax) * 100 || 0}%`,
+                }}
+              />
+            </div>
+          )}
+          {isLoading && (
+            <div className="mt-1 text-center text-xs text-base-content/70">
+              {statusText}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default App;

@@ -1,6 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import DynamicForm from '../../DynamicForm';
-import ParameterMiniMap from './ParameterMiniMap';
 
 function normalizeInputs(inputs) {
   return (inputs || []).map((input) => {
@@ -39,6 +38,8 @@ export default function AllParametersPanel({
   onFormChange,
   onRandomizeToggle,
   onBypassToggle,
+  sectionRef,
+  onParameterNavReady,
 }) {
   const [miniMapItems, setMiniMapItems] = useState([]);
   const [activeParamId, setActiveParamId] = useState(null);
@@ -119,7 +120,7 @@ export default function AllParametersPanel({
     return () => window.removeEventListener('scroll', handleScroll);
   }, [miniMapItems]);
 
-  const handleMiniMapJump = (paramId) => {
+  const handleMiniMapJump = useCallback((paramId) => {
     const nodes = observedNodesRef.current;
     const target = nodes.find(
       (node) => node.getAttribute('data-param-name') === paramId
@@ -130,10 +131,26 @@ export default function AllParametersPanel({
     const yOffset = window.scrollY + rect.top - 96;
     window.scrollTo({ top: yOffset, behavior: 'smooth' });
     setActiveParamId(paramId);
-  };
+  }, []);
+
+  useEffect(() => {
+    if (!onParameterNavReady) return;
+    onParameterNavReady({
+      items: miniMapItems,
+      activeId: activeParamId,
+      onJump: handleMiniMapJump,
+    });
+  }, [miniMapItems, activeParamId, handleMiniMapJump, onParameterNavReady]);
+
+  useEffect(
+    () => () => {
+      onParameterNavReady?.(null);
+    },
+    [onParameterNavReady]
+  );
 
   return (
-    <section className="surface-section">
+    <section className="surface-section scroll-mt-28" ref={sectionRef}>
       <header className="section-header">
         <div className="section-header-main">
           <div className="section-label">ALL PARAMETERS</div>
@@ -142,11 +159,6 @@ export default function AllParametersPanel({
           </p>
         </div>
       </header>
-      <ParameterMiniMap
-        items={miniMapItems}
-        activeId={activeParamId}
-        onJump={handleMiniMapJump}
-      />
       <div ref={formWrapperRef}>
         <DynamicForm
           inputs={allInputs}

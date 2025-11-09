@@ -19,10 +19,14 @@ export default function AdvancedModeLayout({
   setImagesOpen,
   onApplyPresetPatch,
   readCurrentValues,
+  presetSectionRef,
+  parameterSectionRef,
+  onParameterNavReady,
 }) {
   return (
     <div className="space-y-4">
       <PresetPanel
+        ref={presetSectionRef}
         workflow={workflowName}
         presetsOpen={presetsOpen}
         setPresetsOpen={setPresetsOpen}
@@ -38,6 +42,8 @@ export default function AdvancedModeLayout({
         onFormChange={onFormChange}
         onRandomizeToggle={onRandomizeToggle}
         onBypassToggle={onBypassToggle}
+        sectionRef={parameterSectionRef}
+        onParameterNavReady={onParameterNavReady}
       />
 
       <ImageInputsPanel

@@ -1,15 +1,18 @@
-import React from 'react';
+import React, { forwardRef } from 'react';
 import PresetSelector from '../../PresetSelector';
 
-export default function PresetPanel({
-  workflow,
-  presetsOpen,
-  setPresetsOpen,
-  onApplyPresetPatch,
-  readCurrentValues,
-}) {
+function PresetPanel(
+  {
+    workflow,
+    presetsOpen,
+    setPresetsOpen,
+    onApplyPresetPatch,
+    readCurrentValues,
+  },
+  ref
+) {
   return (
-    <section className="surface-section">
+    <section className="surface-section scroll-mt-28" ref={ref}>
       <header className="section-header">
         <div className="section-header-main">
           <div className="section-label">PRESET PANEL</div>
@@ -35,3 +38,5 @@ export default function PresetPanel({
     </section>
   );
 }
+
+export default forwardRef(PresetPanel);

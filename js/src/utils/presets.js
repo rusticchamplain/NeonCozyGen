@@ -12,16 +12,25 @@ export const WORKFLOW_MODE_LABELS = WORKFLOW_MODE_OPTIONS.reduce((acc, item) => 
   return acc;
 }, {});
 
+function extractValuesBlock(raw = {}) {
+  if (raw && typeof raw === 'object' && raw.formData && typeof raw.formData === 'object') {
+    return { ...raw.formData };
+  }
+  return { ...(raw || {}) };
+}
+
 export function normalizePresetValue(raw) {
   if (!raw || typeof raw !== 'object') {
     return { values: raw || {}, meta: {} };
   }
   if (Object.prototype.hasOwnProperty.call(raw, 'values')) {
-    const values = raw.values && typeof raw.values === 'object' ? raw.values : {};
+    const valuesBlock =
+      raw.values && typeof raw.values === 'object' ? raw.values : {};
+    const values = extractValuesBlock(valuesBlock);
     const meta = raw.meta && typeof raw.meta === 'object' ? raw.meta : {};
     return { values, meta };
   }
-  return { values: raw || {}, meta: {} };
+  return { values: extractValuesBlock(raw), meta: {} };
 }
 
 export function normalizePresetItems(items = {}) {

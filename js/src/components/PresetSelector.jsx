@@ -9,6 +9,14 @@ import { normalizePresetItems } from '../utils/presets';
  * - onApply: (values: Record<string, any>) => void
  * - readCurrentValues: () => Record<string, any>
  */
+function extractValues(raw) {
+  if (!raw || typeof raw !== 'object') return {};
+  if (raw.formData && typeof raw.formData === 'object') {
+    return { ...raw.formData };
+  }
+  return { ...raw };
+}
+
 export default function PresetSelector({
   workflow = 'default',
   onApply,
@@ -67,7 +75,7 @@ export default function PresetSelector({
   const handleSelect = (name) => {
     setSel(name);
     const entry = items[name];
-    const payload = entry?.values ?? entry;
+    const payload = extractValues(entry?.values ?? entry);
     if (payload && typeof onApply === 'function') {
       onApply(payload);
       setStatusTemp(`Applied “${name}”`);
@@ -81,7 +89,7 @@ export default function PresetSelector({
       return;
     }
     const values =
-    typeof readCurrentValues === 'function' ? readCurrentValues() : {};
+      typeof readCurrentValues === 'function' ? readCurrentValues() : {};
     await savePreset(workflow, name, values);
     setNewName('');
     await refresh();
@@ -92,7 +100,7 @@ export default function PresetSelector({
   async function doUpdate() {
     if (!sel) return;
     const values =
-    typeof readCurrentValues === 'function' ? readCurrentValues() : {};
+      typeof readCurrentValues === 'function' ? readCurrentValues() : {};
     await savePreset(workflow, sel, values);
     await refresh(true);
     setStatusTemp(`Updated “${sel}”`);

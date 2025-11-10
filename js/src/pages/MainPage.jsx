@@ -72,12 +72,16 @@ function MainPage() {
 
   const applyFormPatch = (patch) => {
     if (!patch) return;
-    setFormData((prev) => ({ ...(prev || {}), ...patch }));
+    setFormData((prev) => {
+      const next = { ...(prev || {}), ...(patch || {}) };
+      if (selectedWorkflow) {
+        saveFormState(selectedWorkflow, next);
+      }
+      return next;
+    });
   };
 
-  const readCurrentValues = () => ({
-    formData,
-  });
+  const readCurrentValues = () => ({ ...(formData || {}) });
 
   // Apply user-defined ordering + hiding
   const orderedDynamicInputs = useMemo(

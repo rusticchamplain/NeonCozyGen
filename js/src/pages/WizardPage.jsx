@@ -61,9 +61,7 @@ export default function WizardPage() {
   const [activeStepId, setActiveStepId] = useState(null);
 
   const readCurrentValues = useCallback(
-    () => ({
-      formData,
-    }),
+    () => ({ ...(formData || {}) }),
     [formData]
   );
 
@@ -81,9 +79,15 @@ export default function WizardPage() {
   const applyFormPatch = useCallback(
     (patch) => {
       if (!patch) return;
-      setFormData((prev) => ({ ...(prev || {}), ...patch }));
+      setFormData((prev) => {
+        const next = { ...(prev || {}), ...(patch || {}) };
+        if (selectedWorkflow) {
+          saveFormState(selectedWorkflow, next);
+        }
+        return next;
+      });
     },
-    [setFormData]
+    [setFormData, selectedWorkflow]
   );
 
   const stepConfigs = useMemo(() => {

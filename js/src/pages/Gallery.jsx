@@ -1,202 +1,14 @@
 
 // js/src/pages/Gallery.jsx
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { createPortal } from 'react-dom';
+import React, { useState, useEffect } from 'react';
 import GalleryNav from '../components/GalleryNav';
 import GalleryItem from '../components/GalleryItem';
+import MediaViewerModal from '../components/MediaViewerModal';
 import { useGallery } from '../hooks/useGallery';
 import { useMediaViewer } from '../hooks/useMediaViewer';
 
 const VIEW_MODE_STORAGE_KEY = 'cozygen_gallery_view_mode';
 const FEED_AUTOPLAY_STORAGE_KEY = 'cozygen_gallery_feed_autoplay';
-
-const isVideo = (name = '') => /\.(mp4|webm|mov|mkv)$/i.test(name);
-
-function formatBytes(bytes) {
-  if (!bytes && bytes !== 0) return '';
-  const units = ['B', 'KB', 'MB', 'GB'];
-  let idx = 0;
-  let value = bytes;
-  while (value >= 1024 && idx < units.length - 1) {
-    value /= 1024;
-    idx += 1;
-  }
-  return `${value.toFixed(idx === 0 ? 0 : 1)} ${units[idx]}`;
-}
-
-function Lightbox({ open, media, onClose, onPrev, onNext }) {
-  const videoRef = useRef(null);
-  const [playing, setPlaying] = useState(true);
-  const [muted, setMuted] = useState(true);
-  const [progress, setProgress] = useState(0);
-  const [duration, setDuration] = useState(0);
-
-  useEffect(() => {
-    setPlaying(true);
-    setProgress(0);
-    setDuration(0);
-  }, [media?.filename]);
-
-  useEffect(() => {
-    const handler = (evt) => {
-      if (evt.key === 'Escape') {
-        onClose?.();
-      }
-      if (evt.key === 'ArrowRight') {
-        onNext?.();
-      }
-      if (evt.key === 'ArrowLeft') {
-        onPrev?.();
-      }
-    };
-    if (open) {
-      window.addEventListener('keydown', handler);
-    }
-    return () => window.removeEventListener('keydown', handler);
-  }, [open, onClose, onPrev, onNext]);
-
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-    video.muted = muted;
-    if (playing) {
-      const playPromise = video.play();
-      if (playPromise?.catch) {
-        playPromise.catch(() => {});
-      }
-    } else {
-      video.pause();
-    }
-  }, [playing, muted, media?.filename]);
-
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return undefined;
-    const handleTime = () => {
-      if (!video.duration) return;
-      setProgress((video.currentTime / video.duration) * 100);
-    };
-    const handleMeta = () => setDuration(video.duration || 0);
-    video.addEventListener('timeupdate', handleTime);
-    video.addEventListener('loadedmetadata', handleMeta);
-    return () => {
-      video.removeEventListener('timeupdate', handleTime);
-      video.removeEventListener('loadedmetadata', handleMeta);
-    };
-  }, [media?.filename]);
-
-  if (!open || !media) return null;
-  if (typeof document === 'undefined') return null;
-
-  const type = media.type || 'output';
-  const version = media.mtime ? `&v=${encodeURIComponent(String(media.mtime))}` : '';
-  const url = `/view?filename=${encodeURIComponent(
-    media.filename || ''
-  )}&subfolder=${encodeURIComponent(media.subfolder || '')}&type=${encodeURIComponent(type)}${version}`;
-
-  const metaChips = useMemo(() => {
-    const chips = [];
-    if (media.size) chips.push(formatBytes(media.size));
-    if (media.width && media.height) chips.push(`${media.width}×${media.height}`);
-    else if (media.metadata?.resolution) chips.push(media.metadata.resolution);
-    if (media.mtime) chips.push(new Date(media.mtime * 1000).toLocaleString());
-    return chips;
-  }, [media]);
-
-  const body = (
-    <div className="gallery-lightbox">
-      <div className="gallery-lightbox__backdrop" onClick={onClose} />
-      <div className="gallery-lightbox__panel">
-        <header className="gallery-lightbox__header">
-          <div className="min-w-0">
-            <div className="text-sm font-semibold truncate">{media.filename}</div>
-            <div className="text-[11px] text-[#9DA3FFCC] truncate">
-              {media.subfolder || 'root'}
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button type="button" onClick={onPrev} className="ui-button is-ghost is-compact">
-              ←
-            </button>
-            <button type="button" onClick={onNext} className="ui-button is-ghost is-compact">
-              →
-            </button>
-            <a
-              href={url}
-              target="_blank"
-              rel="noreferrer"
-              className="ui-button is-muted is-compact"
-            >
-              Open
-            </a>
-            <button type="button" onClick={onClose} className="ui-button is-primary is-compact">
-              Close
-            </button>
-          </div>
-        </header>
-
-        <div className="gallery-lightbox__body">
-          {isVideo(media.filename) ? (
-            <div className="gallery-lightbox__video">
-              <video
-                ref={videoRef}
-                src={url}
-                playsInline
-                loop
-                muted={muted}
-                className="gallery-lightbox__media"
-              />
-              <div className="gallery-lightbox__controls">
-                <button
-                  type="button"
-                  className="ui-button is-ghost is-compact"
-                  onClick={() => setPlaying((prev) => !prev)}
-                >
-                  {playing ? 'Pause' : 'Play'}
-                </button>
-                <button
-                  type="button"
-                  className="ui-button is-ghost is-compact"
-                  onClick={() => setMuted((prev) => !prev)}
-                >
-                  {muted ? 'Unmute' : 'Mute'}
-                </button>
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  value={progress}
-                  onChange={(e) => {
-                    const video = videoRef.current;
-                    if (!video || !video.duration) return;
-                    const next = Number(e.target.value);
-                    video.currentTime = (next / 100) * video.duration;
-                    setProgress(next);
-                  }}
-                />
-                <div className="text-[11px] text-[#C3C7FF] w-20 text-right">
-                  {duration ? `${Math.round(duration)}s` : ''}
-                </div>
-              </div>
-            </div>
-          ) : (
-            <img src={url} alt={media.filename} className="gallery-lightbox__media" />
-          )}
-        </div>
-
-        <footer className="gallery-lightbox__footer">
-          {metaChips.map((chip) => (
-            <span key={chip} className="ui-pill is-muted">
-              {chip}
-            </span>
-          ))}
-        </footer>
-      </div>
-    </div>
-  );
-
-  return createPortal(body, document.body);
-}
 
 export default function Gallery() {
   const {
@@ -437,8 +249,8 @@ export default function Gallery() {
         )}
       </section>
 
-      <Lightbox
-        open={viewerOpen}
+      <MediaViewerModal
+        isOpen={viewerOpen}
         media={currentMedia}
         onClose={closeViewer}
         onPrev={handlePrev}

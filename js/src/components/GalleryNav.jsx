@@ -166,7 +166,7 @@ export default function GalleryNav({
                   type="search"
                   value={query}
                   onChange={(e) => onQuery?.(e.target.value)}
-                  placeholder="Search in this collection…"
+                  placeholder="Search…"
                   className="w-full text-xs sm:text-sm rounded-full bg-[#050716] border border-[#3D4270] pl-9 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#3EF0FFAA] placeholder:text-[#6E7399]"
                 />
               </div>

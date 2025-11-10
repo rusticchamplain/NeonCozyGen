@@ -1,13 +1,13 @@
 // js/src/hooks/useExecutionQueue.js
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { queuePrompt } from '../api';
-import { applyBypasses, injectFormValues } from '../utils/workflowGraph';
+import { injectFormValues } from '../utils/workflowGraph';
 import { saveFormState } from '../utils/storage';
 
 /**
  * Handles:
  * - WebSocket connection to /ws for progress / status
- * - Graph surgery (bypass + form injection) before queueing
+ * - Graph injection before queueing
  * - Progress + status state
  *
  * Params:
@@ -15,7 +15,7 @@ import { saveFormState } from '../utils/storage';
  *  - workflowData: raw workflow graph from backend
  *  - dynamicInputs: CozyGen* input nodes
  *  - imageInputs: CozyGenImageInput nodes
- *  - formData, randomizeState, bypassedState: current UI state
+ *  - formData: current UI state
  *  - setFormData: React setter from useState / useWorkflowForm
  */
 export function useExecutionQueue({
@@ -24,8 +24,6 @@ export function useExecutionQueue({
   dynamicInputs,
   imageInputs,
   formData,
-  randomizeState,
-  bypassedState,
   setFormData,
 }) {
   const [isLoading, setIsLoading] = useState(false);
@@ -273,22 +271,13 @@ export function useExecutionQueue({
     setProgressMax(0);
 
     try {
-      // 1) Apply bypass rules to the workflow graph
-      let finalWorkflow = applyBypasses(
-        workflowData,
-        dynamicInputs || [],
-        bypassedState || {}
-      );
-
-      // 2) Inject form values + randomization
-      const { workflow: wfWithValues, formData: updatedForm } =
+      // Inject form values into a fresh workflow copy
+      const { workflow: finalWorkflow, formData: updatedForm } =
         injectFormValues(
-          finalWorkflow,
+          workflowData,
           dynamicInputs || [],
-          formData || {},
-          randomizeState || {}
+          formData || {}
         );
-      finalWorkflow = wfWithValues;
 
       // Persist updated form data (so randomization is reflected in UI / storage)
       if (selectedWorkflow) {
@@ -296,7 +285,7 @@ export function useExecutionQueue({
       }
       setFormData(updatedForm);
 
-      // 3) Ensure image filenames / inputs are set
+      // Ensure image filenames / inputs are set
       const imgs = imageInputs || [];
       for (const imgNode of imgs) {
         if (!imgNode || !imgNode.id || !imgNode.inputs) continue;
@@ -317,7 +306,7 @@ export function useExecutionQueue({
         }
       }
 
-      // 4) Queue prompt
+      // Queue prompt
       await queuePrompt({ prompt: finalWorkflow });
       // From here on, WebSocket + heuristic drive progress/status
     } catch (err) {
@@ -329,8 +318,6 @@ export function useExecutionQueue({
     dynamicInputs,
     imageInputs,
     formData,
-    randomizeState,
-    bypassedState,
     selectedWorkflow,
     setFormData,
     markError,

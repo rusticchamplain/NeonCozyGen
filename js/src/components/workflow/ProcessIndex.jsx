@@ -1,67 +1,82 @@
 import React from 'react';
 
-const STATUS_STYLES = {
-  done: 'border-[#3EF0FF80] text-[#D5FBFF]',
-  active: 'border-[#FF60D080] text-[#FFD7F3]',
-  locked: 'border-[#2F3155] text-[#6C719C]',
+const STATUS_PILL = {
+  done: 'ui-pill is-soft',
+  active: 'ui-pill',
+  locked: 'ui-pill is-muted',
+  skip: 'ui-pill is-muted',
 };
 
-export default function ProcessIndex({ steps = [] }) {
+export default function ProcessIndex({ steps = [], mode = 'default', focusId }) {
   if (!steps.length) return null;
 
+  const containerClasses = [
+    'ui-panel space-y-3',
+    mode === 'guide' ? 'guide-surface' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
   return (
-    <div className="rounded-3xl border border-[#262B4D] bg-[#030515] p-3 sm:p-4 shadow-[0_15px_40px_rgba(5,7,22,0.7)]">
-      <div className="mb-3 flex items-center justify-between text-[10px] uppercase tracking-[0.25em] text-[#8B93FFCC]">
-        <span>Generation Index</span>
-        <span>{steps.length} steps</span>
+    <div className={containerClasses}>
+      <div className="ui-section-head">
+        <div className="ui-section-text">
+          <span className="ui-kicker">
+            {mode === 'guide' ? 'Inline guide' : 'Flow index'}
+          </span>
+          <div className="ui-title">Steps</div>
+        </div>
+        <span className="ui-pill is-muted">{steps.length} steps</span>
       </div>
-      <div className="space-y-3">
+      <div className="space-y-2.5">
         {steps.map((step, idx) => {
-          const statusClass = STATUS_STYLES[step.status] || STATUS_STYLES.locked;
+          const pillClass =
+            STATUS_PILL[step.status] || STATUS_PILL.locked;
           const isDisabled = step.disabled;
+          const isGuideFocus = mode === 'guide' && focusId === step.id;
+          const detailCopy =
+            (mode === 'guide' ? step.guideText : step.description) ||
+            step.description ||
+            '';
+          const buttonLabel =
+            step.buttonLabel || (mode === 'guide' ? 'Go' : 'Jump');
+          const cardClasses = [
+            'ui-card space-y-2',
+            mode === 'guide' ? 'guide-surface' : '',
+            isGuideFocus ? 'guide-focus' : '',
+          ]
+            .filter(Boolean)
+            .join(' ');
+
           return (
-            <div
-              key={step.id || idx}
-              className="rounded-2xl border border-[#1C1E36] bg-[#070A1C] px-3 py-3 shadow-[0_8px_22px_rgba(5,7,22,0.55)]"
-            >
+            <div key={step.id || idx} className={cardClasses}>
               <div className="flex items-start justify-between gap-3">
-                <div>
+                <div className="space-y-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-semibold uppercase tracking-[0.25em] text-[#7D82C5]">
+                    <span className="ui-kicker text-[10px]">
                       {String(idx + 1).padStart(2, '0')}
                     </span>
-                    <span
-                      className={`rounded-full border px-2 py-[2px] text-[9px] uppercase tracking-[0.16em] ${statusClass}`}
-                    >
+                    <span className={pillClass}>
                       {step.statusLabel || step.status}
                     </span>
                   </div>
-                  <div className="mt-1 text-[13px] font-semibold text-[#F0F4FF]">
+                  <div className="text-sm font-semibold text-[#F0F4FF]">
                     {step.title}
                   </div>
-                  {step.description && (
-                    <p className="mt-0.5 text-[11px] text-[#9DA3FFCC]">
-                      {step.description}
-                    </p>
-                  )}
+                  {detailCopy && <p className="ui-hint">{detailCopy}</p>}
                 </div>
                 {step.onJump && (
                   <button
                     type="button"
                     onClick={step.onJump}
                     disabled={isDisabled}
-                    className={
-                      'rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] transition-colors ' +
-                      (isDisabled
-                        ? 'border-[#2F3155] text-[#4A4F75]'
-                        : 'border-[#3EF0FF99] text-[#E5F8FF]')
-                    }
+                    className="ui-button is-muted is-compact"
                   >
-                    Jump
+                    {buttonLabel}
                   </button>
                 )}
               </div>
-              {step.content && <div className="mt-3">{step.content}</div>}
+              {step.content && <div>{step.content}</div>}
             </div>
           );
         })}

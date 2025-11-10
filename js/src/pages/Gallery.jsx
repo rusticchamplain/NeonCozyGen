@@ -92,7 +92,7 @@ export default function Gallery() {
 
   return (
     <div className="page-shell">
-      <div className="neon-card px-3 py-3 sm:px-4 sm:py-4 space-y-4">
+      <div className="ui-panel space-y-4">
         {/* Navigation + filters */}
         <GalleryNav
           subfolder={path}
@@ -114,8 +114,8 @@ export default function Gallery() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <div className="text-[11px] text-[#9DA3FFCC]">
             {loading
-              ? 'Loading collection…'
-              : `${filtered.length} item${filtered.length === 1 ? '' : 's'} visible`}
+              ? 'Loading…'
+              : `${filtered.length} visible`}
           </div>
 
           <div className="flex items-center gap-3 justify-end">
@@ -215,13 +215,12 @@ export default function Gallery() {
         {/* Content */}
         {filtered.length === 0 && !loading ? (
           <div className="py-10 flex items-center justify-center">
-            <div className="rounded-2xl border border-[#3D4270] bg-[#050716] px-4 py-6 max-w-md w-full text-center shadow-[0_0_20px_rgba(5,7,22,0.9)]">
+            <div className="ui-card max-w-md w-full text-center">
               <div className="mb-2 text-base font-semibold text-[#F8F4FF]">
-                Vault is empty
+                No media here
               </div>
-              <div className="text-xs text-[#9DA3FFCC] mb-3">
-                Try switching collections, clearing search, or generating new
-                images.
+              <div className="text-xs text-[#9DA3FFCC]">
+                Adjust filters or render something new.
               </div>
             </div>
           </div>

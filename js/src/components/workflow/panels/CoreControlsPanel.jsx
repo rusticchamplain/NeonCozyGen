@@ -33,11 +33,7 @@ function normalizeInputs(inputs) {
 export default function CoreControlsPanel({
   dynamicInputs,
   formData,
-  randomizeState,
-  bypassedState,
   onFormChange,
-  onRandomizeToggle,
-  onBypassToggle,
 }) {
   const coreInputs = normalizeInputs(
     (dynamicInputs || []).filter(
@@ -60,11 +56,7 @@ export default function CoreControlsPanel({
       <DynamicForm
         inputs={coreInputs}
         formData={formData}
-        randomizeState={randomizeState}
-        bypassedState={bypassedState}
         onFormChange={onFormChange}
-        onRandomizeToggle={onRandomizeToggle}
-        onBypassToggle={onBypassToggle}
       />
     </div>
   );

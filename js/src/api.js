@@ -45,14 +45,46 @@ export async function getGallery(subfolder = '', page = 1, perPage = 50, showHid
   return jget(`/cozygen/api/gallery?${qs.toString()}`);
 }
 
+function emitPresetChange(workflow) {
+  if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') {
+    return;
+  }
+  try {
+    window.dispatchEvent(
+      new CustomEvent('cozygen:preset-changed', {
+        detail: { workflow: workflow || 'default' },
+      })
+    );
+  } catch (err) {
+    console.warn('Failed to emit preset change event', err);
+  }
+}
+
 /* ---- Presets API ---- */
 export async function listPresets(workflow) {
   return jget(`/cozygen/api/presets?workflow=${encodeURIComponent(workflow || 'default')}`);
 }
-export async function savePreset(workflow, name, values) {
-  return jpost(`/cozygen/api/presets?workflow=${encodeURIComponent(workflow || 'default')}`, { name, values });
+export async function savePreset(workflow, name, values, meta) {
+  const body = { name, values };
+  if (typeof meta !== 'undefined') {
+    body.meta = meta;
+  }
+  const result = await jpost(`/cozygen/api/presets?workflow=${encodeURIComponent(workflow || 'default')}`, body);
+  emitPresetChange(workflow);
+  return result;
 }
 export async function deletePreset(workflow, name) {
   const qs = new URLSearchParams({ workflow: workflow || 'default', name });
-  return jdel(`/cozygen/api/presets?${qs.toString()}`);
+  const result = await jdel(`/cozygen/api/presets?${qs.toString()}`);
+  emitPresetChange(workflow);
+  return result;
+}
+
+/* ---- Workflow metadata ---- */
+export async function getWorkflowTypes() {
+  return jget('/cozygen/api/workflow_types');
+}
+
+export async function saveWorkflowType(workflow, mode) {
+  return jpost('/cozygen/api/workflow_types', { workflow, mode });
 }

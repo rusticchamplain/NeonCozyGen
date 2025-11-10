@@ -1,6 +1,7 @@
 // js/src/components/PresetSelector.jsx
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { listPresets, savePreset, deletePreset } from '../api';
+import { normalizePresetItems } from '../utils/presets';
 
 /**
  * Props:
@@ -20,11 +21,16 @@ export default function PresetSelector({
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(false);
 
-  async function refresh(preserveSel = true) {
+  const refresh = useCallback(async (preserveSel = true) => {
     setLoading(true);
     try {
       const data = await listPresets(workflow);
-      const map = data?.items || {};
+      const normalized = normalizePresetItems(data?.items || {});
+      const map = normalized.reduce((acc, entry) => {
+        if (!entry?.name) return acc;
+        acc[entry.name] = { values: entry.values || {}, meta: entry.meta || {} };
+        return acc;
+      }, {});
       const list = Object.keys(map).sort((a, b) => a.localeCompare(b));
       setItems(map);
       setNames(list);
@@ -36,12 +42,21 @@ export default function PresetSelector({
     } finally {
       setLoading(false);
     }
-  }
+  }, [workflow, sel]);
 
   useEffect(() => {
     refresh(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workflow]);
+  }, [workflow, refresh]);
+
+  useEffect(() => {
+    const handler = (evt) => {
+      const targetWorkflow = evt?.detail?.workflow;
+      if (targetWorkflow && targetWorkflow !== workflow) return;
+      refresh(true);
+    };
+    window.addEventListener('cozygen:preset-changed', handler);
+    return () => window.removeEventListener('cozygen:preset-changed', handler);
+  }, [workflow, refresh]);
 
   const setStatusTemp = (msg, ms = 2000) => {
     setStatus(msg);
@@ -51,9 +66,10 @@ export default function PresetSelector({
 
   const handleSelect = (name) => {
     setSel(name);
-    const v = items[name];
-    if (v && typeof onApply === 'function') {
-      onApply(v);
+    const entry = items[name];
+    const payload = entry?.values ?? entry;
+    if (payload && typeof onApply === 'function') {
+      onApply(payload);
       setStatusTemp(`Applied “${name}”`);
     }
   };

@@ -7,24 +7,37 @@ export default function ImageInputsPanel({
   setImagesOpen,
   formData,
   onFormChange,
+  sectionRef,
+  walkthroughMode,
+  guideActive,
 }) {
   const allImageInputs = imageInputs || [];
+  const sectionClass = [
+    'ui-panel scroll-mt-28 space-y-4',
+    walkthroughMode ? 'guide-surface' : '',
+    walkthroughMode && guideActive ? 'guide-focus' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   return (
-    <section className="surface-section">
-      <header className="section-header">
-        <div className="section-header-main">
-          <div className="section-label">IMAGE INPUTS</div>
-          <p className="section-caption">
-            Source images used by this workflow.
-          </p>
+    <section className={sectionClass} ref={sectionRef}>
+      <header className="ui-section-head">
+        <div className="ui-section-text">
+          <span className="ui-kicker">Image inputs</span>
+          <p className="ui-hint">Only fill these if the workflow needs them.</p>
+          {walkthroughMode && (
+            <p className="guide-hint">
+              Drop references when required; otherwise keep moving.
+            </p>
+          )}
         </div>
         <button
           type="button"
-          className="section-chip-button"
+          className="ui-button is-ghost is-compact"
           onClick={() => setImagesOpen((v) => !v)}
         >
-          {imagesOpen ? 'COLLAPSE' : 'EXPAND'}
+          {imagesOpen ? 'Collapse' : 'Expand'}
         </button>
       </header>
       {imagesOpen && (
@@ -40,7 +53,7 @@ export default function ImageInputsPanel({
             ))
           ) : (
             <div className="text-[11px] text-[#9DA3FFCC]">
-              This workflow has no image input nodes.
+              This workflow has no image inputs.
             </div>
           )}
         </div>

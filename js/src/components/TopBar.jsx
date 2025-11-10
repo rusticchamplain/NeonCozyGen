@@ -4,14 +4,10 @@ import React from "react";
 import { Link, NavLink } from "react-router-dom";
 
 function navLinkClasses({ isActive }) {
-  const base =
-  "inline-flex items-center justify-center rounded-full px-3 py-1 text-[11px] sm:text-xs font-medium tracking-[0.16em] uppercase border transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-offset-0 focus:ring-[#3EF0FF80]";
-const active =
-"bg-[radial-gradient(circle_at_0_0,#FF60D0_0,#3EF0FF_45%,#050716_100%)] border-[#3EF0FFAA] text-[#050716] shadow-[0_0_14px_rgba(255,96,208,0.75)]";
-const inactive =
-"bg-transparent border-transparent text-[#C3C7FFCC] hover:border-[#3EF0FF55] hover:bg-[#050716] hover:shadow-[0_0_12px_rgba(62,240,255,0.35)]";
-
-return `${base} ${isActive ? active : inactive}`;
+  return [
+    'ui-button is-compact',
+    isActive ? 'is-primary' : 'is-ghost',
+  ].join(' ');
 }
 
 export default function TopBar() {
@@ -38,9 +34,15 @@ export default function TopBar() {
 
     {/* Navigation */}
     <nav className="w-full sm:w-auto flex justify-center sm:justify-end">
-    <div className="inline-flex items-center gap-1.5 rounded-full border border-[#262A46] bg-[#050716F2] px-1.5 py-1 shadow-[0_0_18px_rgba(5,7,22,0.9)]">
+    <div className="ui-toolbar flex-wrap justify-center">
     <NavLink to="/" className={navLinkClasses} end>
-    Main
+    Wizard
+    </NavLink>
+    <NavLink to="/studio" className={navLinkClasses}>
+    Studio
+    </NavLink>
+    <NavLink to="/presets" className={navLinkClasses}>
+    Presets
     </NavLink>
     <NavLink to="/gallery" className={navLinkClasses}>
     Gallery

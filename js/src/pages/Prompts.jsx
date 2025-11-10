@@ -113,104 +113,111 @@ export default function Prompts() {
   }
 
   return (
-    <div>
-      <div className="mb-4">
-        <h2 className="text-xl font-semibold">Saved Prompts</h2>
-        <p className="small-muted">
-          Store frequently used prompts for quick reuse. These are shared for
-          all CozyGen users on this server.
-        </p>
-      </div>
-
-      <form onSubmit={addOrUpdate} className="mb-4 grid grid-cols-1 gap-2">
-        <input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="Title (optional)"
-          className="w-full px-3 py-2 rounded-md bg-base-300 border border-base-300 focus:outline-none"
-        />
-        <textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="Prompt text"
-          rows={4}
-          className="w-full px-3 py-2 rounded-md bg-base-300 border border-base-300 focus:outline-none"
-        />
-        <div className="flex space-x-2">
-          <button
-            className="btn-modern bg-accent text-white px-4 py-2 rounded-full"
-            type="submit"
-          >
-            {editingId ? 'Update' : 'Save'}
-          </button>
-          {editingId && (
-            <button
-              type="button"
-              onClick={() => {
-                setEditingId(null);
-                setTitle('');
-                setText('');
-              }}
-              className="btn-modern px-4 py-2 rounded-full border"
-            >
-              Cancel
-            </button>
-          )}
+    <div className="page-shell page-stack">
+      <section className="ui-panel space-y-4">
+        <div className="ui-section-text">
+          <span className="ui-kicker">Prompts</span>
+          <h1 className="ui-title">Saved snippets</h1>
+          <p className="ui-hint">Shared server-wide for quick reuse.</p>
         </div>
-      </form>
 
-      <div className="space-y-2">
-        {prompts.length === 0 && (
-          <div className="small-muted">No saved prompts yet.</div>
-        )}
+        <form onSubmit={addOrUpdate} className="grid gap-3">
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Title (optional)"
+            className="rounded-xl border border-[#2A2E4A] bg-[#050716] px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[#3EF0FF80]"
+          />
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="Prompt text"
+            rows={4}
+            className="rounded-xl border border-[#2A2E4A] bg-[#050716] px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[#3EF0FF80]"
+          />
+          <div className="flex flex-wrap gap-2">
+            <button className="ui-button is-primary" type="submit">
+              {editingId ? 'Update' : 'Save'}
+            </button>
+            {editingId && (
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingId(null);
+                  setTitle('');
+                  setText('');
+                }}
+                className="ui-button is-ghost"
+              >
+                Cancel
+              </button>
+            )}
+          </div>
+        </form>
+      </section>
 
-        {prompts.map((p) => (
-          <div key={p.id} className="card flex flex-col">
-            <div className="flex justify-between items-start">
-              <div>
-                <div className="font-medium">{p.title}</div>
-                <div className="small-muted text-sm break-words">
-                  {p.text.slice(0, 200)}
-                  {p.text.length > 200 ? '...' : ''}
-                </div>
-              </div>
-              <div className="flex flex-col items-end space-y-2">
-                <button
-                  onClick={() => copyPrompt(p)}
-                  className="btn-modern px-3 py-1 rounded-full border small-muted"
-                >
-                  Copy
-                </button>
-                <button
-                  onClick={() => usePrompt(p)}
-                  className="btn-modern px-3 py-1 rounded-full bg-accent text-white"
-                >
-                  Use
-                </button>
-              </div>
-            </div>
-
-            <div className="mt-3 flex justify-between items-center">
-              <div className="text-xs small-muted">ID: {p.id}</div>
-              <div className="space-x-2">
-                <button
-                  onClick={() => editPrompt(p)}
-                  className="btn-modern px-3 py-1 rounded-full border small-muted"
-                >
-                  Edit
-                </button>
-                <button
-                  onClick={() => removePrompt(p.id)}
-                  className="btn-modern px-3 py-1 rounded-full border small-muted"
-                >
-                  Delete
-                </button>
-              </div>
+      <section className="ui-panel space-y-3">
+        <div className="ui-section-head">
+          <div className="ui-section-text">
+            <span className="ui-kicker">Library</span>
+            <div className="ui-title">
+              {prompts.length ? `${prompts.length} saved` : 'Nothing saved'}
             </div>
           </div>
-        ))}
-      </div>
+        </div>
+
+        <div className="space-y-2">
+          {prompts.length === 0 && (
+            <div className="ui-card text-center text-sm text-[#9DA3FFCC]">
+              Add your first prompt above.
+            </div>
+          )}
+
+          {prompts.map((p) => (
+            <div key={p.id} className="ui-card space-y-3">
+              <div className="flex flex-col gap-2">
+                <div className="text-sm font-semibold text-[#F8F4FF]">
+                  {p.title}
+                </div>
+                <p className="ui-hint break-words">
+                  {p.text.slice(0, 240)}
+                  {p.text.length > 240 ? '…' : ''}
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[#6A6FA8]">
+                <span>ID: {p.id}</span>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => copyPrompt(p)}
+                    className="ui-button is-muted is-compact"
+                  >
+                    Copy
+                  </button>
+                  <button
+                    onClick={() => usePrompt(p)}
+                    className="ui-button is-primary is-compact"
+                  >
+                    Use
+                  </button>
+                  <button
+                    onClick={() => editPrompt(p)}
+                    className="ui-button is-ghost is-compact"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => removePrompt(p.id)}
+                    className="ui-button is-ghost is-compact"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
     </div>
   );
 }
-

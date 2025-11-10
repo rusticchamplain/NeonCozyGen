@@ -4,10 +4,6 @@ import { getWorkflow, getChoices } from '../api';
 import {
   loadFormState,
   saveFormState,
-  loadRandomizeState,
-  saveRandomizeState,
-  loadBypassedState,
-  saveBypassedState,
 } from '../utils/storage';
 
 // Map known param names to choice types for dynamic dropdowns
@@ -34,8 +30,6 @@ export function useWorkflowForm(selectedWorkflow) {
   const [dynamicInputs, setDynamicInputs] = useState([]);
 
   const [formData, setFormData] = useState({});
-  const [randomizeState, setRandomizeState] = useState({});
-  const [bypassedState, setBypassedState] = useState({});
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -46,8 +40,6 @@ export function useWorkflowForm(selectedWorkflow) {
       setWorkflowData(null);
       setDynamicInputs([]);
       setFormData({});
-      setRandomizeState({});
-      setBypassedState({});
       return;
     }
 
@@ -114,8 +106,6 @@ export function useWorkflowForm(selectedWorkflow) {
 
         // Restore per-workflow state
         const storedForm = loadFormState(selectedWorkflow);
-        const storedRandom = loadRandomizeState(selectedWorkflow);
-        const storedBypass = loadBypassedState(selectedWorkflow);
 
         const initialForm = {};
         inputsWithChoices.forEach((input) => {
@@ -157,8 +147,6 @@ export function useWorkflowForm(selectedWorkflow) {
         });
 
         setFormData(initialForm);
-        setRandomizeState(storedRandom);
-        setBypassedState(storedBypass);
       } catch (e) {
         if (cancelled) return;
         console.error('Failed to load workflow', e);
@@ -200,32 +188,6 @@ export function useWorkflowForm(selectedWorkflow) {
     [selectedWorkflow]
   );
 
-  const handleRandomizeToggle = useCallback(
-    (name, isRandom) => {
-      setRandomizeState((prev) => {
-        const next = { ...prev, [name]: isRandom };
-        if (selectedWorkflow) {
-          saveRandomizeState(selectedWorkflow, next);
-        }
-        return next;
-      });
-    },
-    [selectedWorkflow]
-  );
-
-  const handleBypassToggle = useCallback(
-    (name, isBypassed) => {
-      setBypassedState((prev) => {
-        const next = { ...prev, [name]: isBypassed };
-        if (selectedWorkflow) {
-          saveBypassedState(selectedWorkflow, next);
-        }
-        return next;
-      });
-    },
-    [selectedWorkflow]
-  );
-
   return {
     // raw workflow
     workflowData,
@@ -239,18 +201,12 @@ export function useWorkflowForm(selectedWorkflow) {
 
     // state
     formData,
-    randomizeState,
-    bypassedState,
 
     // setters (for presets, etc.)
     setFormData,
-    setRandomizeState,
-    setBypassedState,
 
     // helpers
     handleFormChange,
-    handleRandomizeToggle,
-    handleBypassToggle,
 
     // status
     loading,

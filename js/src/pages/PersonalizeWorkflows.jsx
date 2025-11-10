@@ -200,27 +200,19 @@ export default function PersonalizeWorkflows() {
   };
 
   return (
-    <div className="page-shell">
-      <div className="neon-card px-3 py-3 sm:px-4 sm:py-4 space-y-4">
-        <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div>
-            <div className="text-[10px] tracking-[0.24em] uppercase text-[#9DA3FFCC]">
-              Workflow layout studio
-            </div>
-            <h1 className="mt-1 text-lg sm:text-xl font-semibold text-[#F8F4FF]">
-              Personalize your controls
-            </h1>
-            <p className="mt-1 text-[11px] text-[#9DA3FFCC] max-w-xl">
-              Reorder or hide parameters (and LoRA pairs) without touching the
-              underlying workflow. Your layout is saved per workflow on this
-              device.
+    <div className="page-shell page-stack">
+      <section className="ui-panel space-y-4">
+        <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="ui-section-text">
+            <span className="ui-kicker">Layout studio</span>
+            <h1 className="ui-title">Personalize your controls</h1>
+            <p className="ui-hint">
+              Reorder or hide parameters per workflow. Changes stay local.
             </p>
           </div>
 
           <div className="flex flex-col items-start sm:items-end gap-2 min-w-[200px]">
-            <label className="text-[10px] tracking-[0.2em] uppercase text-[#9DA3FFCC]">
-              Active workflow
-            </label>
+            <span className="ui-kicker text-[10px]">Active workflow</span>
             <select
               className="w-full sm:w-64 rounded-full border border-[#3D4270] bg-[#050716] px-3 py-1.5 text-[12px] text-[#E5E7FF] focus:outline-none focus:ring-1 focus:ring-[#3EF0FF80]"
               value={selectedWorkflow || ''}
@@ -241,54 +233,52 @@ export default function PersonalizeWorkflows() {
                 })}
             </select>
             <div className="text-[10px] text-[#6A6FA8] max-w-xs text-right">
-              Layout preferences only affect your UI, not the workflow file.
+              Layout preferences only change the UI.
             </div>
           </div>
         </header>
 
         {!hasWorkflows && (
-          <div className="rounded-2xl border border-[#2A2E4A] bg-[#050716] px-3 py-6 text-[12px] text-[#9DA3FFCC] text-center">
-            No workflows loaded yet. This screen uses the same list as the main
-            CozyGen panel.
+          <div className="ui-card text-center text-sm text-[#9DA3FFCC]">
+            No workflows loaded yet. Drop JSON files into CozyGen/workflows.
           </div>
         )}
 
         {hasWorkflows && !selectedWorkflow && (
-          <div className="rounded-2xl border border-[#2A2E4A] bg-[#050716] px-3 py-6 text-[12px] text-[#9DA3FFCC] text-center">
-            Choose a workflow above to start customizing its control order.
+          <div className="ui-card text-center text-sm text-[#9DA3FFCC]">
+            Pick a workflow above to start rearranging.
           </div>
         )}
 
         {hasWorkflows && selectedWorkflow && dynamicInputs.length === 0 && (
-          <div className="rounded-2xl border border-[#2A2E4A] bg-[#050716] px-3 py-6 text-[12px] text-[#9DA3FFCC] text-center">
+          <div className="ui-card text-center text-sm text-[#9DA3FFCC]">
             This workflow doesn&apos;t expose any dynamic inputs yet.
           </div>
         )}
+      </section>
 
-        {hasWorkflows && selectedWorkflow && dynamicInputs.length > 0 && (
-          <section className="rounded-2xl border border-[#2A2E4A] bg-[#050716] px-3 py-3 sm:px-4 sm:py-4">
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <div>
-                <div className="text-[10px] tracking-[0.22em] uppercase text-[#9DA3FFCC]">
-                  {dynamicInputs.length} parameters
-                </div>
-                <p className="mt-0.5 text-[11px] text-[#9DA3FFCC]">
-                  Use the arrows to nudge fields or LoRA pairs up or down. Hide
-                  controls you rarely touch; they&apos;ll stay available here
-                  for later.
-                </p>
-              </div>
-              <button
-                type="button"
-                className="hidden sm:inline-flex items-center gap-1 rounded-full border border-[#3D4270] bg-[#050716] px-3 py-1.5 text-[11px] text-[#C3C7FF] hover:border-[#3EF0FF80]"
-                onClick={resetLayout}
-              >
-                Reset layout
-              </button>
+      {hasWorkflows && selectedWorkflow && dynamicInputs.length > 0 && (
+        <section className="ui-panel space-y-4">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <span className="ui-kicker">
+                {dynamicInputs.length} parameters
+              </span>
+              <p className="ui-hint">
+                Use the arrows to nudge fields or hide what you rarely touch.
+              </p>
             </div>
+            <button
+              type="button"
+              className="hidden sm:inline-flex ui-button is-ghost is-compact"
+              onClick={resetLayout}
+            >
+              Reset layout
+            </button>
+          </div>
 
-            <div className="space-y-2 sm:space-y-2.5">
-              {rows.map((row, idx) => {
+          <div className="space-y-2 sm:space-y-2.5">
+            {rows.map((row, idx) => {
                 const isDragging = dragIndex === idx;
 
                 if (row.kind === 'loraPair') {
@@ -488,7 +478,6 @@ export default function PersonalizeWorkflows() {
             </div>
           </section>
         )}
-      </div>
     </div>
   );
 }

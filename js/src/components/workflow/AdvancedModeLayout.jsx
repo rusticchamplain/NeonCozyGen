@@ -8,11 +8,7 @@ export default function AdvancedModeLayout({
   dynamicInputs,
   imageInputs,
   formData,
-  randomizeState,
-  bypassedState,
   onFormChange,
-  onRandomizeToggle,
-  onBypassToggle,
   presetsOpen,
   setPresetsOpen,
   imagesOpen,
@@ -22,6 +18,9 @@ export default function AdvancedModeLayout({
   presetSectionRef,
   parameterSectionRef,
   onParameterNavReady,
+  walkthroughMode,
+  walkthroughFocusId,
+  imageSectionRef,
 }) {
   return (
     <div className="space-y-4">
@@ -32,18 +31,18 @@ export default function AdvancedModeLayout({
         setPresetsOpen={setPresetsOpen}
         onApplyPresetPatch={onApplyPresetPatch}
         readCurrentValues={readCurrentValues}
+        walkthroughMode={walkthroughMode}
+        guideActive={walkthroughMode && walkthroughFocusId === 'presets'}
       />
 
       <AllParametersPanel
         dynamicInputs={dynamicInputs}
         formData={formData}
-        randomizeState={randomizeState}
-        bypassedState={bypassedState}
         onFormChange={onFormChange}
-        onRandomizeToggle={onRandomizeToggle}
-        onBypassToggle={onBypassToggle}
         sectionRef={parameterSectionRef}
         onParameterNavReady={onParameterNavReady}
+        walkthroughMode={walkthroughMode}
+        guideActive={walkthroughMode && walkthroughFocusId === 'parameters'}
       />
 
       <ImageInputsPanel
@@ -52,6 +51,9 @@ export default function AdvancedModeLayout({
         setImagesOpen={setImagesOpen}
         formData={formData}
         onFormChange={onFormChange}
+        sectionRef={imageSectionRef}
+        walkthroughMode={walkthroughMode}
+        guideActive={walkthroughMode && walkthroughFocusId === 'images'}
       />
     </div>
   );

@@ -16,12 +16,22 @@ PRESETS_DIR = os.path.join(DATA_DIR, "presets")
 THUMBS_DIR = os.path.join(DATA_DIR, "thumbs")
 ALIASES_FILE = os.path.join(DATA_DIR, "aliases.json")
 PROMPTS_FILE = os.path.join(DATA_DIR, "prompts.json")
+WORKFLOW_TYPES_FILE = os.path.join(DATA_DIR, "workflow_types.json")
+WORKFLOW_MODE_CHOICES = {
+    "text-to-image",
+    "text-to-video",
+    "image-to-image",
+    "image-to-video",
+}
 os.makedirs(PRESETS_DIR, exist_ok=True)
 os.makedirs(THUMBS_DIR, exist_ok=True)
 for p in (ALIASES_FILE, PROMPTS_FILE):
     if not os.path.exists(p):
         with open(p, "w", encoding="utf-8") as f:
             json.dump({}, f)
+if not os.path.exists(WORKFLOW_TYPES_FILE):
+    with open(WORKFLOW_TYPES_FILE, "w", encoding="utf-8") as f:
+        json.dump({"version": 1, "workflows": {}}, f)
 
 def _load(path, dflt):
     try:
@@ -31,6 +41,14 @@ def _load(path, dflt):
 def _save(path, data):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f: json.dump(data, f, indent=2)
+
+def _load_workflow_types() -> dict:
+    data = _load(WORKFLOW_TYPES_FILE, {"version": 1, "workflows": {}})
+    workflows = data.get("workflows")
+    return workflows if isinstance(workflows, dict) else {}
+
+def _save_workflow_types(workflows: dict):
+    _save(WORKFLOW_TYPES_FILE, {"version": 1, "workflows": workflows})
 
 # ---------------- Basic
 @routes.get('/cozygen/hello')
@@ -199,6 +217,18 @@ def _read_presets(wf: str) -> dict:
 def _write_presets(wf: str, data: dict) -> None:
     _save(_presets_path(wf), data)
 
+def _ensure_entry(values, meta, existing):
+    """Pack preset values + meta, preserving legacy formats."""
+    if meta is not None:
+        out = {"values": values or {}, "meta": meta or {}}
+        return out
+    if isinstance(existing, dict) and "values" in existing:
+        out = {"values": values or {}}
+        if "meta" in existing:
+            out["meta"] = existing.get("meta")
+        return out
+    return values or {}
+
 @routes.get("/cozygen/api/presets")
 async def presets_list(request: web.Request):
     wf = request.rel_url.query.get("workflow","default")
@@ -210,7 +240,14 @@ async def presets_save(request: web.Request):
     body = await request.json()
     name = (body.get("name") or "").strip()
     if not name: raise web.HTTPBadRequest(text="Missing name")
-    data = _read_presets(wf); data["items"][name] = body.get("values", {})
+    values = body.get("values") or {}
+    meta = body.get("meta") if "meta" in body else None
+    data = _read_presets(wf)
+    existing = data.get("items", {}).get(name)
+    entry = _ensure_entry(values, meta, existing)
+    data.setdefault("items", {})[name] = entry
+    if isinstance(entry, dict) and "values" in entry:
+        data["version"] = max(2, data.get("version", 1))
     _write_presets(wf, data); return web.json_response({"status":"ok"})
 
 @routes.delete("/cozygen/api/presets")
@@ -222,6 +259,27 @@ async def presets_delete(request: web.Request):
         del data["items"][name]
         _write_presets(wf, data)
     return web.json_response({"status":"ok"})
+
+@routes.get("/cozygen/api/workflow_types")
+async def workflow_types_list(_request: web.Request):
+    return web.json_response({"workflows": _load_workflow_types(), "choices": sorted(WORKFLOW_MODE_CHOICES)})
+
+@routes.post("/cozygen/api/workflow_types")
+async def workflow_types_save(request: web.Request):
+    body = await request.json()
+    workflow = (body.get("workflow") or "").strip()
+    if not workflow:
+        raise web.HTTPBadRequest(text="Missing workflow")
+    mode_raw = (body.get("mode") or "").strip().lower()
+    if mode_raw and mode_raw not in WORKFLOW_MODE_CHOICES:
+        raise web.HTTPBadRequest(text="Invalid workflow mode")
+    data = _load_workflow_types()
+    if mode_raw:
+        data[workflow] = mode_raw
+    else:
+        data.pop(workflow, None)
+    _save_workflow_types(data)
+    return web.json_response({"status": "ok", "workflows": data})
 
 # ---------------- Thumbnails
 def _thumb_src_base(which: str) -> str:

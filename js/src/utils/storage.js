@@ -27,8 +27,6 @@ function writeJson(key, value) {
 /**
  * Keys:
  *  - ${workflowName}_formData
- *  - ${workflowName}_randomizeState
- *  - ${workflowName}_bypassedState
  */
 
 export function loadFormState(workflowName) {
@@ -39,24 +37,4 @@ export function loadFormState(workflowName) {
 export function saveFormState(workflowName, formData) {
   if (!workflowName) return;
   writeJson(`${workflowName}_formData`, formData || {});
-}
-
-export function loadRandomizeState(workflowName) {
-  if (!workflowName) return {};
-  return readJson(`${workflowName}_randomizeState`) || {};
-}
-
-export function saveRandomizeState(workflowName, randomizeState) {
-  if (!workflowName) return;
-  writeJson(`${workflowName}_randomizeState`, randomizeState || {});
-}
-
-export function loadBypassedState(workflowName) {
-  if (!workflowName) return {};
-  return readJson(`${workflowName}_bypassedState`) || {};
-}
-
-export function saveBypassedState(workflowName, bypassedState) {
-  if (!workflowName) return;
-  writeJson(`${workflowName}_bypassedState`, bypassedState || {});
 }

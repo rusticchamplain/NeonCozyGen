@@ -1,5 +1,5 @@
 // js/src/components/DynamicForm.jsx
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import StringInput from './inputs/StringInput';
 import NumberInput from './inputs/NumberInput';
 import BooleanInput from './inputs/BooleanInput';
@@ -59,8 +59,6 @@ export function resolveConfig(input) {
     description: resolveDescription(input),
     paramType: getParamType(input),
     advancedOnly: !!i.advanced_only,
-    randomizable: !!i.randomizable,
-    bypassable: !!i.bypassable,
     multiline: !!i.multiline,
     min: typeof i.min === 'number' ? i.min : undefined,
     max: typeof i.max === 'number' ? i.max : undefined,
@@ -72,26 +70,22 @@ export function resolveConfig(input) {
 export default function DynamicForm({
   inputs = [],
   formData = {},
-  randomizeState = {},
-  bypassedState = {},
   onFormChange,
-  onRandomizeToggle,
-  onBypassToggle,
 }) {
+  const [collapsedCards, setCollapsedCards] = useState({});
+
   const handleValueChange = (paramName, value) => {
     if (!onFormChange) return;
     onFormChange(paramName, value);
   };
 
-  const handleRandomChange = (paramName, next) => {
-    if (!onRandomizeToggle) return;
-    onRandomizeToggle(paramName, next);
-  };
-
-  const handleBypassChange = (paramName, next) => {
-    if (!onBypassToggle) return;
-    onBypassToggle(paramName, next);
-  };
+  const toggleCollapsed = useCallback((cardId) => {
+    if (!cardId) return;
+    setCollapsedCards((prev) => ({
+      ...prev,
+      [cardId]: !prev?.[cardId],
+    }));
+  }, []);
 
   // Build paramName -> input mapping for quick lookup
   const byName = useMemo(() => {
@@ -179,99 +173,71 @@ export default function DynamicForm({
             (lowStrengthParam && formData[lowStrengthParam]) ??
             1.0;
 
-          const isBypassedHigh = !!bypassedState[highParam];
-          const isBypassedLow = !!bypassedState[lowParam];
-          const disabled = isBypassedHigh || isBypassedLow;
+    const anchorId = paramName ? `param-${paramName}` : undefined;
+    const cardCollapsed = !!collapsedCards[paramName];
 
-          const isRandomHigh = !!randomizeState[highParam];
-          const isRandomLow = !!randomizeState[lowParam];
-
-          const handlePairRandom = (next) => {
-            if (highParam) handleRandomChange(highParam, next);
-            if (lowParam) handleRandomChange(lowParam, next);
-          };
-
-          const handlePairBypass = (next) => {
-            if (highParam) handleBypassChange(highParam, next);
-            if (lowParam) handleBypassChange(lowParam, next);
-          };
-
-          const anchorId = paramName ? `param-${paramName}` : undefined;
-
-          return (
+    return (
             <div
               key={`lora_pair_${id || highParam}`}
               id={anchorId}
               data-param-name={paramName}
               data-param-label={label || cfg.label}
               data-param-type="lora_pair"
-              className="rounded-xl border border-[#2A2E4A] bg-[#050716] px-3 py-2.5 shadow-[0_0_18px_rgba(5,7,22,0.9)]"
+              className="control-card"
             >
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <div className="text-[11px] font-medium text-[#E5E7FF] truncate">
-                      {label || cfg.label}
-                    </div>
-                    <span className="inline-flex items-center rounded-full border border-[#3D4270] px-2 py-[2px] text-[9px] tracking-[0.14em] uppercase text-[#9DA3FFCC]">
-                      LoRA Pair
-                    </span>
-                  </div>
-                  {cfg.description && (
-                    <div className="mt-0.5 text-[10px] text-[#9DA3FFCC]">
-                      {cfg.description}
-                    </div>
-                  )}
+              <div className="control-card-head">
+                <div className="control-card-summary">
+                  <span className="param-chip">LoRA</span>
+                  <div className="control-card-title">{label || cfg.label}</div>
                 </div>
 
-                <div className="flex flex-col items-end gap-1 text-[9px] text-[#9DA3FFCC]">
-                  <button
-                    type="button"
-                    onClick={() => handlePairRandom(!isRandomHigh || !isRandomLow)}
-                    className={
-                      'px-2 py-[2px] rounded-full border ' +
-                      (isRandomHigh || isRandomLow
-                        ? 'border-[#3EF0FFCC] text-[#CFFAFE]'
-                        : 'border-[#3D4270] text-[#9DA3FFCC]')
-                    }
+                <button
+                  type="button"
+                  className="control-collapse"
+                  onClick={() => toggleCollapsed(paramName)}
+                  aria-label={cardCollapsed ? 'Expand parameter' : 'Collapse parameter'}
+                >
+                  <svg
+                    viewBox="0 0 16 16"
+                    aria-hidden="true"
+                    className={cardCollapsed ? 'control-collapse-icon collapsed' : 'control-collapse-icon'}
                   >
-                    Random
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handlePairBypass(!isBypassedHigh || !isBypassedLow)}
-                    className={
-                      'px-2 py-[2px] rounded-full border ' +
-                      (disabled
-                        ? 'border-[#FF4F88CC] text-[#FFE5F1]'
-                        : 'border-[#3D4270] text-[#9DA3FFCC]')
-                    }
-                  >
-                    {disabled ? 'Bypassed' : 'Active'}
-                  </button>
-                </div>
+                    <path
+                      d="M3 6l5 5 5-5"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
               </div>
 
-              <div className="mt-2.5">
-                <LoraPairInput
-                  name={id || highParam}
-                  label={label || cfg.label}
-                  description={cfg.description}
-                  highParam={highParam}
-                  lowParam={lowParam}
-                  highChoices={highCfg.choices}
-                  lowChoices={lowCfg.choices}
-                  formData={formData}
-                  onChangeParam={handleValueChange}
-                  highStrengthParam={highStrengthParam}
-                  lowStrengthParam={lowStrengthParam}
-                  strengthValue={valueStrength}
-                  onChangeStrength={(val) => {
-                    if (highStrengthParam) handleValueChange(highStrengthParam, val);
-                    if (lowStrengthParam) handleValueChange(lowStrengthParam, val);
-                  }}
-                  disabled={disabled}
-                />
+              {!cardCollapsed && (
+                <div className="control-card-body">
+                  <LoraPairInput
+                    name={id || highParam}
+                    label={label || cfg.label}
+                    highParam={highParam}
+                    lowParam={lowParam}
+                    highChoices={highCfg.choices}
+                    lowChoices={lowCfg.choices}
+                    formData={formData}
+                    onChangeParam={handleValueChange}
+                    highStrengthParam={highStrengthParam}
+                    lowStrengthParam={lowStrengthParam}
+                    strengthValue={valueStrength}
+                    onChangeStrength={(val) => {
+                      if (highStrengthParam) handleValueChange(highStrengthParam, val);
+                      if (lowStrengthParam) handleValueChange(lowStrengthParam, val);
+                    }}
+                    disabled={false}
+                  />
+                </div>
+              )}
+              <div className="control-card-foot">
+                <span className="control-param-id">{paramName}</span>
               </div>
             </div>
           );
@@ -283,9 +249,7 @@ export default function DynamicForm({
         }
 
         const value = formData[paramName];
-        const isRandom = !!randomizeState[paramName];
-        const isBypassed = !!bypassedState[paramName];
-        const disabled = isBypassed;
+        const disabled = false;
 
         const commonFieldProps = {
           name: paramName,
@@ -334,6 +298,7 @@ export default function DynamicForm({
         }
 
         const anchorId = paramName ? `param-${paramName}` : undefined;
+        const cardCollapsed = !!collapsedCards[paramName];
 
         return (
           <div
@@ -342,51 +307,41 @@ export default function DynamicForm({
             data-param-name={paramName}
             data-param-label={cfg.label}
             data-param-type="single"
-            className="rounded-xl border border-[#2A2E4A] bg-[#050716] px-3 py-2.5 shadow-[0_0_18px_rgba(5,7,22,0.9)]"
+            className="control-card"
           >
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <div className="text-[11px] font-medium text-[#E5E7FF] truncate">
-                    {cfg.label}
-                  </div>
+              <div className="control-card-head">
+                <div className="control-card-summary">
+                  <span className="param-chip">{cfg.paramType}</span>
+                  <div className="control-card-title">{cfg.label}</div>
                 </div>
-                {cfg.description && (
-                  <div className="mt-0.5 text-[10px] text-[#9DA3FFCC]">
-                    {cfg.description}
-                  </div>
-                )}
+
+                <button
+                  type="button"
+                  className="control-collapse"
+                  onClick={() => toggleCollapsed(paramName)}
+                  aria-label={cardCollapsed ? 'Expand parameter' : 'Collapse parameter'}
+                >
+                  <svg
+                    viewBox="0 0 16 16"
+                    aria-hidden="true"
+                    className={cardCollapsed ? 'control-collapse-icon collapsed' : 'control-collapse-icon'}
+                  >
+                    <path
+                      d="M3 6l5 5 5-5"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
               </div>
 
-              <div className="flex flex-col items-end gap-1 text-[9px] text-[#9DA3FFCC]">
-                <button
-                  type="button"
-                  onClick={() => handleRandomChange(paramName, !isRandom)}
-                  className={
-                    'px-2 py-[2px] rounded-full border ' +
-                    (isRandom
-                      ? 'border-[#3EF0FFCC] text-[#CFFAFE]'
-                      : 'border-[#3D4270] text-[#9DA3FFCC]')
-                  }
-                >
-                  Random
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleBypassChange(paramName, !isBypassed)}
-                  className={
-                    'px-2 py-[2px] rounded-full border ' +
-                    (isBypassed
-                      ? 'border-[#FF4F88CC] text-[#FFE5F1]'
-                      : 'border-[#3D4270] text-[#9DA3FFCC]')
-                  }
-                >
-                  {isBypassed ? 'Bypassed' : 'Active'}
-                </button>
-              </div>
+            {!cardCollapsed && <div className="control-card-body">{field}</div>}
+            <div className="control-card-foot">
+              <span className="control-param-id">{paramName}</span>
             </div>
-
-            <div className="mt-2.5">{field}</div>
           </div>
         );
       })}

@@ -33,13 +33,11 @@ function normalizeInputs(inputs) {
 export default function AllParametersPanel({
   dynamicInputs,
   formData,
-  randomizeState,
-  bypassedState,
   onFormChange,
-  onRandomizeToggle,
-  onBypassToggle,
   sectionRef,
   onParameterNavReady,
+  walkthroughMode,
+  guideActive,
 }) {
   const [miniMapItems, setMiniMapItems] = useState([]);
   const [activeParamId, setActiveParamId] = useState(null);
@@ -149,26 +147,87 @@ export default function AllParametersPanel({
     [onParameterNavReady]
   );
 
+  const sectionClass = [
+    'control-arena scroll-mt-24',
+    walkthroughMode ? 'guide-surface' : '',
+    walkthroughMode && guideActive ? 'guide-focus' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  const totalParams = allInputs.length;
+  const advancedParams = allInputs.filter((inp) => inp.inputs?.advanced_only).length;
+  const boardStats = [
+    { label: 'Controls', value: totalParams },
+    { label: 'Advanced', value: advancedParams },
+  ];
+
+  const quickNavItems = miniMapItems.slice(0, 5);
+
+  const handleJumpActive = () => {
+    const targetId = activeParamId || miniMapItems[0]?.id;
+    if (targetId) handleMiniMapJump(targetId);
+  };
+
   return (
-    <section className="surface-section scroll-mt-28" ref={sectionRef}>
-      <header className="section-header">
-        <div className="section-header-main">
-          <div className="section-label">ALL PARAMETERS</div>
-          <p className="section-caption">
-            Every exposed CozyGen control for this workflow.
-          </p>
+    <section className={sectionClass} ref={sectionRef}>
+      <div className="control-board">
+        <div className="control-metrics">
+          {boardStats.map((stat) => (
+            <div key={stat.label} className="control-chip">
+              <span>{stat.label}</span>
+              <strong>{stat.value}</strong>
+            </div>
+          ))}
         </div>
-      </header>
-      <div ref={formWrapperRef}>
-        <DynamicForm
-          inputs={allInputs}
-          formData={formData}
-          randomizeState={randomizeState}
-          bypassedState={bypassedState}
-          onFormChange={onFormChange}
-          onRandomizeToggle={onRandomizeToggle}
-          onBypassToggle={onBypassToggle}
-        />
+        <div className="control-actions">
+          <button type="button" className="control-action primary" onClick={handleJumpActive}>
+            Jump active
+          </button>
+          <button
+            type="button"
+            className="control-action"
+            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          >
+            Top
+          </button>
+          <button
+            type="button"
+            className="control-action"
+            onClick={() => formWrapperRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+          >
+            Stack
+          </button>
+        </div>
+        {quickNavItems.length > 0 && (
+          <div className="control-nav">
+            {quickNavItems.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className="control-nav-btn"
+                onClick={() => handleMiniMapJump(item.id)}
+              >
+                <span className="control-nav-dot" />
+                {item.label}
+              </button>
+            ))}
+            {miniMapItems.length > quickNavItems.length && (
+              <span className="control-nav-more">+{miniMapItems.length - quickNavItems.length}</span>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="control-stack">
+        <div className="control-spine" />
+        <div ref={formWrapperRef} className="control-stack-inner">
+          <DynamicForm
+            inputs={allInputs}
+            formData={formData}
+            onFormChange={onFormChange}
+          />
+        </div>
       </div>
     </section>
   );

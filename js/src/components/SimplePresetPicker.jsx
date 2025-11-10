@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { listPresets } from '../api';
+import { normalizePresetValue } from '../utils/presets';
 
 /**
  * SimplePresetPicker
@@ -57,9 +58,9 @@ export default function SimplePresetPicker({
           return { name: it, values: {}, workflow: undefined };
         }
         const name = it?.name ?? String(it?.id ?? '');
-        const values = it?.values ?? {};
         const wf = it?.workflow ?? it?.workflow_name ?? it?.wf;
-        return { name, values, workflow: wf };
+        const { values } = normalizePresetValue(it);
+        return { name, values: values || {}, workflow: wf };
       });
       return mapped;
     };
@@ -68,7 +69,8 @@ export default function SimplePresetPicker({
       // Accept {presetName: values}
       const out = [];
       for (const [name, values] of Object.entries(rec || {})) {
-        out.push({ name, values: values || {}, workflow: undefined });
+        const { values: parsed } = normalizePresetValue(values);
+        out.push({ name, values: parsed || {}, workflow: undefined });
       }
       return out;
     };

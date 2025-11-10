@@ -1,10 +1,98 @@
 // js/src/components/GalleryItem.jsx
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
+
+const looksLikeVideo = (name = '') =>
+  /\.(mp4|webm|mov|mkv)$/i.test(name);
+
+const FeedVideoPlayer = ({ src, poster, autoPlay }) => {
+  const videoRef = useRef(null);
+
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el) return;
+    el.pause();
+    el.currentTime = 0;
+    el.load();
+  }, [src]);
+
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el) return;
+
+    let observer;
+
+    const attemptPlay = () => {
+      const playPromise = el.play();
+      if (playPromise && typeof playPromise.catch === 'function') {
+        playPromise.catch(() => {
+          // Autoplay might be blocked; ignore errors to avoid console noise.
+        });
+      }
+    };
+
+    const pauseVideo = () => {
+      el.pause();
+    };
+
+    if (autoPlay) {
+      const supportsObserver =
+        typeof window !== 'undefined' && 'IntersectionObserver' in window;
+
+      if (supportsObserver) {
+        observer = new IntersectionObserver(
+          (entries) => {
+            entries.forEach((entry) => {
+              if (entry.isIntersecting) {
+                attemptPlay();
+              } else {
+                pauseVideo();
+              }
+            });
+          },
+          { threshold: 0.65 }
+        );
+        observer.observe(el);
+      } else {
+        attemptPlay();
+      }
+    } else {
+      pauseVideo();
+      el.currentTime = 0;
+    }
+
+    return () => {
+      if (observer) observer.disconnect();
+      pauseVideo();
+    };
+  }, [autoPlay, src]);
+
+  if (!src) {
+    return (
+      <div className="flex items-center justify-center py-16 text-[11px] text-[#9DA3FFCC]">
+        No preview available
+      </div>
+    );
+  }
+
+  return (
+    <video
+      ref={videoRef}
+      src={src}
+      poster={poster || undefined}
+      muted
+      playsInline
+      loop
+      preload="metadata"
+      className="w-full h-auto max-h-[80vh] rounded-2xl object-contain bg-black/40"
+    />
+  );
+};
 
 export default function GalleryItem({
   item,
   onSelect,
   variant = 'grid', // 'grid' | 'feed'
+  autoPlay = false,
 }) {
   if (!item) return null;
 
@@ -27,8 +115,20 @@ export default function GalleryItem({
       )}&filename=${encodeURIComponent(filename)}&w=${thumbSize}`
     : null;
 
-  const looksLikeVideo =
-    /\.(mp4|webm|mov|mkv)$/i.test(filename);
+  const mediaSrc =
+    !isDir && filename
+      ? (() => {
+          const type = item.type && item.type !== 'directory' ? item.type : 'output';
+          const version = item.mtime ? `&v=${encodeURIComponent(String(item.mtime))}` : '';
+          return `/view?filename=${encodeURIComponent(
+            filename
+          )}&subfolder=${encodeURIComponent(
+            subfolder
+          )}&type=${encodeURIComponent(type)}${version}`;
+        })()
+      : null;
+
+  const isVideo = looksLikeVideo(filename);
 
   // ----- DIRECTORY TILE (grid only) -----
   if (isDir) {
@@ -65,7 +165,9 @@ export default function GalleryItem({
           className="group relative w-full overflow-hidden rounded-2xl bg-[#020312]"
         >
           <div className="relative w-full flex items-center justify-center bg-[#020312]">
-            {thumbSrc ? (
+            {isVideo ? (
+              <FeedVideoPlayer src={mediaSrc} poster={thumbSrc} autoPlay={autoPlay} />
+            ) : thumbSrc ? (
               <img
                 src={thumbSrc}
                 alt={displayName}
@@ -81,7 +183,7 @@ export default function GalleryItem({
 
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-[#05071680] opacity-0 group-hover:opacity-100 transition-opacity" />
 
-          {looksLikeVideo && (
+          {isVideo && (
             <div className="pointer-events-none absolute left-2 top-2 rounded-full bg-[#050716CC] px-2 py-[1px] text-[10px] text-[#CFFAFE] border border-[#3EF0FF80]">
               Video
             </div>
@@ -136,7 +238,7 @@ export default function GalleryItem({
           <div className="text-[10px] text-[#E5E7FF] truncate">
             {displayName}
           </div>
-          {looksLikeVideo && (
+          {isVideo && (
             <span className="text-[9px] uppercase tracking-[0.16em] text-[#CFFAFE]">
               Vid
             </span>

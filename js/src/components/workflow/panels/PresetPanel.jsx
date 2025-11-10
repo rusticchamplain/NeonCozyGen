@@ -8,24 +8,37 @@ function PresetPanel(
     setPresetsOpen,
     onApplyPresetPatch,
     readCurrentValues,
+    walkthroughMode,
+    guideActive,
   },
   ref
 ) {
+  const sectionClass = [
+    'ui-panel scroll-mt-28 space-y-4',
+    walkthroughMode ? 'guide-surface' : '',
+    walkthroughMode && guideActive ? 'guide-focus' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
   return (
-    <section className="surface-section scroll-mt-28" ref={ref}>
-      <header className="section-header">
-        <div className="section-header-main">
-          <div className="section-label">PRESET PANEL</div>
-          <p className="section-caption">
-            Save and recall full parameter sets for this workflow.
-          </p>
+    <section className={sectionClass} ref={ref}>
+      <header className="ui-section-head">
+        <div className="ui-section-text">
+          <span className="ui-kicker">Presets</span>
+          <p className="ui-hint">Save or reuse full stacks.</p>
+          {walkthroughMode && (
+            <p className="guide-hint">
+              Pull a saved setup or capture the current values.
+            </p>
+          )}
         </div>
         <button
           type="button"
-          className="section-chip-button"
+          className="ui-button is-ghost is-compact"
           onClick={() => setPresetsOpen((v) => !v)}
         >
-          {presetsOpen ? 'COLLAPSE' : 'EXPAND'}
+          {presetsOpen ? 'Collapse' : 'Expand'}
         </button>
       </header>
       {presetsOpen && (

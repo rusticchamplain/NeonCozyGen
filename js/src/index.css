@@ -393,10 +393,12 @@ body::before {
   inset: 0;
   background: rgba(2, 4, 12, 0.8);
   backdrop-filter: blur(6px);
+  z-index: 0;
 }
 
 .gallery-lightbox__panel {
   position: relative;
+  z-index: 1;
   margin: 4vh auto;
   max-width: 1060px;
   width: calc(100% - 2rem);
@@ -408,6 +410,7 @@ body::before {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  pointer-events: auto;
 }
 
 .gallery-lightbox__header,

@@ -86,6 +86,7 @@ function Lightbox({ open, media, onClose, onPrev, onNext }) {
   }, [media?.filename]);
 
   if (!open || !media) return null;
+  if (typeof document === 'undefined') return null;
 
   const type = media.type || 'output';
   const version = media.mtime ? `&v=${encodeURIComponent(String(media.mtime))}` : '';

@@ -220,9 +220,13 @@ body::before {
 
 /* Preset card */
 .preset-card {
+  border-radius: 1.5rem;
+  border: 1px solid var(--stroke-soft);
+  background: var(--panel-soft);
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 0.85rem;
+  gap: 0;
 }
 
 .preset-grid {
@@ -237,32 +241,33 @@ body::before {
 }
 
 .preset-card--active {
-  position: relative;
-  z-index: 3;
   border-color: var(--accent);
-  box-shadow: 0 0 0 1px rgba(111, 242, 207, 0.3),
-    0 15px 30px rgba(5, 7, 22, 0.6);
+  box-shadow:
+    0 0 0 1px rgba(62, 240, 255, 0.35),
+    0 20px 60px rgba(5, 7, 22, 0.6);
 }
 
-.preset-card-preview {
+.preset-card-media {
   position: relative;
-  border-radius: 0.8rem;
-  border: 1px solid var(--stroke-soft);
-  background: rgba(5, 7, 22, 0.8);
+  min-height: 220px;
+  background: #030511;
   overflow: hidden;
-  height: 160px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  cursor: pointer;
 }
 
-.preset-card-preview img {
+.preset-card-media-src {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  display: block;
 }
 
 .preset-card-preview--placeholder {
+  width: 100%;
+  height: 220px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: radial-gradient(circle at 30% 30%, #3ef0ff33, transparent),
     linear-gradient(135deg, #0b1024, #1b2040);
   color: rgba(229, 247, 255, 0.85);
@@ -270,86 +275,78 @@ body::before {
   font-weight: 600;
 }
 
-.preset-card-heading {
+.preset-card-overlay {
+  position: absolute;
+  inset: 0;
+  padding: 1rem;
   display: flex;
   justify-content: space-between;
+  align-items: flex-start;
   gap: 0.75rem;
-  flex-wrap: wrap;
+  background: linear-gradient(180deg, rgba(2, 4, 10, 0.25), rgba(2, 4, 10, 0.7));
 }
 
 .preset-card-title {
-  margin-top: 0.15rem;
-  font-size: 1rem;
+  font-size: 1.2rem;
   font-weight: 600;
+  color: #fff;
+  margin-top: 0.25rem;
 }
 
-.preset-card-mode {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-  min-width: 160px;
-}
-
-.preset-card-mode select {
+.preset-card-setref {
   border-radius: 999px;
-  border: 1px solid #2a2e4a;
-  background: #050716;
-  padding: 0.25rem 0.75rem;
-  font-size: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(5, 7, 22, 0.75);
+  padding: 0.35rem 0.75rem;
+  font-size: 0.65rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
   color: #f8f4ff;
 }
 
-.preset-card-saving {
-  font-size: 0.65rem;
-  color: var(--text-muted);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-
-.preset-card-label {
+.preset-card-mode-select {
+  border-radius: 999px;
+  border: 1px solid #2a2e4a;
+  background: rgba(5, 7, 22, 0.85);
+  padding: 0.3rem 0.75rem;
   font-size: 0.7rem;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--text-muted);
+  color: #f8f4ff;
 }
 
-.preset-card-chips {
+.preset-card-underbar {
+  padding: 0.9rem 1rem 1rem;
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
+  flex-direction: column;
+  gap: 0.6rem;
 }
 
-.preset-card-tags {
+.preset-card-tagrow {
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
 }
 
-.preset-card-tag {
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  padding: 0.2rem 0.7rem;
-  font-size: 0.65rem;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: rgba(229, 247, 255, 0.8);
+.preset-card-description {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin: 0;
 }
 
 .preset-card-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: 0.4rem;
 }
 
-.preset-card-live {
-  margin-top: 0.9rem;
-  border-radius: 1rem;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+.preset-card-drawer {
+  border-top: 1px solid var(--stroke-soft);
+  padding: 0.9rem 1rem;
   background: rgba(5, 7, 22, 0.85);
-  padding: 0.9rem;
+  max-height: 260px;
+  overflow: auto;
   display: flex;
   flex-direction: column;
-  gap: 0.9rem;
+  gap: 0.75rem;
 }
 
 .preset-card-section {
@@ -359,27 +356,36 @@ body::before {
 }
 
 .preset-card-section h4 {
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--text-muted);
 }
 
-.preset-card-generate {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-}
-
-.preset-card-generate button {
-  align-self: flex-start;
-}
-
 .preset-card-status {
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--text-muted);
+}
+
+.composer-preview-thumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--stroke-soft);
+  border-radius: 0.9rem;
+  background: rgba(5, 7, 22, 0.6);
+}
+
+.composer-preview-thumb img,
+.composer-preview-thumb video {
+  width: 60px;
+  height: 60px;
+  object-fit: cover;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 /* Section label */

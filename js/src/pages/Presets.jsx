@@ -2,6 +2,7 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import {
@@ -13,6 +14,7 @@ import PresetCard from '../components/presets/PresetCard';
 import LoraPairInput from '../components/inputs/LoraPairInput';
 import {
   listPresets,
+  savePreset,
   getWorkflowTypes,
   saveWorkflowType,
 } from '../api';
@@ -38,7 +40,24 @@ function buildPreviewUrl(example) {
   return `/cozygen/thumb?${params.toString()}`;
 }
 
+function resolvePreviewSource(meta) {
+  if (meta?.preview?.kind === 'data' && meta.preview.data) {
+    return meta.preview.data;
+  }
+  return buildPreviewUrl(meta?.example);
+}
+
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 const IMAGE_VALUE_REGEX = /\.(png|jpe?g|webp|gif|bmp)$/i;
+const VIDEO_VALUE_REGEX = /\.(mp4|webm|mov|mkv)$/i;
 
 function deriveCardTags(card) {
   const values = card?.values || {};
@@ -113,10 +132,43 @@ export default function Presets() {
   const [typeSaving, setTypeSaving] = useState(null);
   const [filterMode, setFilterMode] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [savingPresetKey, setSavingPresetKey] = useState(null);
+  const composerFileInputRef = useRef(null);
+  const [composerName, setComposerName] = useState('');
+  const [composerDescription, setComposerDescription] = useState('');
+  const [composerTags, setComposerTags] = useState('');
+  const [composerPreview, setComposerPreview] = useState(null);
+  const [composerSaving, setComposerSaving] = useState(false);
+  const [composerStatus, setComposerStatus] = useState('');
+  const [composerError, setComposerError] = useState('');
 
   const orderedDynamicInputs = useMemo(
     () => applyFieldOrder(selectedWorkflow, dynamicInputs),
     [selectedWorkflow, dynamicInputs]
+  );
+
+  const handleUpdateMeta = useCallback(
+    async (workflow, presetName, nextMeta) => {
+      const entries = presetLibrary[workflow] || [];
+      const target = entries.find((p) => p.name === presetName);
+      if (!target) return;
+      setSavingPresetKey(`${workflow}::${presetName}`);
+      try {
+        await savePreset(workflow, presetName, target.values || {}, nextMeta || {});
+        setPresetLibrary((prev) => ({
+          ...prev,
+          [workflow]: (prev[workflow] || []).map((p) =>
+            p.name === presetName ? { ...p, meta: nextMeta || {} } : p
+          ),
+        }));
+      } catch (err) {
+        console.error('Failed to update preset metadata', err);
+        setLibraryError('Failed to update preset metadata');
+      } finally {
+        setSavingPresetKey(null);
+      }
+    },
+    [presetLibrary]
   );
 
   const loadPresetLibrary = useCallback(async () => {
@@ -282,6 +334,104 @@ export default function Presets() {
     setSelectedPresetKey('');
   }, []);
 
+  const handleComposerFileChange = useCallback(
+    async (event) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      try {
+        const dataUrl = await fileToDataUrl(file);
+        setComposerPreview({
+          kind: 'data',
+          data: dataUrl,
+          mime: file.type,
+          name: file.name,
+          updatedAt: Date.now(),
+        });
+        setComposerError('');
+      } catch (err) {
+        console.error('Composer preview failed', err);
+        setComposerError('Failed to load preview file.');
+      } finally {
+        if (event.target) event.target.value = '';
+      }
+    },
+    []
+  );
+
+  const clearComposerPreview = useCallback(() => {
+    setComposerPreview(null);
+  }, []);
+
+  const handleCreatePreset = useCallback(async () => {
+    if (!selectedWorkflow) {
+      setComposerError('Select a workflow to capture a preset.');
+      return;
+    }
+    const name = composerName.trim();
+    if (!name) {
+      setComposerError('Name your preset.');
+      return;
+    }
+    setComposerSaving(true);
+    setComposerError('');
+    try {
+      const meta = {};
+      if (composerDescription.trim()) meta.description = composerDescription.trim();
+      const tagList = composerTags
+        .split(',')
+        .map((tag) => tag.trim())
+        .filter(Boolean);
+      if (tagList.length) meta.tags = tagList;
+      if (composerPreview) meta.preview = composerPreview;
+
+      await savePreset(selectedWorkflow, name, { ...(formData || {}) }, meta);
+      setComposerName('');
+      setComposerDescription('');
+      setComposerTags('');
+      setComposerPreview(null);
+      setComposerStatus(`Saved “${name}”`);
+      loadPresetLibrary();
+    } catch (err) {
+      console.error('Composer save failed', err);
+      setComposerError('Failed to save preset.');
+    } finally {
+      setComposerSaving(false);
+      setTimeout(() => setComposerStatus(''), 2500);
+    }
+  }, [
+    composerDescription,
+    composerName,
+    composerPreview,
+    composerTags,
+    formData,
+    loadPresetLibrary,
+    selectedWorkflow,
+  ]);
+
+  const handleCardPreviewUpload = useCallback(
+    async (workflow, preset, file) => {
+      if (!file) return;
+      try {
+        const dataUrl = await fileToDataUrl(file);
+        const nextMeta = {
+          ...(preset.meta || {}),
+          preview: {
+            kind: 'data',
+            data: dataUrl,
+            mime: file.type,
+            name: file.name,
+            updatedAt: Date.now(),
+          },
+        };
+        await handleUpdateMeta(workflow, preset.name, nextMeta);
+      } catch (err) {
+        console.error('Preview upload failed', err);
+        setLibraryError('Preview upload failed');
+      }
+    },
+    [handleUpdateMeta]
+  );
+
   const handleAssignMode = useCallback(async (workflow, mode) => {
     setTypeSaving(workflow);
     try {
@@ -370,6 +520,101 @@ export default function Presets() {
         </div>
       </section>
 
+      <section className="ui-panel space-y-4">
+        <div className="ui-section-head">
+          <div className="ui-section-text">
+            <span className="ui-kicker">Preset composer</span>
+            <div className="ui-title">Capture current settings</div>
+            <p className="ui-hint">
+              Name the stack, add tags, and attach a reference image or clip.
+            </p>
+          </div>
+        </div>
+        {composerStatus && (
+          <div className="text-[11px] text-[#3EF0FF]">{composerStatus}</div>
+        )}
+        {composerError && (
+          <div className="text-[11px] text-[#FF9BEA]">{composerError}</div>
+        )}
+        {selectedWorkflow && workflowData ? (
+          <>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <input
+                type="text"
+                value={composerName}
+                onChange={(e) => setComposerName(e.target.value)}
+                placeholder="Preset name"
+                className="rounded-xl border border-[#2A2E4A] bg-[#050716] px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[#3EF0FF80]"
+              />
+              <input
+                type="text"
+                value={composerTags}
+                onChange={(e) => setComposerTags(e.target.value)}
+                placeholder="Tags (comma separated)"
+                className="rounded-xl border border-[#2A2E4A] bg-[#050716] px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[#3EF0FF80]"
+              />
+              <textarea
+                value={composerDescription}
+                onChange={(e) => setComposerDescription(e.target.value)}
+                rows={3}
+                placeholder="Description"
+                className="sm:col-span-2 rounded-xl border border-[#2A2E4A] bg-[#050716] px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[#3EF0FF80]"
+              />
+            </div>
+            <div className="flex items-center gap-3 flex-wrap">
+              <button
+                type="button"
+                className="ui-button is-muted is-compact"
+                onClick={() => composerFileInputRef.current?.click()}
+              >
+                {composerPreview ? 'Change reference' : 'Upload reference'}
+              </button>
+              <input
+                ref={composerFileInputRef}
+                type="file"
+                accept="image/*,video/*"
+                hidden
+                onChange={handleComposerFileChange}
+              />
+              {composerPreview && (
+                <div className="composer-preview-thumb">
+                  {composerPreview.mime?.startsWith('video') ? (
+                    <video
+                      src={composerPreview.data}
+                      muted
+                      playsInline
+                      autoPlay
+                      loop
+                    />
+                  ) : (
+                    <img src={composerPreview.data} alt="Preview" />
+                  )}
+                  <button
+                    type="button"
+                    className="ui-button is-ghost is-compact"
+                    onClick={clearComposerPreview}
+                  >
+                    Remove
+                  </button>
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              className="ui-button is-primary"
+              onClick={handleCreatePreset}
+              disabled={composerSaving || !composerName.trim()}
+            >
+              {composerSaving ? 'Saving…' : 'Save preset'}
+            </button>
+          </>
+        ) : (
+          <p className="ui-hint">
+            Select a workflow in Studio to capture its parameters as a preset.
+          </p>
+        )}
+      </section>
+
       <section className="space-y-4">
         {presetLoading ? (
           <div className="ui-card text-center text-sm text-[#9DA3FFCC]">Loading presets…</div>
@@ -391,11 +636,21 @@ export default function Presets() {
               const key = `${card.workflow}::${card.name}`;
               const tags = deriveCardTags(card);
               const isActive = selectedPresetKey === key;
+              const previewSrc = resolvePreviewSource(card.meta);
+              const previewType =
+                card.meta?.preview?.mime?.startsWith('video') ||
+                (card.meta?.example?.filename &&
+                  VIDEO_VALUE_REGEX.test(card.meta.example.filename)) ||
+                (previewSrc && previewSrc.startsWith('data:video'))
+                  ? 'video'
+                  : 'image';
               const requiresImages =
                 (card.meta?.requires_images ??
                   Object.values(card.values || {}).some(
                     (val) => typeof val === 'string' && IMAGE_VALUE_REGEX.test(val)
                   )) || false;
+              const canLaunchCard = isActive ? canQuickLaunch : false;
+              const previewSaving = savingPresetKey === key;
 
               let cardBody = null;
               if (isActive) {
@@ -534,15 +789,24 @@ export default function Presets() {
                   preset={card}
                   workflowMode={workflowTypes[card.workflow]}
                   modeOptions={WORKFLOW_MODE_OPTIONS}
-                  previewUrl={buildPreviewUrl(card.meta?.example)}
+                  previewSrc={previewSrc}
+                  previewType={previewType}
                   isSelected={isActive}
                   tags={tags}
                   requiresImages={requiresImages}
-                  autoFocus={isActive}
-                  onSelect={() => applyPreset(card.workflow, card)}
+                  onActivate={() => applyPreset(card.workflow, card)}
+                  onBuilder={() => applyPreset(card.workflow, card)}
+                  onQuickLaunch={handleBuilderGenerate}
                   onAssignMode={(mode) => handleAssignMode(card.workflow, mode)}
-                  savingMode={typeSaving === card.workflow}
+                  onUploadPreview={(file) =>
+                    handleCardPreviewUpload(card.workflow, card, file)
+                  }
                   onClear={clearSelection}
+                  savingMode={typeSaving === card.workflow}
+                  canQuickLaunch={canLaunchCard}
+                  launching={isGenerating && isActive}
+                  description={(card.meta?.description || '').trim()}
+                  previewSaving={previewSaving}
                 >
                   {cardBody}
                 </PresetCard>

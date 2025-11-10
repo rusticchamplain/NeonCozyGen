@@ -38,17 +38,27 @@ export function injectFormValues(workflow, dynamicInputs, formData) {
 
     let v = updatedForm[pn];
 
-    // If value was never set, fall back to default_value
-    if (v === undefined) {
-      v = dn.inputs.default_value;
-    }
-
-    updatedForm[pn] = v;
-
     const nodeToUpdate = finalWorkflow[dn.id];
     if (!nodeToUpdate || !nodeToUpdate.inputs) continue;
 
     const cls = dn.class_type;
+
+    // Determine fallback defaults per type
+    if (v === undefined) {
+      if (cls === 'CozyGenChoiceInput') {
+        v =
+          dn.inputs.value ??
+          dn.inputs.default_choice ??
+          (dn.inputs.choices && dn.inputs.choices[0]) ??
+          '';
+      } else {
+        v = dn.inputs.default_value;
+      }
+    }
+
+    if (v === undefined) v = '';
+    updatedForm[pn] = v;
+
     if (
       cls === 'CozyGenFloatInput' ||
       cls === 'CozyGenIntInput' ||

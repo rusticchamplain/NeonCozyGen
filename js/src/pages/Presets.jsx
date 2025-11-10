@@ -185,12 +185,13 @@ export default function Presets() {
     if (!workflowData) return;
     if (pendingPreset.workflow !== selectedWorkflow) return;
     const values = pendingPreset.values || {};
-    setFormData(values);
+    const nextState = { ...(formData || {}), ...values };
+    setFormData(nextState);
     if (selectedWorkflow) {
-      saveFormState(selectedWorkflow, values);
+      saveFormState(selectedWorkflow, nextState);
     }
     setPendingPreset(null);
-  }, [pendingPreset, selectedWorkflow, workflowData, setFormData]);
+  }, [pendingPreset, selectedWorkflow, workflowData, setFormData, formData]);
 
   const presetCards = useMemo(
     () =>
@@ -268,11 +269,17 @@ export default function Presets() {
       if (workflow !== selectedWorkflow) {
         selectWorkflow(workflow);
       } else {
-        setFormData(preset.values || {});
-        if (workflow) saveFormState(workflow, preset.values || {});
+        const nextState = {
+          ...(formData || {}),
+          ...(preset.values || {}),
+        };
+        setFormData(nextState);
+        if (workflow) {
+          saveFormState(workflow, nextState);
+        }
       }
     },
-    [selectWorkflow, selectedWorkflow, setFormData, saveFormState]
+    [selectWorkflow, selectedWorkflow, setFormData, formData]
   );
 
   const clearSelection = useCallback(() => {

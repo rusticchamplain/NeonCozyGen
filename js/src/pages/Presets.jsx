@@ -433,14 +433,21 @@ export default function Presets() {
                         <h4>Image inputs</h4>
                         {imageInputs.length ? (
                           <div className="space-y-2">
-                            {imageInputs.map((imgInput) => (
-                              <ImageInput
-                                key={imgInput.id}
-                                input={imgInput}
-                                value={formData[imgInput.inputs.param_name] || ''}
-                                onFormChange={handleFormChange}
-                              />
-                            ))}
+                            {imageInputs.map((imgInput) => {
+                              const paramName = imgInput.inputs.param_name;
+                              const presetValue = selectedPresetInfo.values?.[paramName];
+                              const value =
+                                formData[paramName] ||
+                                (typeof presetValue === 'string' ? presetValue : '');
+                              return (
+                                <ImageInput
+                                  key={imgInput.id}
+                                  input={imgInput}
+                                  value={value}
+                                  onFormChange={handleFormChange}
+                                />
+                              );
+                            })}
                           </div>
                         ) : (
                           <p className="ui-hint">This preset does not need reference images.</p>

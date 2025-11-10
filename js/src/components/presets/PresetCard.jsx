@@ -1,5 +1,5 @@
 // js/src/components/presets/PresetCard.jsx
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 
 export default function PresetCard({
   workflow,
@@ -13,6 +13,8 @@ export default function PresetCard({
   onSelect,
   onAssignMode,
   savingMode,
+  autoFocus = false,
+  onClear,
   children,
 }) {
   const cardClass = [
@@ -21,6 +23,44 @@ export default function PresetCard({
   ]
     .filter(Boolean)
     .join(' ');
+
+  const cardRef = useRef(null);
+
+  useEffect(() => {
+    if (isSelected && autoFocus && cardRef.current) {
+      cardRef.current.focus();
+    }
+  }, [isSelected, autoFocus]);
+
+  useEffect(() => {
+    if (!isSelected || !cardRef.current) return;
+    const node = cardRef.current;
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        event.stopPropagation();
+        onClear?.();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const focusables = node.querySelectorAll(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      );
+      if (!focusables.length) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (event.shiftKey) {
+        if (document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        }
+      } else if (document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    node.addEventListener('keydown', handleKeyDown);
+    return () => node.removeEventListener('keydown', handleKeyDown);
+  }, [isSelected, onClear]);
 
   const description =
     (preset?.meta?.description || '').trim() || 'No description yet.';
@@ -32,7 +72,14 @@ export default function PresetCard({
   }, [workflowMode, modeOptions]);
 
   return (
-    <div className={cardClass}>
+    <div
+      className={cardClass}
+      tabIndex={isSelected ? 0 : -1}
+      ref={cardRef}
+      onClick={() => {
+        if (!isSelected) onSelect?.();
+      }}
+    >
       {previewUrl ? (
         <div className="preset-card-preview">
           <img src={previewUrl} alt={`${preset?.name} preview`} loading="lazy" />
@@ -90,18 +137,20 @@ export default function PresetCard({
         </div>
       )}
 
-      <div className="preset-card-actions">
-        <button
-          type="button"
-          className="ui-button is-primary is-compact"
-          onClick={(e) => {
-            e.stopPropagation();
-            onSelect?.();
-          }}
-        >
-          {isSelected ? 'Reapply' : 'Activate'}
-        </button>
-      </div>
+      {!isSelected && (
+        <div className="preset-card-actions">
+          <button
+            type="button"
+            className="ui-button is-primary is-compact"
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelect?.();
+            }}
+          >
+            Activate
+          </button>
+        </div>
+      )}
 
       {children && (
         <div className="preset-card-live" onClick={(e) => e.stopPropagation()}>

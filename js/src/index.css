@@ -225,7 +225,20 @@ body::before {
   gap: 0.85rem;
 }
 
+.preset-grid {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.preset-grid.has-active .preset-card:not(.preset-card--active) {
+  pointer-events: none;
+  filter: blur(2px);
+  opacity: 0.25;
+}
+
 .preset-card--active {
+  position: relative;
+  z-index: 3;
   border-color: var(--accent);
   box-shadow: 0 0 0 1px rgba(111, 242, 207, 0.3),
     0 15px 30px rgba(5, 7, 22, 0.6);

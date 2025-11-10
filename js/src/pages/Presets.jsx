@@ -375,7 +375,15 @@ export default function Presets() {
             No presets yet. Save one from Studio or the Wizard.
           </div>
         ) : (
-          <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+          <div
+            className={[
+              'preset-grid',
+              'grid gap-5 sm:grid-cols-2 xl:grid-cols-3',
+              selectedPresetInfo ? 'has-active' : '',
+            ]
+              .filter(Boolean)
+              .join(' ')}
+          >
             {filteredCards.map((card) => {
               const key = `${card.workflow}::${card.name}`;
               const tags = deriveCardTags(card);
@@ -412,7 +420,9 @@ export default function Presets() {
                       (imgInput) => !formData[imgInput.inputs.param_name]
                     );
                   const readyToRender =
-                    builderReady && (!needsImageInput || !missingImages);
+                    builderReady &&
+                    (!needsImageInput || !missingImages) &&
+                    !isGenerating;
 
                   cardBody = (
                     <>
@@ -518,9 +528,11 @@ export default function Presets() {
                   isSelected={isActive}
                   tags={tags}
                   requiresImages={requiresImages}
+                  autoFocus={isActive}
                   onSelect={() => applyPreset(card.workflow, card)}
                   onAssignMode={(mode) => handleAssignMode(card.workflow, mode)}
                   savingMode={typeSaving === card.workflow}
+                  onClear={clearSelection}
                 >
                   {cardBody}
                 </PresetCard>

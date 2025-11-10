@@ -225,10 +225,16 @@ export default function GalleryItem({
             alt={displayName}
             className="w-full h-full object-cover"
             loading="lazy"
+            decoding="async"
           />
         ) : (
           <div className="flex items-center justify-center h-full text-[10px] text-[#9DA3FFCC] px-2 text-center">
             No preview
+          </div>
+        )}
+        {isVideo && (
+          <div className="pointer-events-none absolute left-2 top-2 rounded-full bg-[#050716E0] px-2 py-[2px] text-[10px] text-[#CFFAFE] border border-[#3EF0FF80]">
+            Video
           </div>
         )}
       </div>

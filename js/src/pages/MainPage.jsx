@@ -5,8 +5,6 @@ import { Link } from 'react-router-dom';
 import BottomBar from '../components/BottomBar';
 import WorkflowHeader from '../components/workflow/WorkflowHeader';
 import AdvancedModeLayout from '../components/workflow/AdvancedModeLayout';
-import ProcessIndex from '../components/workflow/ProcessIndex';
-import ParameterMiniMap from '../components/workflow/panels/ParameterMiniMap';
 
 import { useWorkflows } from '../hooks/useWorkflows';
 import { useWorkflowForm } from '../hooks/useWorkflowForm';
@@ -51,6 +49,7 @@ function MainPage() {
   );
   const [presetsOpen, setPresetsOpen] = useState(true);
   const [imagesOpen, setImagesOpen] = useState(true);
+  const [studioExpanded, setStudioExpanded] = useState(false);
   const workflowSectionRef = useRef(null);
   const presetSectionRef = useRef(null);
   const parameterSectionRef = useRef(null);
@@ -111,93 +110,6 @@ function MainPage() {
     });
   }, []);
 
-  const processSteps = useMemo(() => {
-    const workflowReady = !!selectedWorkflow;
-    const workflowLoaded = !!workflowData;
-    const paramsAvailable = !!(parameterNav && parameterNav.items?.length);
-    const hasImages = !!(imageInputs && imageInputs.length);
-
-    return [
-      {
-        id: 'workflow',
-        title: 'Select Workflow',
-        description: 'Pick the graph to run.',
-        guideText: 'Choose a workflow.',
-        status: workflowReady ? 'done' : 'active',
-        statusLabel: workflowReady ? 'Ready' : 'Start',
-        onJump: () => scrollToSection(workflowSectionRef),
-      },
-      {
-        id: 'presets',
-        title: 'Apply Preset (optional)',
-        description: 'Load or capture a stack.',
-        guideText: 'Tap a preset or skip.',
-        status: workflowLoaded ? 'active' : 'locked',
-        statusLabel: workflowLoaded ? 'Optional' : 'Locked',
-        onJump: () => scrollToSection(presetSectionRef),
-        disabled: !workflowLoaded,
-      },
-      {
-        id: 'parameters',
-        title: 'Input Parameters',
-        description: 'Adjust exposed controls.',
-        guideText: workflowLoaded
-          ? 'Set what matters; the rest can wait.'
-          : 'Load a workflow to reveal controls.',
-        status: workflowLoaded ? 'active' : 'locked',
-        statusLabel: workflowLoaded ? 'Active' : 'Locked',
-        onJump: () => scrollToSection(parameterSectionRef),
-        disabled: !workflowLoaded,
-        content: paramsAvailable ? (
-          <ParameterMiniMap
-            items={parameterNav.items}
-            activeId={parameterNav.activeId}
-            onJump={parameterNav.onJump}
-            variant="inline"
-            title="Parameter Map"
-          />
-        ) : (
-          <div className="rounded-xl border border-[#1F2342] bg-[#050716] px-3 py-2 text-[10px] text-[#6C719C]">
-            Load a workflow to see its parameters.
-          </div>
-        ),
-      },
-      {
-        id: 'images',
-        title: 'Add Source Images',
-        description: 'Attach references if required.',
-        guideText: hasImages
-          ? 'Drop the guides this workflow expects.'
-          : 'This one skips image inputs.',
-        status: workflowLoaded ? (hasImages ? 'active' : 'skip') : 'locked',
-        statusLabel: hasImages ? 'Active' : workflowLoaded ? 'Skip' : 'Locked',
-        onJump: hasImages ? () => scrollToSection(imageSectionRef) : undefined,
-        disabled: !workflowLoaded || !hasImages,
-      },
-      {
-        id: 'render',
-        title: 'Render',
-        description: 'Queue the job and stream updates.',
-        guideText: workflowLoaded
-          ? 'Hit render to send the run.'
-          : 'Select a workflow first.',
-        status: workflowLoaded ? 'active' : 'locked',
-        statusLabel: workflowLoaded ? 'Ready' : 'Locked',
-        onJump: workflowLoaded ? () => scrollToSection(bottomBarRef) : undefined,
-        disabled: !workflowLoaded,
-      },
-    ];
-  }, [selectedWorkflow, workflowData, parameterNav, scrollToSection, imageInputs]);
-
-  const guideFocusId = useMemo(() => {
-    if (!walkthroughMode || !processSteps.length) return null;
-    const focusStep =
-      processSteps.find(
-        (step) => !['done', 'skip'].includes(step.status)
-      ) || processSteps[processSteps.length - 1];
-    return focusStep?.id || null;
-  }, [walkthroughMode, processSteps]);
-
   const queueState = statusPhase || (isLoading ? 'Rendering' : 'Idle');
   const queueDetail =
     statusText ||
@@ -207,28 +119,7 @@ function MainPage() {
     : 0;
   const commandProgress = isLoading ? Math.max(5, rawProgress) : rawProgress;
 
-  const stackClasses = (id, extra = '') =>
-    [
-      'stack-card',
-      extra,
-      walkthroughMode && guideFocusId === id ? 'guide-focus' : '',
-    ]
-      .filter(Boolean)
-      .join(' ');
-
-  const bottomSectionClasses = [
-    'dock-panel',
-    walkthroughMode ? 'guide-surface' : '',
-    walkthroughMode && guideFocusId === 'render' ? 'guide-focus' : '',
-  ]
-    .filter(Boolean)
-    .join(' ');
-
-  const quickLinks = [
-    { label: 'Presets', hint: 'Library', to: '/presets' },
-    { label: 'Gallery', hint: 'Outputs', to: '/gallery' },
-    { label: 'Layout', hint: 'Arrange', to: '/personalize' },
-  ];
+  const heroActionLabel = studioExpanded ? 'Hide Studio' : 'Open Studio';
 
   if (!workflows || workflows.length === 0) {
     return (
@@ -243,34 +134,55 @@ function MainPage() {
   }
 
   return (
-    <div className="page-shell mobile-prism">
-      <section className="command-strip">
-        <div className="command-main">
-          <p className="command-eyebrow">Live queue</p>
-          <div className="command-status">{queueState}</div>
-          <p className="command-sub">{queueDetail}</p>
-        </div>
-        <div className="command-meter">
-          <div className="command-bar">
-            <div className="command-bar-fill" style={{ width: `${commandProgress}%` }} />
+    <div className="page-shell page-stack">
+      <section className="ui-panel space-y-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p className="ui-kicker">Live queue</p>
+            <div className="text-2xl font-semibold text-white">{queueState}</div>
+            <p className="ui-hint">{queueDetail}</p>
           </div>
-          <p className="command-sub">{`${commandProgress}%`}</p>
+          <div className="flex flex-col gap-3 min-w-[220px]">
+            <div>
+              <div className="h-2 rounded-full bg-[#1C2140] overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-[#FF60D0] to-[#3EF0FF]"
+                  style={{ width: `${commandProgress}%` }}
+                />
+              </div>
+              <div className="text-right text-[11px] text-[#9DA3FFCC] mt-1">
+                {`${commandProgress}%`}
+              </div>
+            </div>
+            <div className="flex items-center gap-2 justify-end">
+              <button
+                type="button"
+                className="ui-button is-muted is-compact"
+                onClick={() => setStudioExpanded((prev) => !prev)}
+              >
+                {heroActionLabel}
+              </button>
+              <button
+                type="button"
+                aria-pressed={walkthroughMode}
+                onClick={() => setWalkthroughMode((prev) => !prev)}
+                className="ui-button is-ghost is-compact"
+              >
+                {walkthroughMode ? 'Guide On' : 'Guide Off'}
+              </button>
+            </div>
+          </div>
         </div>
-        <button
-          type="button"
-          aria-pressed={walkthroughMode}
-          onClick={() => setWalkthroughMode((prev) => !prev)}
-          className="command-toggle"
-        >
-          {walkthroughMode ? 'Guide on' : 'Guide off'}
-        </button>
+
+        <div className="flex flex-wrap gap-2">
+          <Link to="/presets" className="ui-pill is-soft">Presets</Link>
+          <Link to="/gallery" className="ui-pill is-soft">Gallery</Link>
+          <Link to="/personalize" className="ui-pill is-soft">Layout</Link>
+        </div>
       </section>
 
-      <section className="stack-grid">
-        <div
-          ref={workflowSectionRef}
-          className={stackClasses('workflow', 'scroll-mt-24')}
-        >
+      {studioExpanded && (
+        <section className="ui-panel space-y-4" ref={workflowSectionRef}>
           <WorkflowHeader
             workflows={workflows}
             selectedWorkflow={selectedWorkflow}
@@ -278,70 +190,64 @@ function MainPage() {
             walkthroughMode={walkthroughMode}
             setWalkthroughMode={setWalkthroughMode}
           />
-        </div>
+          <div className="rounded-xl border border-[#262B4D] bg-[#080A1F] px-3 py-3 text-[12px] text-[#C3C7FF]">
+            Advanced Studio surfaces the same graph inputs you see in ComfyUI, now organized into collapsible panels.
+          </div>
+        </section>
+      )}
 
-        <div className="stack-card action-links">
-          {quickLinks.map((link) => (
-            <Link key={link.label} to={link.to} className="action-link">
-              <div className="command-eyebrow">{link.hint}</div>
-              <div>{link.label}</div>
-            </Link>
-          ))}
-        </div>
-
-        {processSteps.length > 0 && (
-          <div className={stackClasses('parameters', 'full')}>
-            <ProcessIndex
-              steps={processSteps}
-              mode={walkthroughMode ? 'guide' : 'default'}
-              focusId={walkthroughMode ? guideFocusId : null}
+      {studioExpanded ? (
+        <section className="control-shell">
+          {workflowData ? (
+            <AdvancedModeLayout
+              workflowName={selectedWorkflow}
+              dynamicInputs={orderedDynamicInputs}
+              imageInputs={imageInputs}
+              formData={formData}
+              onFormChange={handleFormChange}
+              presetsOpen={presetsOpen}
+              setPresetsOpen={setPresetsOpen}
+              imagesOpen={imagesOpen}
+              setImagesOpen={setImagesOpen}
+              onApplyPresetPatch={applyFormPatch}
+              readCurrentValues={readCurrentValues}
+              presetSectionRef={presetSectionRef}
+              parameterSectionRef={parameterSectionRef}
+              onParameterNavReady={handleParameterNavReady}
+              walkthroughMode={walkthroughMode}
+              walkthroughFocusId={null}
+              imageSectionRef={imageSectionRef}
             />
-          </div>
-        )}
-      </section>
+          ) : (
+            <div className="rounded-2xl border border-[#2A2E4A] bg-[#050716] px-3 py-6 text-[12px] text-[#9DA3FFCC] text-center">
+              Select a workflow to begin.
+            </div>
+          )}
+        </section>
+      ) : (
+        <section className="ui-panel text-center space-y-2">
+          <p className="ui-hint">
+            Studio mode is tucked away until you need it. Use the button above to reveal the full control surface.
+          </p>
+          <Link to="/" className="ui-button is-primary is-compact mx-auto">
+            Run the Wizard
+          </Link>
+        </section>
+      )}
 
-      <section className="control-shell">
-        {workflowData ? (
-          <AdvancedModeLayout
-            workflowName={selectedWorkflow}
-            dynamicInputs={orderedDynamicInputs}
-            imageInputs={imageInputs}
-            formData={formData}
-            onFormChange={handleFormChange}
-            presetsOpen={presetsOpen}
-            setPresetsOpen={setPresetsOpen}
-            imagesOpen={imagesOpen}
-            setImagesOpen={setImagesOpen}
-            onApplyPresetPatch={applyFormPatch}
-            readCurrentValues={readCurrentValues}
-            presetSectionRef={presetSectionRef}
-            parameterSectionRef={parameterSectionRef}
-            onParameterNavReady={handleParameterNavReady}
-            walkthroughMode={walkthroughMode}
-            walkthroughFocusId={walkthroughMode ? guideFocusId : null}
-            imageSectionRef={imageSectionRef}
+      {studioExpanded && (
+        <section ref={bottomBarRef} className="dock-panel">
+          <BottomBar
+            busy={isLoading}
+            progressValue={progressValue}
+            progressMax={progressMax}
+            statusText={statusText}
+            statusPhase={statusPhase}
+            primaryLabel="Render"
+            onPrimary={handleGenerate}
           />
-        ) : (
-          <div className="rounded-2xl border border-[#2A2E4A] bg-[#050716] px-3 py-6 text-[12px] text-[#9DA3FFCC] text-center">
-            Select a workflow to begin.
-          </div>
-        )}
-      </section>
-
-      <section ref={bottomBarRef} className={bottomSectionClasses}>
-        {walkthroughMode && (
-          <div className="guide-hint">Ready? Render handles the queue.</div>
-        )}
-        <BottomBar
-          busy={isLoading}
-          progressValue={progressValue}
-          progressMax={progressMax}
-          statusText={statusText}
-          statusPhase={statusPhase}
-          primaryLabel="Render"
-          onPrimary={handleGenerate}
-        />
-      </section>
+        </section>
+      )}
     </div>
   );
 }

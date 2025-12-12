@@ -15,6 +15,8 @@ import server  # noqa: F401 - keep import side-effects
 from aiohttp import web
 from PIL import Image, ImageDraw, ImageOps
 
+from ComfyUI_CozyGen import auth
+
 routes = web.RouteTableDef()
 
 EXT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -805,3 +807,61 @@ async def lora_library_delete(request: web.Request):
         del cards[card_id]
         _save_lora_cards(cards)
     return web.json_response({"status": "ok"})
+
+
+# ---------------- Auth
+@routes.post("/cozygen/api/login")
+async def login(request: web.Request):
+    if not auth.auth_enabled():
+        return web.json_response({"error": "auth_disabled"}, status=400)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid_body"}, status=400)
+
+    username = (body.get("username") or "").strip()
+    password = body.get("password") or ""
+
+    if username != auth.AUTH_USER or password != auth.AUTH_PASS:
+        return web.json_response({"error": "invalid_credentials"}, status=401)
+
+    token = auth.sign_token(username)
+    return web.json_response(
+        {
+            "token": token,
+            "user": username,
+            "expires_in": auth.AUTH_TTL_SECONDS,
+            "default_credentials": auth.default_credentials_in_use(),
+        }
+    )
+
+
+@routes.get("/cozygen/api/auth_status")
+async def auth_status(request: web.Request):
+    if not auth.auth_enabled():
+        return web.json_response({"authenticated": False, "user": None, "auth_enabled": False})
+
+    token = auth.extract_token(request)
+    verified = auth.verify_token(token)
+    if not verified:
+        return web.json_response(
+            {
+                "authenticated": False,
+                "user": None,
+                "auth_enabled": True,
+                "default_credentials": auth.default_credentials_in_use(),
+            },
+            status=401,
+        )
+
+    user, exp = verified
+    return web.json_response(
+        {
+            "authenticated": True,
+            "user": user,
+            "exp": exp,
+            "auth_enabled": True,
+            "default_credentials": auth.default_credentials_in_use(),
+        }
+    )

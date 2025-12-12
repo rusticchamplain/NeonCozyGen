@@ -1,6 +1,7 @@
 // js/src/hooks/useExecutionQueue.js
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { queuePrompt } from '../api';
+import { getToken } from '../utils/auth';
 import { injectFormValues } from '../utils/workflowGraph';
 import { saveFormState } from '../utils/storage';
 import { applyAliasesToForm } from '../utils/promptAliases';
@@ -155,7 +156,8 @@ export function useExecutionQueue({
     const connectWebSocket = () => {
       const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
       const host = window.location.host;
-      const wsUrl = `${protocol}://${host}/ws`;
+      const token = getToken();
+      const wsUrl = `${protocol}://${host}/ws${token ? `?token=${encodeURIComponent(token)}` : ''}`;
 
       const ws = new WebSocket(wsUrl);
       websocketRef.current = ws;
@@ -279,63 +281,68 @@ export function useExecutionQueue({
     setProgressValue(0);
     setProgressMax(0);
 
-    try {
-      // Inject form values into a fresh workflow copy
-      const baseForm = formData || {};
-      const effectiveFormData = overrides
-        ? { ...baseForm, ...(overrides || {}) }
-        : baseForm;
-      const aliasExpandedForm = applyAliasesToForm(
-        effectiveFormData,
-        promptAliases || {}
+    // Prepare workflow outside try block so it's accessible in catch for debugging
+    const baseForm = formData || {};
+    const effectiveFormData = overrides
+      ? { ...baseForm, ...(overrides || {}) }
+      : baseForm;
+    const aliasExpandedForm = applyAliasesToForm(
+      effectiveFormData,
+      promptAliases || {}
+    );
+
+    const { workflow: finalWorkflow, formData: updatedForm } =
+      injectFormValues(
+        workflowData,
+        dynamicInputs || [],
+        aliasExpandedForm || {}
       );
 
-      const { workflow: finalWorkflow, formData: updatedForm } =
-        injectFormValues(
-          workflowData,
-          dynamicInputs || [],
-          aliasExpandedForm || {}
+    // Keep persisted UI state using the user's raw input (aliases intact) while
+    // still preserving defaults resolved by injectFormValues.
+    const persistedFormData = { ...updatedForm, ...effectiveFormData };
+
+    // Persist updated form data (so randomization is reflected in UI / storage)
+    if (persistFormState && selectedWorkflow) {
+      saveFormState(selectedWorkflow, persistedFormData);
+    }
+    if (persistFormState) {
+      setFormData(persistedFormData);
+    }
+
+    // Ensure image filenames / inputs are set
+    const imgs = imageInputs || [];
+    for (const imgNode of imgs) {
+      if (!imgNode || !imgNode.id || !imgNode.inputs) continue;
+      const paramName = imgNode.inputs.param_name;
+      if (!paramName) continue;
+
+      const filename = persistedFormData[paramName];
+      if (!filename) {
+        alert(
+          `Please upload or select an image for "${paramName}" before generating.`
         );
-
-      // Keep persisted UI state using the user's raw input (aliases intact) while
-      // still preserving defaults resolved by injectFormValues.
-      const persistedFormData = { ...updatedForm, ...effectiveFormData };
-
-      // Persist updated form data (so randomization is reflected in UI / storage)
-      if (persistFormState && selectedWorkflow) {
-        saveFormState(selectedWorkflow, persistedFormData);
-      }
-      if (persistFormState) {
-        setFormData(persistedFormData);
+        markError('Missing image input');
+        return;
       }
 
-      // Ensure image filenames / inputs are set
-      const imgs = imageInputs || [];
-      for (const imgNode of imgs) {
-        if (!imgNode || !imgNode.id || !imgNode.inputs) continue;
-        const paramName = imgNode.inputs.param_name;
-        if (!paramName) continue;
-
-        const filename = persistedFormData[paramName];
-        if (!filename) {
-          alert(
-            `Please upload or select an image for "${paramName}" before generating.`
-          );
-          markError('Missing image input');
-          return;
-        }
-
-        if (finalWorkflow[imgNode.id] && finalWorkflow[imgNode.id].inputs) {
-          finalWorkflow[imgNode.id].inputs.image_filename = filename;
-        }
+      if (finalWorkflow[imgNode.id] && finalWorkflow[imgNode.id].inputs) {
+        finalWorkflow[imgNode.id].inputs.image_filename = filename;
       }
+    }
 
+    try {
       // Queue prompt
       await queuePrompt({ prompt: finalWorkflow });
       // From here on, WebSocket + heuristic drive progress/status
     } catch (err) {
       console.error('Failed to queue prompt', err);
-      markError('Error queuing prompt');
+      if (err?.unauthorized) {
+        markError('Session expired. Please sign in again.');
+        window.location.hash = '#/login';
+      } else {
+        markError('Error queuing prompt');
+      }
     }
   }, [
     workflowData,

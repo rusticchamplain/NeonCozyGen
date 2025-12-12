@@ -26,11 +26,12 @@ const jpost = async (url, body) => {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(body),
+    credentials: 'include',
   });
   return handleResponse(url, res);
 };
 const jdel = async (url) => {
-  const res = await fetch(url, { method: 'DELETE', headers: { ...authHeaders() } });
+  const res = await fetch(url, { method: 'DELETE', headers: { ...authHeaders() }, credentials: 'include' });
   return handleResponse(url, res);
 };
 
@@ -48,13 +49,19 @@ export async function queuePrompt(body) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(body),
+    credentials: 'include',
   });
   return handleResponse('/prompt', res);
 }
 export async function uploadImage(file) {
   const fd = new FormData();
   fd.append('image', file);
-  const res = await fetch('/cozygen/upload_image', { method: 'POST', headers: { ...authHeaders() }, body: fd });
+  const res = await fetch('/cozygen/upload_image', {
+    method: 'POST',
+    headers: { ...authHeaders() },
+    body: fd,
+    credentials: 'include',
+  });
   return handleResponse('/cozygen/upload_image', res);
 }
 
@@ -139,5 +146,7 @@ export async function login(username, password) {
 }
 
 export async function authStatus() {
-  return jget('/cozygen/api/auth_status');
+  return fetch('/cozygen/api/auth_status', { headers: { ...authHeaders() }, credentials: 'include' }).then((res) =>
+    handleResponse('/cozygen/api/auth_status', res)
+  );
 }

@@ -827,7 +827,7 @@ async def login(request: web.Request):
         return web.json_response({"error": "invalid_credentials"}, status=401)
 
     token = auth.sign_token(username)
-    return web.json_response(
+    resp = web.json_response(
         {
             "token": token,
             "user": username,
@@ -835,6 +835,17 @@ async def login(request: web.Request):
             "default_credentials": auth.default_credentials_in_use(),
         }
     )
+    # Set HttpOnly cookie for API requests; JS still uses token for WebSocket
+    resp.set_cookie(
+        "cozygen_token",
+        token,
+        max_age=auth.AUTH_TTL_SECONDS,
+        secure=request.secure,
+        httponly=True,
+        samesite="Lax",
+        path="/",
+    )
+    return resp
 
 
 @routes.get("/cozygen/api/auth_status")
@@ -865,3 +876,10 @@ async def auth_status(request: web.Request):
             "default_credentials": auth.default_credentials_in_use(),
         }
     )
+
+
+@routes.post("/cozygen/api/logout")
+async def logout(request: web.Request):
+    resp = web.json_response({"status": "ok"})
+    resp.del_cookie("cozygen_token", path="/")
+    return resp

@@ -5,7 +5,7 @@ import sys
 import server  # noqa: F401 - imported for side effects
 from aiohttp import web  # Import web for static files
 
-from . import auth  # Use relative import
+from ComfyUI_CozyGen import auth  # Use relative import
 from .api import routes as api_routes
 from .nodes import NODE_CLASS_MAPPINGS, NODE_DISPLAY_NAME_MAPPINGS
 

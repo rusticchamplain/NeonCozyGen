@@ -2,12 +2,16 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { authStatus, login as loginRequest } from '../api';
 import { clearToken, getToken, setToken } from '../utils/auth';
 
+const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+const IDLE_FLAG_KEY = 'cozygen_idle_logout';
+
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [ready, setReady] = useState(false);
   const [user, setUser] = useState(null);
   const [defaultCreds, setDefaultCreds] = useState(false);
+  const [idleTimer, setIdleTimer] = useState(null);
 
   const refresh = useCallback(async () => {
     const token = getToken();
@@ -39,6 +43,12 @@ export function AuthProvider({ children }) {
     setToken(res?.token || '');
     setUser(res?.user || username);
     setDefaultCreds(Boolean(res?.default_credentials));
+    // Clear any idle flag after a fresh login
+    try {
+      localStorage.removeItem(IDLE_FLAG_KEY);
+    } catch {
+      /* ignore */
+    }
     return res;
   }, []);
 
@@ -47,6 +57,38 @@ export function AuthProvider({ children }) {
     setUser(null);
     setDefaultCreds(false);
   }, []);
+
+  // Idle timeout: log out after inactivity window
+  useEffect(() => {
+    if (!ready) return;
+
+    const resetTimer = () => {
+      if (idleTimer) clearTimeout(idleTimer);
+      const t = setTimeout(() => {
+        clearToken();
+        setUser(null);
+        setDefaultCreds(false);
+        try {
+          localStorage.setItem(IDLE_FLAG_KEY, '1');
+        } catch {
+          /* ignore */
+        }
+        // Redirect to login; HashRouter friendly
+        window.location.hash = '#/login';
+      }, IDLE_TIMEOUT_MS);
+      setIdleTimer(t);
+    };
+
+    resetTimer();
+
+    const events = ['pointerdown', 'keydown', 'visibilitychange'];
+    events.forEach((ev) => window.addEventListener(ev, resetTimer, { passive: true }));
+
+    return () => {
+      if (idleTimer) clearTimeout(idleTimer);
+      events.forEach((ev) => window.removeEventListener(ev, resetTimer));
+    };
+  }, [ready, idleTimer]);
 
   const value = useMemo(
     () => ({

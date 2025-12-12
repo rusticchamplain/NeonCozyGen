@@ -48,6 +48,7 @@ PROTECTED_PREFIXES = (
 UNPROTECTED_PATHS = {
     "/cozygen/api/login",
     "/cozygen/api/auth_status",
+    "/cozygen/api/logout",
     "/cozygen/assets",
     "/cozygen",
     "/cozygen/",

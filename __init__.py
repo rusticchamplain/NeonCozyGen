@@ -1,9 +1,14 @@
+import logging
 import os
 import sys
-import server
-from aiohttp import web # Import web for static files
+
+import server  # noqa: F401 - imported for side effects
+from aiohttp import web  # Import web for static files
+
 from .api import routes as api_routes
 from .nodes import NODE_CLASS_MAPPINGS, NODE_DISPLAY_NAME_MAPPINGS
+
+logger = logging.getLogger(__name__)
 
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
@@ -13,19 +18,24 @@ for route in api_routes:
         route.method,
         route.path,
         route.handler,
-        name=f"cozygen_{route.handler.__name__}"
+        name=f"cozygen_{route.handler.__name__}",
     )
+
 
 # Handler to serve the React app's index.html
 async def serve_cozygen_app(request: web.Request) -> web.Response:
     index_path = os.path.join(os.path.dirname(__file__), "js", "dist", "index.html")
     if not os.path.exists(index_path):
-        return web.Response(text="CozyGen: Build not found. Please run `npm run build` in the `js` directory.", status=500)
+        return web.Response(
+            text="CozyGen: Build not found. Please run `npm run build` in the `js` directory.",
+            status=500,
+        )
     return web.FileResponse(index_path)
 
+
 # Route to serve the main application
-server.PromptServer.instance.app.router.add_get('/cozygen', serve_cozygen_app)
-server.PromptServer.instance.app.router.add_get('/cozygen/', serve_cozygen_app)
+server.PromptServer.instance.app.router.add_get("/cozygen", serve_cozygen_app)
+server.PromptServer.instance.app.router.add_get("/cozygen/", serve_cozygen_app)
 
 
 # Serve the new 'dist' directory which contains the built React app
@@ -34,10 +44,9 @@ server.PromptServer.instance.app.router.add_static(
     "/cozygen/assets", path=os.path.join(static_dist_path, "assets"), name="cozygen_assets"
 )
 
+__all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]
 
-__all__ = ['NODE_CLASS_MAPPINGS', 'NODE_DISPLAY_NAME_MAPPINGS']
-
-print("✅ CozyGen API routes mounted.")
-print("✅ CozyGen web UI served at /cozygen/")
+logger.info("✅ CozyGen API routes mounted.")
+logger.info("✅ CozyGen web UI served at /cozygen/")
 
 WEB_DIRECTORY = "./js/web"

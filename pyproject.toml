@@ -1,0 +1,21 @@
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+fix = true
+show-fixes = true
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "T201"]
+ignore = []
+unfixable = ["T201"]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+namespace_packages = true
+explicit_package_bases = true
+show_error_codes = true
+pretty = true

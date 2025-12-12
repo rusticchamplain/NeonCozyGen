@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { queuePrompt } from '../api';
 import { injectFormValues } from '../utils/workflowGraph';
 import { saveFormState } from '../utils/storage';
+import { applyAliasesToForm } from '../utils/promptAliases';
 
 /**
  * Handles:
@@ -25,6 +26,7 @@ export function useExecutionQueue({
   imageInputs,
   formData,
   setFormData,
+  promptAliases = null,
 }) {
   const [isLoading, setIsLoading] = useState(false);
   const [hasActiveJob, setHasActiveJob] = useState(false);
@@ -102,6 +104,7 @@ export function useExecutionQueue({
     setStatusText('Finished');
     setStatusPhase('finished');
     scheduleIdleReset();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const markError = useCallback((msg = 'Error') => {
@@ -111,6 +114,7 @@ export function useExecutionQueue({
     setStatusText(msg);
     setStatusPhase('error');
     scheduleIdleReset();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Heuristic: if progress reaches 100% and nothing says "error", mark finished
@@ -258,8 +262,13 @@ export function useExecutionQueue({
     };
   }, [markError, markFinished]);
 
-  const handleGenerate = useCallback(async () => {
+  const handleGenerate = useCallback(async (options = {}) => {
     if (!workflowData) return;
+
+    const {
+      overrides = null,
+      persistFormState = true,
+    } = options || {};
 
     clearFinishTimer();
     clearIdleTimer();
@@ -272,18 +281,33 @@ export function useExecutionQueue({
 
     try {
       // Inject form values into a fresh workflow copy
+      const baseForm = formData || {};
+      const effectiveFormData = overrides
+        ? { ...baseForm, ...(overrides || {}) }
+        : baseForm;
+      const aliasExpandedForm = applyAliasesToForm(
+        effectiveFormData,
+        promptAliases || {}
+      );
+
       const { workflow: finalWorkflow, formData: updatedForm } =
         injectFormValues(
           workflowData,
           dynamicInputs || [],
-          formData || {}
+          aliasExpandedForm || {}
         );
 
+      // Keep persisted UI state using the user's raw input (aliases intact) while
+      // still preserving defaults resolved by injectFormValues.
+      const persistedFormData = { ...updatedForm, ...effectiveFormData };
+
       // Persist updated form data (so randomization is reflected in UI / storage)
-      if (selectedWorkflow) {
-        saveFormState(selectedWorkflow, updatedForm);
+      if (persistFormState && selectedWorkflow) {
+        saveFormState(selectedWorkflow, persistedFormData);
       }
-      setFormData(updatedForm);
+      if (persistFormState) {
+        setFormData(persistedFormData);
+      }
 
       // Ensure image filenames / inputs are set
       const imgs = imageInputs || [];
@@ -292,7 +316,7 @@ export function useExecutionQueue({
         const paramName = imgNode.inputs.param_name;
         if (!paramName) continue;
 
-        const filename = updatedForm[paramName];
+        const filename = persistedFormData[paramName];
         if (!filename) {
           alert(
             `Please upload or select an image for "${paramName}" before generating.`
@@ -318,6 +342,7 @@ export function useExecutionQueue({
     dynamicInputs,
     imageInputs,
     formData,
+    promptAliases,
     selectedWorkflow,
     setFormData,
     markError,

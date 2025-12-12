@@ -148,3 +148,21 @@ I do not plan to update this forever, but wanted to share what I have. Feel free
 ## 📄 License
 
 This project is licensed under the GPL-3.0 license - see the [LICENSE](LICENSE) file for details.
+
+## 🧹 Development & Linting
+
+Python:
+
+```bash
+pip install -r requirements.txt -r requirements-dev.txt
+python -m ruff check .
+python -m mypy .
+```
+
+Frontend:
+
+```bash
+cd js
+npm install
+npm run lint
+```

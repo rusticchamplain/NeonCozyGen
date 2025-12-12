@@ -8,19 +8,43 @@ const isImage = (name = '') =>
 const isVideo = (name = '') => /\.(mp4|webm|mov|mkv)$/i.test(name);
 
 export function useGallery() {
-  const [path, setPath] = useState(localStorage.getItem('galleryPath') || '');
+  const safeGet = (key, fallback = '') => {
+    try {
+      return typeof window !== 'undefined' ? localStorage.getItem(key) || fallback : fallback;
+    } catch {
+      return fallback;
+    }
+  };
+
+  const safeSet = (key, value) => {
+    try {
+      if (typeof window !== 'undefined') localStorage.setItem(key, value);
+    } catch {
+      // ignore
+    }
+  };
+
+  const [path, setPath] = useState(safeGet('galleryPath', ''));
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
 
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [perPage, setPerPageState] = useState(
-    parseInt(localStorage.getItem('galleryPageSize') || '30', 10) || 30
-  );
+  const [perPage, setPerPageState] = useState(() => {
+    const raw = safeGet('galleryPageSize', '30');
+    const parsed = parseInt(raw, 10);
+    return Number.isFinite(parsed) ? parsed : 30;
+  });
 
   const [kind, setKindState] = useState('all'); // all | image | video
   const [showHidden, setShowHidden] = useState(false);
   const [query, setQueryState] = useState('');
+  const [recursive, setRecursive] = useState(() => {
+    const raw = safeGet('galleryRecursive', '0');
+    return raw === '1';
+  });
+
+  const [reloadKey, setReloadKey] = useState(0);
 
   // fetch gallery data when path/page/perPage changes
   useEffect(() => {
@@ -29,7 +53,7 @@ export function useGallery() {
     const load = async () => {
       setLoading(true);
       try {
-        const data = await getGallery(path, page, perPage);
+        const data = await getGallery(path, page, perPage, showHidden, recursive, kind);
         if (cancelled) return;
         if (data && data.items) {
           setItems(data.items);
@@ -50,13 +74,13 @@ export function useGallery() {
     };
 
     load();
-    localStorage.setItem('galleryPath', path);
-    localStorage.setItem('galleryPageSize', String(perPage));
+    safeSet('galleryPath', path);
+    safeSet('galleryPageSize', String(perPage));
 
     return () => {
       cancelled = true;
     };
-  }, [path, page, perPage]);
+  }, [path, page, perPage, reloadKey, showHidden, recursive, kind]);
 
   // breadcrumbs from current path
   const crumbs = useMemo(() => {
@@ -144,9 +168,20 @@ export function useGallery() {
     setPage(1);
   }, []);
 
+  const setRecursiveFlag = useCallback((value) => {
+    const v = !!value;
+    setRecursive(v);
+    setPage(1);
+    safeSet('galleryRecursive', v ? '1' : '0');
+  }, []);
+
   const setQuery = useCallback((value) => {
     setQueryState(value);
     setPage(1);
+  }, []);
+
+  const refresh = useCallback(() => {
+    setReloadKey((prev) => prev + 1);
   }, []);
 
   return {
@@ -160,6 +195,7 @@ export function useGallery() {
     kind,
     showHidden,
     query,
+    recursive,
 
     // derived
     crumbs,
@@ -173,10 +209,11 @@ export function useGallery() {
     setShowHidden,
     setQuery,
     setKind,
+    setRecursive: setRecursiveFlag,
     goBack,
     goRoot,
     goToPath,
     selectDir,
+    refresh,
   };
 }
-

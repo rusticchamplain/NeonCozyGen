@@ -296,6 +296,8 @@ async def hello(_):
 async def gallery_list(request: web.Request):
     subfolder = request.rel_url.query.get("subfolder", "")
     show_hidden = request.rel_url.query.get("show_hidden", "0") in ("1", "true", "True")
+    recursive = request.rel_url.query.get("recursive", "0") in ("1", "true", "True")
+    kind = (request.rel_url.query.get("kind", "all") or "all").lower()
     try:
         page = int(request.rel_url.query.get("page", "1"))
         per_page = int(request.rel_url.query.get("per_page", "20"))
@@ -309,41 +311,87 @@ async def gallery_list(request: web.Request):
     if not os.path.isdir(path):
         return web.json_response({"error": "not found"}, status=404)
 
-    items = []
-    for name in os.listdir(path):
-        if not show_hidden and name.startswith("."):  # hide dot folders/files
-            continue
-        full = os.path.join(path, name)
-        if os.path.isdir(full):
-            items.append(
-                {
-                    "filename": name,
-                    "type": "directory",
-                    "subfolder": os.path.join(subfolder, name).replace("\\", "/"),
-                    "mtime": os.path.getmtime(full),
-                }
+    def _is_ext_ok(name: str) -> bool:
+        low = name.lower()
+        return low.endswith(
+            (
+                ".png",
+                ".jpg",
+                ".jpeg",
+                ".gif",
+                ".webp",
+                ".bmp",
+                ".tif",
+                ".tiff",
+                ".mp4",
+                ".webm",
+                ".mov",
+                ".mkv",
+                ".mp3",
+                ".wav",
+                ".flac",
             )
-        else:
-            low = name.lower()
-            if low.endswith(
-                (
-                    ".png",
-                    ".jpg",
-                    ".jpeg",
-                    ".gif",
-                    ".webp",
-                    ".bmp",
-                    ".tif",
-                    ".tiff",
-                    ".mp4",
-                    ".webm",
-                    ".mov",
-                    ".mkv",
-                    ".mp3",
-                    ".wav",
-                    ".flac",
+        )
+
+    def _type_for(name: str) -> str:
+        low = name.lower()
+        if low.endswith((".mp4", ".webm", ".mov", ".mkv")):
+            return "video"
+        return "image"
+
+    def _kind_allowed(name: str) -> bool:
+        if kind == "all":
+            return True
+        if kind == "video":
+            return _type_for(name) == "video"
+        if kind == "image":
+            return _type_for(name) == "image"
+        return True
+
+    items = []
+
+    if recursive:
+        for root, dirs, files in os.walk(path):
+            # Hide dot dirs unless show_hidden
+            dirs[:] = [d for d in dirs if show_hidden or not d.startswith(".")]
+            for fname in files:
+                if not show_hidden and fname.startswith("."):
+                    continue
+                if not _is_ext_ok(fname):
+                    continue
+                if not _kind_allowed(fname):
+                    continue
+                full = os.path.join(root, fname)
+                rel_sub = os.path.relpath(root, base).replace("\\", "/")
+                if rel_sub == ".":
+                    rel_sub = ""
+                items.append(
+                    {
+                        "filename": fname,
+                        "type": "output",
+                        "subfolder": rel_sub,
+                        "mtime": os.path.getmtime(full),
+                    }
                 )
-            ):
+    else:
+        for name in os.listdir(path):
+            if not show_hidden and name.startswith("."):  # hide dot folders/files
+                continue
+            full = os.path.join(path, name)
+            if os.path.isdir(full):
+                items.append(
+                    {
+                        "filename": name,
+                        "type": "directory",
+                        "subfolder": os.path.join(subfolder, name).replace("\\", "/"),
+                        "mtime": os.path.getmtime(full),
+                    }
+                )
+            else:
+                if not _is_ext_ok(name):
+                    continue
+                if not _kind_allowed(name):
+                    continue
                 items.append(
                     {
                         "filename": name,

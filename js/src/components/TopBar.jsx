@@ -1,55 +1,129 @@
 // js/src/components/TopBar.jsx
 
-import React from "react";
-import { Link, NavLink } from "react-router-dom";
+import { useState } from 'react';
+import { Link, NavLink } from 'react-router-dom';
+import '../styles/mobile-helpers.css';
+import useGalleryPending from '../hooks/useGalleryPending';
+import { useAuth } from '../hooks/useAuth';
 
-function navLinkClasses({ isActive }) {
-  return [
-    'ui-button is-compact',
-    isActive ? 'is-primary' : 'is-ghost',
-  ].join(' ');
-}
+const PRIMARY_LINKS = [
+  { to: '/', label: '🎨 Studio', end: true },
+];
+
+const SECONDARY_LINKS = [
+  { to: '/gallery', label: '🖼️ Gallery' },
+  { to: '/presets', label: '✨ Presets' },
+  { to: '/lora-library', label: '🧩 LoRA' },
+  { to: '/aliases', label: '🔖 Aliases' },
+];
+
+const navLinkClasses = ({ isActive }) =>
+  ['slim-nav-link btn-touch', isActive ? 'is-active' : null].filter(Boolean).join(' ');
 
 export default function TopBar() {
-  return (
-    <header className="sticky top-0 z-40 bg-[#050716E6] border-b border-[#3EF0FF33] backdrop-blur-md">
-    <div className="max-w-7xl mx-auto px-3 sm:px-5 py-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-    {/* Brand */}
-    <Link
-    to="/"
-    className="flex items-center gap-2 hover:opacity-95 transition-opacity"
-    >
-    <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-2xl bg-[radial-gradient(circle_at_0_0,#FF60D0_0,#3EF0FF_55%,#050716_100%)] flex items-center justify-center text-[#050716] text-sm sm:text-base font-extrabold shadow-[0_0_18px_rgba(255,96,208,0.9)]">
-    CG
-    </div>
-    <div className="flex flex-col leading-tight">
-    <span className="text-xs sm:text-sm font-semibold tracking-[0.18em] uppercase text-[#F8F4FF]">
-    CozyGen
-    </span>
-    <span className="hidden xs:block text-[9px] sm:text-[10px] text-[#A0A4FFCC] tracking-[0.18em] uppercase">
-    ComfyUI lab surface
-    </span>
-    </div>
-    </Link>
+  const [menuOpen, setMenuOpen] = useState(false);
+  const galleryPending = useGalleryPending();
+  const { logout, user } = useAuth();
+  const toggleMenu = () => setMenuOpen((prev) => !prev);
+  const closeMenu = () => setMenuOpen(false);
 
-    {/* Navigation */}
-    <nav className="w-full sm:w-auto flex justify-center sm:justify-end">
-    <div className="ui-toolbar flex-wrap justify-center">
-    <NavLink to="/" className={navLinkClasses} end>
-    Wizard
-    </NavLink>
-    <NavLink to="/studio" className={navLinkClasses}>
-    Studio
-    </NavLink>
-    <NavLink to="/presets" className={navLinkClasses}>
-    Presets
-    </NavLink>
-    <NavLink to="/gallery" className={navLinkClasses}>
-    Gallery
-    </NavLink>
-    </div>
-    </nav>
-    </div>
+  const handleLogout = () => {
+    try {
+      logout();
+    } catch {
+      // ignore
+    }
+    window.location.hash = '#/login';
+  };
+
+  return (
+    <header className="top-bar">
+      <div className="top-bar-shell">
+        <div className="brand-row">
+          <Link to="/" className="brand-mark" onClick={closeMenu}>
+            <span className="brand-icon">CG</span>
+            <span className="brand-text">CozyGen</span>
+          </Link>
+
+          <button
+            type="button"
+            className={`mobile-menu-toggle btn-touch ${menuOpen ? 'is-active' : ''} md:hidden`}
+            onClick={toggleMenu}
+            aria-expanded={menuOpen}
+            aria-controls="cozygen-mobile-nav"
+          >
+            <span className="mobile-menu-label">{menuOpen ? 'Close' : 'Menu'}</span>
+            <span className="mobile-menu-icon">
+              <span />
+            </span>
+          </button>
+
+          <button
+            type="button"
+            className="hidden md:inline-flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/60 px-3 py-2 text-slate-200 text-sm hover:bg-slate-800 transition"
+            onClick={handleLogout}
+            title="Sign out"
+          >
+            <span className="text-lg">🚪</span>
+            <span className="hidden sm:inline text-xs uppercase tracking-wide">Logout</span>
+            {user ? <span className="text-slate-400 text-xs">@{user}</span> : null}
+          </button>
+        </div>
+      </div>
+
+      <div
+        id="cozygen-mobile-nav"
+        className={`mobile-nav-drawer md:hidden ${menuOpen ? 'is-open' : ''}`}
+        role="menu"
+      >
+        <div className="mobile-nav-section">
+          {PRIMARY_LINKS.map((link) => (
+            <NavLink
+              key={link.to}
+              to={link.to}
+              end={link.end}
+              className={navLinkClasses}
+              onClick={closeMenu}
+              role="menuitem"
+            >
+              {link.label}
+            </NavLink>
+          ))}
+        </div>
+        <div className="mobile-nav-section secondary">
+          {SECONDARY_LINKS.map((link) => (
+            <NavLink
+              key={link.to}
+              to={link.to}
+              end={link.end}
+              className={navLinkClasses}
+              onClick={closeMenu}
+              role="menuitem"
+            >
+              <span className="inline-flex items-center gap-1.5">
+                <span>{link.label}</span>
+                {link.to === '/gallery' && galleryPending ? (
+                  <span className="badge-dot" aria-hidden="true" />
+                ) : null}
+              </span>
+            </NavLink>
+          ))}
+          <button
+            type="button"
+            className="slim-nav-link btn-touch text-left"
+            onClick={() => {
+              closeMenu();
+              handleLogout();
+            }}
+            role="menuitem"
+          >
+            <span className="inline-flex items-center gap-2">
+              <span>🚪 Logout</span>
+              {user ? <span className="text-slate-400 text-xs">@{user}</span> : null}
+            </span>
+          </button>
+        </div>
+      </div>
     </header>
   );
 }

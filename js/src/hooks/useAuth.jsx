@@ -1,13 +1,10 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { authStatus, login as loginRequest } from '../api';
 import { clearToken, getToken, setToken } from '../utils/auth';
+import { IDLE_FLAG_KEY, IDLE_TIMEOUT_MS } from './useAuthConstants';
+import AuthContext from './useAuthContext';
 
-const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
-const IDLE_FLAG_KEY = 'cozygen_idle_logout';
-
-const AuthContext = createContext(null);
-
-export function AuthProvider({ children }) {
+function AuthProviderInner({ children }) {
   const [ready, setReady] = useState(false);
   const [user, setUser] = useState(null);
   const [defaultCreds, setDefaultCreds] = useState(false);
@@ -110,4 +107,8 @@ export function useAuth() {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error('useAuth must be used within AuthProvider');
   return ctx;
+}
+
+export function AuthProvider({ children }) {
+  return <AuthProviderInner>{children}</AuthProviderInner>;
 }

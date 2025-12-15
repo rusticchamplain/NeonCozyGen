@@ -12,6 +12,7 @@ venv/
 env/
 
 data/
+workflows/*
 js/node_modules/
 js/.eslintcache
 js/.vite/

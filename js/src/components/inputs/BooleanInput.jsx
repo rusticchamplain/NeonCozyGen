@@ -1,5 +1,3 @@
-import React from 'react';
-
 export default function BooleanInput({
   name,
   label,        // DynamicForm renders label

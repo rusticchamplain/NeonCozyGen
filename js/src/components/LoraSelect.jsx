@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 /**
  * LoraSelect
@@ -55,13 +55,17 @@ export default function LoraSelect({ choices, value, onChange, storageKey }) {
     useEffect(() => {
         try {
             localStorage.setItem(`${storageKey}_favorites`, JSON.stringify(favorites));
-        } catch {}
+        } catch {
+            // localStorage may be unavailable
+        }
     }, [favorites, storageKey]);
 
     useEffect(() => {
         try {
             localStorage.setItem(`${storageKey}_recents`, JSON.stringify(recents));
-        } catch {}
+        } catch {
+            // localStorage may be unavailable
+        }
     }, [recents, storageKey]);
 
     // ---- folder expanded state (persisted) ----
@@ -69,7 +73,9 @@ export default function LoraSelect({ choices, value, onChange, storageKey }) {
         try {
             const raw = localStorage.getItem(`${storageKey}_folders_open`);
             if (raw) return JSON.parse(raw);
-        } catch {}
+        } catch {
+            // localStorage may be unavailable
+        }
         // default: expand the folder of current selection (if any)
         const cur = normalized.find((n) => n.value === value);
         return cur ? { [cur.folder]: true } : {};
@@ -78,7 +84,9 @@ export default function LoraSelect({ choices, value, onChange, storageKey }) {
     useEffect(() => {
         try {
             localStorage.setItem(`${storageKey}_folders_open`, JSON.stringify(expanded));
-        } catch {}
+        } catch {
+            // localStorage may be unavailable
+        }
     }, [expanded, storageKey]);
 
     const setAllFolders = (openAll, foldersArr) => {

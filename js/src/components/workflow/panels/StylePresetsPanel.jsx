@@ -1,4 +1,3 @@
-import React from 'react';
 import SimplePresetPicker from '../../SimplePresetPicker';
 
 export default function StylePresetsPanel({

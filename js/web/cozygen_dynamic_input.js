@@ -36,18 +36,6 @@ import { app } from "/scripts/app.js";
         // Add more mappings as needed for other common loaders
     };
 
-    // Helper function to determine if a value matches a given type
-    function valueMatchesType(value, type, options) {
-        if (type === "number" || type === "number (integer)") {
-            return typeof value === "number";
-        } else if (type === "combo") {
-            return options?.values?.includes(value);
-        } else if (type === "toggle") {
-            return typeof value === "boolean";
-        }
-        return typeof value === "string";
-    }
-
     // Function to change the widgets on the CozyGenDynamicInput node
     function changeCozyGenWidgets(node, connectedInputType, connectedInputProps, connectedWidget, targetNodeType, targetInputName) {
         let paramType = "STRING";
@@ -58,7 +46,7 @@ import { app } from "/scripts/app.js";
         let multiline = false;
         let choices = [];
 
-        let detectedWidgetType = connectedWidget?.type; // Use optional chaining
+        const detectedWidgetType = connectedWidget?.type; // Use optional chaining
 
         // Determine the type and properties based on the connected input
         if (connectedInputType === "COMBO") { // Explicitly check for "COMBO" string type
@@ -111,6 +99,8 @@ import { app } from "/scripts/app.js";
         }
 
         // Add the default_value widget with the correct type
+        // One placeholder holder reused across type branches
+        // eslint-disable-next-line prefer-const
         let defaultWidget;
         if (paramType === "DROPDOWN") {
             defaultWidget = node.addWidget("combo", "default_value", defaultValue, function(v) { node.properties["default_value"] = v; }, { values: choices });
@@ -120,7 +110,7 @@ import { app } from "/scripts/app.js";
                 inferredChoiceType = nodeCategoryMap[targetNodeType][targetInputName];
             }
 
-            let choiceTypeWidget = node.addWidget("text", "choice_type", node.properties["choice_type"] || inferredChoiceType, function(v) { node.properties["choice_type"] = v; });
+            const choiceTypeWidget = node.addWidget("text", "choice_type", node.properties["choice_type"] || inferredChoiceType, function(v) { node.properties["choice_type"] = v; });
             
             // If an inferred type is found and the property is currently empty, set it
             if (inferredChoiceType && !node.properties["choice_type"]) {
@@ -129,7 +119,7 @@ import { app } from "/scripts/app.js";
             }
 
             // Add the display_bypass toggle for dropdowns
-            let displayBypassToggle = node.addWidget("toggle", "display_bypass", node.properties["display_bypass"], function(v) { node.properties["display_bypass"] = v; });
+            const displayBypassToggle = node.addWidget("toggle", "display_bypass", node.properties["display_bypass"], function(v) { node.properties["display_bypass"] = v; });
             node.properties["display_bypass"] = displayBypassToggle.value;
 
         } else if (paramType === "INT") {
@@ -143,7 +133,7 @@ import { app } from "/scripts/app.js";
             defaultWidget = node.addWidget("text", "default_value", defaultValue, function(v) { node.properties["default_value"] = v; }, { multiline: multiline });
 
             // Then add the multiline toggle that controls it.
-            let multilineToggle = node.addWidget("toggle", "Multiline", multiline, function(v) {
+            const multilineToggle = node.addWidget("toggle", "Multiline", multiline, function(v) {
                 // Update the multiline property of the default_value widget
                 defaultWidget.options.multiline = v;
                 node.properties["multiline"] = v; // Also update the property
@@ -158,16 +148,16 @@ import { app } from "/scripts/app.js";
 
         // Add min/max/step for number types if applicable
         if (paramType === "INT" || paramType === "FLOAT") {
-            let minWidget = node.addWidget("number", "min_value", min, function(v) { node.properties["min_value"] = v; }, { precision: (paramType === "INT" ? 0 : undefined) });
-            let maxWidget = node.addWidget("number", "max_value", max, function(v) { node.properties["max_value"] = v; }, { precision: (paramType === "INT" ? 0 : undefined) });
-            let incrementWidget = node.addWidget("number", "increment", increment, function(v) { node.properties["increment"] = v; }, { precision: (paramType === "INT" ? 0 : undefined) });
+            const minWidget = node.addWidget("number", "min_value", min, function(v) { node.properties["min_value"] = v; }, { precision: (paramType === "INT" ? 0 : undefined) });
+            const maxWidget = node.addWidget("number", "max_value", max, function(v) { node.properties["max_value"] = v; }, { precision: (paramType === "INT" ? 0 : undefined) });
+            const incrementWidget = node.addWidget("number", "increment", increment, function(v) { node.properties["increment"] = v; }, { precision: (paramType === "INT" ? 0 : undefined) });
             
             node.properties["min_value"] = minWidget.value;
             node.properties["max_value"] = maxWidget.value;
             node.properties["increment"] = incrementWidget.value;
 
             // Add the randomize toggle
-            let randomizeToggle = node.addWidget("toggle", "add_randomize_toggle", node.properties["add_randomize_toggle"], function(v) { node.properties["add_randomize_toggle"] = v; });
+            node.addWidget("toggle", "add_randomize_toggle", node.properties["add_randomize_toggle"], function(v) { node.properties["add_randomize_toggle"] = v; });
 
         } else {
             // Ensure these properties are reset or not present if not a number type
@@ -237,7 +227,7 @@ import { app } from "/scripts/app.js";
             }
             
             // Add default_value as STRING
-            let defaultWidget = node.addWidget("text", "default_value", "", function(v) { node.properties["default_value"] = v; }, { multiline: false });
+            const defaultWidget = node.addWidget("text", "default_value", "", function(v) { node.properties["default_value"] = v; }, { multiline: false });
             node.properties["default_value"] = defaultWidget.value;
 
             // Reset other properties
@@ -269,7 +259,7 @@ import { app } from "/scripts/app.js";
         };
 
         const onConnectionsChange = nodeType.prototype.onConnectionsChange;
-        nodeType.prototype.onConnectionsChange = function (_, index, connected) {
+        nodeType.prototype.onConnectionsChange = function (_, index) {
             // Only adapt if the change is on the output and not during graph configuration
             if (index === 0 && !app.configuringGraph) { // Assuming output is at index 0
                 adaptCozyGenWidgetsToConnection(this);
@@ -281,7 +271,7 @@ import { app } from "/scripts/app.js";
     // Register the extension
     app.registerExtension({
         name: "cozygen.dynamic_input",
-        beforeRegisterNodeDef(nodeType, nodeData, app) {
+        beforeRegisterNodeDef(nodeType, nodeData) {
             if (nodeData.name === "CozyGenDynamicInput") {
                 setupCozyGenDynamicInputNode(nodeType);
             }

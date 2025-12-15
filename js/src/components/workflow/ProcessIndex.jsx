@@ -1,5 +1,3 @@
-import React from 'react';
-
 const STATUS_PILL = {
   done: 'ui-pill is-soft',
   active: 'ui-pill',
@@ -11,25 +9,31 @@ export default function ProcessIndex({ steps = [], mode = 'default', focusId }) 
   if (!steps.length) return null;
 
   const containerClasses = [
-    'ui-panel space-y-3',
+    'ui-panel collapsible-card',
     mode === 'guide' ? 'guide-surface' : '',
   ]
     .filter(Boolean)
     .join(' ');
 
   return (
-    <div className={containerClasses}>
-      <div className="ui-section-head">
-        <div className="ui-section-text">
-          <span className="ui-kicker">
-            {mode === 'guide' ? 'Inline guide' : 'Flow index'}
-          </span>
-          <div className="ui-title">Steps</div>
+    <details className={containerClasses}>
+      <summary className="collapsible-card-summary">
+        <span className="collapsible-card-summary-label">
+          {mode === 'guide' ? 'Inline guide' : 'Flow index'}
+        </span>
+      </summary>
+      <div className="collapsible-card-body space-y-3">
+        <div className="ui-section-head">
+          <div className="ui-section-text">
+            <span className="ui-kicker">
+              {mode === 'guide' ? 'Inline guide' : 'Flow index'}
+            </span>
+            <div className="ui-title">Steps</div>
+          </div>
+          <span className="ui-pill is-muted">{steps.length} steps</span>
         </div>
-        <span className="ui-pill is-muted">{steps.length} steps</span>
-      </div>
-      <div className="space-y-2.5">
-        {steps.map((step, idx) => {
+        <div className="space-y-2.5">
+          {steps.map((step, idx) => {
           const pillClass =
             STATUS_PILL[step.status] || STATUS_PILL.locked;
           const isDisabled = step.disabled;
@@ -80,7 +84,8 @@ export default function ProcessIndex({ steps = [], mode = 'default', focusId }) 
             </div>
           );
         })}
+        </div>
       </div>
-    </div>
+    </details>
   );
 }

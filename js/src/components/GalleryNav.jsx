@@ -1,4 +1,4 @@
-import React from 'react';
+import { Fragment } from 'react';
 import '../styles/mobile-helpers.css'; // keep for hide-scrollbar, etc.
 
 // Small inline SVGs
@@ -7,15 +7,6 @@ const IconBack = (props) => (
     <path
       fill="currentColor"
       d="M15.5 19a1 1 0 0 1-.7-.3l-6-6a1 1 0 0 1 0-1.4l6-6a1 1 0 1 1 1.4 1.4L10.9 12l5.3 5.3A1 1 0 0 1 15.5 19z"
-    />
-  </svg>
-);
-
-const IconSearch = (props) => (
-  <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" {...props}>
-    <path
-      fill="currentColor"
-      d="M10 18a8 8 0 1 1 5.3-14.1l4.9 4.9a1 1 0 1 1-1.4 1.4l-4.9-4.9A6 6 0 1 0 10 16a1 1 0 0 1 0 2z"
     />
   </svg>
 );
@@ -50,176 +41,60 @@ const IconCollection = (props) => (
   </svg>
 );
 
-// Segmented control button (synth-wave style)
-function SegBtn({ active, children, onClick, ariaLabel }) {
-  return (
-    <button
-      type="button"
-      aria-label={ariaLabel}
-      onClick={onClick}
-      className={[
-        'px-3 py-1.5 text-[11px] rounded-full font-medium tracking-[0.16em] uppercase transition-colors duration-150',
-        active
-          ? 'bg-[linear-gradient(90deg,#FF60D0,#3EF0FF)] text-[#050716] shadow-[0_0_14px_rgba(62,240,255,0.9)]'
-          : 'bg-[#111325] text-[#C3C7FFB3] hover:text-[#FFFFFF] hover:bg-[#191C33]',
-      ].join(' ')}
-    >
-      {children}
-    </button>
-  );
-}
-
 /**
  * Props:
  * - subfolder: string
  * - crumbs: [{name, path}]
  * - dirChips: [{filename, subfolder}]
- * - kind: 'all' | 'image' | 'video'
- * - showHidden: boolean
- * - query: string
  * - onBack(), onRoot(), onCrumb(path), onSelectDir(subfolder)
- * - onKind(v), onShowHidden(bool), onQuery(v)
  */
 export default function GalleryNav({
   subfolder,
   crumbs = [],
   dirChips = [],
-  kind = 'all',
-  showHidden = false,
-  query = '',
   onBack,
   onRoot,
   onCrumb,
   onSelectDir,
-  onKind,
-  onShowHidden,
-  onQuery,
 }) {
-  const hasPath = Boolean(subfolder);
-
   return (
     <div className="space-y-3 text-[#F8F4FF]">
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="flex items-center gap-2 overflow-x-auto hide-scrollbar">
-          <button
-            type="button"
-            className="inline-flex items-center gap-1 rounded-full border border-[#3EF0FF40] bg-[#050716] px-3 py-1.5 text-[11px] tracking-[0.16em] uppercase text-[#C3C7FFCC] hover:bg-[#111325]"
-            onClick={onBack}
-            disabled={!hasPath}
-          >
-            <span className="text-[#3EF0FF]">
-              <IconBack />
-            </span>
-            <span className={hasPath ? '' : 'opacity-40'}>Back</span>
-          </button>
+      <div className="flex items-center justify-start gap-2 flex-wrap" />
 
-          <nav className="flex items-center gap-1 text-[11px] tracking-[0.18em] uppercase text-[#9DA3FFCC]">
+      <div
+        className="flex items-center gap-2 flex-wrap text-[#C3C7FF]"
+        role="navigation"
+        aria-label="Gallery path"
+      >
+        {crumbs.map((crumb, idx) => (
+          <Fragment key={crumb.path || crumb.name || idx}>
+            <span className="text-[#6A6FA8]">/</span>
             <button
               type="button"
-              className="px-3 py-1 rounded-full bg-[#111325] hover:bg-[#191C33] text-[#E7EBFF] inline-flex items-center gap-1.5"
-              onClick={onRoot}
+              className="gallery-chip-btn"
+              onClick={() => onCrumb?.(crumb.path)}
+              aria-current={idx === crumbs.length - 1 ? 'page' : undefined}
             >
-              <span className="text-[#3EF0FF]">
-                <IconCollection />
-              </span>
-              <span>Collections</span>
+              {crumb.name}
             </button>
-            {crumbs.map((c, idx) => (
-              <React.Fragment key={c.path}>
-                <span className="text-[#3EF0FF99]">/</span>
-                <button
-                  type="button"
-                  className={[
-                    'px-3 py-1 rounded-full hover:bg-[#191C33] inline-flex items-center gap-1.5',
-                    idx === crumbs.length - 1
-                      ? 'bg-[#1B2544] text-[#F8F4FF]'
-                      : 'bg-transparent text-[#C3C7FFCC]',
-                  ].join(' ')}
-                  onClick={() => onCrumb?.(c.path)}
-                  title={c.path}
-                >
-                  <span className="text-[#3EF0FFCC]">
-                    <IconCollection />
-                  </span>
-                  <span>{c.name}</span>
-                </button>
-              </React.Fragment>
-            ))}
-          </nav>
-        </div>
+          </Fragment>
+        ))}
       </div>
 
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex-1 min-w-[180px] max-w-xl relative">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8B8FB8]">
-            <IconSearch />
-          </span>
-          <input
-            type="search"
-            value={query}
-            onChange={(e) => onQuery?.(e.target.value)}
-            placeholder="Search…"
-            className="w-full text-xs sm:text-sm rounded-full bg-[#050716] border border-[#3D4270] pl-9 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#3EF0FFAA] placeholder:text-[#6E7399]"
-          />
-        </div>
-
-        <div className="flex items-center gap-3 justify-end">
-          <div className="inline-flex items-center gap-1 bg-[#050716] rounded-full border border-[#3D4270] px-1 py-1">
-            <SegBtn
-              active={kind === 'all'}
-              onClick={() => onKind?.('all')}
-              ariaLabel="All media"
-            >
-              All
-            </SegBtn>
-            <SegBtn
-              active={kind === 'image'}
-              onClick={() => onKind?.('image')}
-              ariaLabel="Images"
-            >
-              Stills
-            </SegBtn>
-            <SegBtn
-              active={kind === 'video'}
-              onClick={() => onKind?.('video')}
-              ariaLabel="Video"
-            >
-              Loops
-            </SegBtn>
-          </div>
-
-          <label className="inline-flex items-center gap-2 text-[10px] sm:text-[11px] text-[#9DA3FFCC] uppercase tracking-[0.16em]">
-            <input
-              type="checkbox"
-              className="checkbox checkbox-xs border-[#3D4270] [--chkbg:#3EF0FF] [--chkfg:#050716]"
-              checked={showHidden}
-              onChange={(e) => onShowHidden?.(e.target.checked)}
-            />
-            <span>Hidden</span>
-          </label>
-        </div>
-      </div>
-
-      {dirChips.length > 0 && (
-        <div className="flex items-center gap-2 overflow-x-auto hide-scrollbar pt-1">
-          {dirChips.map((d) => (
+      {dirChips.length > 0 ? (
+        <div className="flex items-center gap-2 flex-wrap">
+          {dirChips.map((dir) => (
             <button
-              key={`chip:${d.subfolder}`}
+              key={dir.subfolder || dir.filename}
               type="button"
-              className="btn-touch whitespace-nowrap inline-flex items-center gap-1.5 rounded-full border border-[#3D4270] bg-[#050716] px-3 py-1.5 text-[11px] text-[#D4D7FF] hover:border-[#3EF0FFAA] hover:bg-[#101528]"
-              onClick={() => onSelectDir?.(d.subfolder)}
-              title={d.subfolder}
+              className="gallery-chip-btn"
+              onClick={() => onSelectDir?.(dir.subfolder)}
             >
-              <span className="text-[#3EF0FF]">
-                <IconCollection />
-              </span>
-              <span className="truncate max-w-[40vw] sm:max-w-[16rem]">
-                {d.filename}
-              </span>
+              {dir.filename || dir.subfolder || 'Collection'}
             </button>
           ))}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

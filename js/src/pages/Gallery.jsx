@@ -1,5 +1,5 @@
 // js/src/pages/Gallery.jsx
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import GalleryNav from '../components/GalleryNav';
 import GalleryItem from '../components/GalleryItem';
 import MediaViewerModal from '../components/MediaViewerModal';
@@ -9,6 +9,95 @@ import { useMediaViewer } from '../hooks/useMediaViewer';
 
 const VIEW_MODE_STORAGE_KEY = 'cozygen_gallery_view_mode';
 const FEED_AUTOPLAY_STORAGE_KEY = 'cozygen_gallery_feed_autoplay';
+
+function useVirtualGrid(items, enabled) {
+  // Approximate grid virtualization to keep DOM nodes low when many tiles are shown.
+  const containerRef = useRef(null);
+  const [scrollY, setScrollY] = useState(() =>
+    typeof window !== 'undefined' ? window.scrollY || 0 : 0
+  );
+  const [metrics, setMetrics] = useState({
+    width: 0,
+    cols: 0,
+    top: 0,
+    viewport: typeof window !== 'undefined' ? window.innerHeight || 800 : 800,
+  });
+
+  useEffect(() => {
+    if (!enabled) return undefined;
+    const el = containerRef.current;
+    if (!el || typeof window === 'undefined') return undefined;
+    if (typeof ResizeObserver === 'undefined') return undefined;
+
+    const updateMetrics = () => {
+      const rect = el.getBoundingClientRect();
+      const width = rect.width || el.clientWidth || 1;
+      const cols = Math.max(1, Math.floor(width / 160)); // min 160px cards
+      const top = rect.top + (window.scrollY || 0);
+      setMetrics({
+        width,
+        cols,
+        top,
+        viewport: window.innerHeight || 800,
+      });
+    };
+
+    updateMetrics();
+
+    const ro = new ResizeObserver(() => updateMetrics());
+    ro.observe(el);
+    window.addEventListener('resize', updateMetrics);
+
+    let ticking = false;
+    const onScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      window.requestAnimationFrame(() => {
+        ticking = false;
+        setScrollY(window.scrollY || 0);
+      });
+    };
+
+    window.addEventListener('scroll', onScroll, { passive: true });
+
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', updateMetrics);
+      window.removeEventListener('scroll', onScroll);
+    };
+  }, [enabled]);
+
+  const virtualized = enabled && metrics.cols > 0 && items.length > 60;
+
+  const { visibleItems, topSpacer, bottomSpacer } = useMemo(() => {
+    if (!virtualized) {
+      return {
+        visibleItems: items,
+        topSpacer: 0,
+        bottomSpacer: 0,
+      };
+    }
+    const colWidth = metrics.width / metrics.cols;
+    const rowHeight = Math.max(180, Math.ceil(colWidth * 1.25) + 32); // approx 4:5 + footer
+    const rowCount = Math.ceil(items.length / metrics.cols);
+    const relScroll = Math.max(0, scrollY - metrics.top);
+    const startRow = Math.max(0, Math.floor(relScroll / rowHeight) - 2);
+    const endRow = Math.min(
+      rowCount,
+      Math.ceil((relScroll + metrics.viewport) / rowHeight) + 2
+    );
+    const startIdx = startRow * metrics.cols;
+    const endIdx = Math.min(items.length, endRow * metrics.cols);
+
+    return {
+      visibleItems: items.slice(startIdx, endIdx),
+      topSpacer: startRow * rowHeight,
+      bottomSpacer: Math.max(0, (rowCount - endRow) * rowHeight),
+    };
+  }, [items, metrics, scrollY, virtualized]);
+
+  return { containerRef, visibleItems, topSpacer, bottomSpacer, virtualized };
+}
 
 export default function Gallery() {
   const {
@@ -45,13 +134,13 @@ export default function Gallery() {
     prev: handlePrev,
   } = useMediaViewer(mediaItems);
 
-  const [viewMode] = useState(() => {
+  const [viewMode, setViewMode] = useState(() => {
     if (typeof window === 'undefined') return 'grid';
     const stored = window.localStorage.getItem(VIEW_MODE_STORAGE_KEY);
     return stored === 'feed' || stored === 'grid' ? stored : 'grid';
   });
 
-  const [feedAutoplay] = useState(() => {
+  const [feedAutoplay, setFeedAutoplay] = useState(() => {
     if (typeof window === 'undefined') return false;
     return window.localStorage.getItem(FEED_AUTOPLAY_STORAGE_KEY) === 'true';
   });
@@ -99,10 +188,12 @@ export default function Gallery() {
   }, []);
 
   const summaryMeta = loading ? 'Loading…' : `${filtered.length} items`;
+  const { containerRef, visibleItems, topSpacer, bottomSpacer, virtualized } =
+    useVirtualGrid(filtered, isGrid);
 
   return (
     <div className="page-shell page-stack">
-      <CollapsibleSection kicker="Output" title="🖼️ Gallery" meta={summaryMeta}>
+      <CollapsibleSection title="🖼️ Gallery" meta={summaryMeta}>
         <GalleryNav
           subfolder={path}
           crumbs={crumbs}
@@ -114,12 +205,14 @@ export default function Gallery() {
         />
 
         <div className="gallery-topbar">
-            <div className="gallery-topbar-row">
-              <div className="gallery-quick-actions">
-                <div className="gallery-kind-toggle">
-                  <button
-                    type="button"
+          <div className="gallery-topbar-grid">
+            <div className="gallery-group">
+              <div className="gallery-group-label">Type</div>
+              <div className="gallery-kind-toggle" role="group" aria-label="Filter by media type">
+                <button
+                  type="button"
                   className={kind === 'all' ? 'is-active' : ''}
+                  aria-pressed={kind === 'all'}
                   onClick={() => setKind('all')}
                 >
                   All
@@ -127,6 +220,7 @@ export default function Gallery() {
                 <button
                   type="button"
                   className={kind === 'image' ? 'is-active' : ''}
+                  aria-pressed={kind === 'image'}
                   onClick={() => setKind('image')}
                 >
                   Img
@@ -134,41 +228,84 @@ export default function Gallery() {
                 <button
                   type="button"
                   className={kind === 'video' ? 'is-active' : ''}
+                  aria-pressed={kind === 'video'}
                   onClick={() => setKind('video')}
                 >
                   Vid
                 </button>
               </div>
-              <button
-                type="button"
-                className={`gallery-chip-btn is-icon ${showHidden ? 'is-active' : ''}`}
-                onClick={() => setShowHidden((prev) => !prev)}
-                aria-label="Toggle hidden"
-                title="Toggle hidden"
-              >
-                👁
-              </button>
-              <button
-                type="button"
-                className={`gallery-chip-btn is-icon ${recursive ? 'is-active' : ''}`}
-                onClick={() => setRecursive((prev) => !prev)}
-                aria-label="Include subfolders"
-                title="Include subfolders"
-              >
-                🌲
-              </button>
-              <button
-                type="button"
-                className="gallery-chip-btn is-icon"
-                onClick={refresh}
-                aria-label="Refresh"
-                title="Refresh"
-              >
-                ⟳
-              </button>
             </div>
+
+            <div className="gallery-group">
+              <div className="gallery-group-label">View</div>
+              <div className="gallery-inline-actions">
+                <div className="gallery-kind-toggle" role="group" aria-label="View mode">
+                  <button
+                    type="button"
+                    className={viewMode === 'grid' ? 'is-active' : ''}
+                    aria-pressed={viewMode === 'grid'}
+                    onClick={() => setViewMode('grid')}
+                  >
+                    Grid
+                  </button>
+                  <button
+                    type="button"
+                    className={viewMode === 'feed' ? 'is-active' : ''}
+                    aria-pressed={viewMode === 'feed'}
+                    onClick={() => setViewMode('feed')}
+                  >
+                    Feed
+                  </button>
+                </div>
+                <div className="gallery-icon-row">
+                <button
+                  type="button"
+                  className={`gallery-chip-btn is-icon ${showHidden ? 'is-active' : ''}`}
+                  onClick={() => setShowHidden((prev) => !prev)}
+                  aria-label="Toggle hidden"
+                  title="Toggle hidden"
+                >
+                  👁
+                  </button>
+                  <button
+                    type="button"
+                    className={`gallery-chip-btn is-icon ${recursive ? 'is-active' : ''}`}
+                  onClick={() => setRecursive((prev) => !prev)}
+                  aria-label="Include subfolders"
+                  title="Include subfolders"
+                >
+                  🌲
+                </button>
+                <button
+                  type="button"
+                  className="gallery-refresh"
+                  onClick={refresh}
+                  aria-label="Refresh"
+                  title="Refresh"
+                >
+                  <span className="sr-only">Refresh</span>
+                  <span aria-hidden="true">⟳</span>
+                </button>
+              </div>
+            </div>
+              {viewMode === 'feed' ? (
+                <button
+                  type="button"
+                  className={`gallery-chip-btn ${feedAutoplay ? 'is-active' : ''}`}
+                  onClick={() => setFeedAutoplay((prev) => !prev)}
+                  aria-pressed={feedAutoplay}
+                  aria-label={`Toggle autoplay (${feedAutoplay ? 'on' : 'off'})`}
+                  title="Toggle feed autoplay"
+                >
+                  {feedAutoplay ? 'Autoplay On' : 'Autoplay Off'}
+                </button>
+              ) : null}
+            </div>
+
+            <div className="gallery-group" />
           </div>
-          <div className="gallery-meta-row">
+        </div>
+        <div className="gallery-meta-row">
             <span className="gallery-meta">
               Page {page} / {totalPages} · {filtered.length} items
             </span>
@@ -207,7 +344,6 @@ export default function Gallery() {
               </div>
             </div>
           </div>
-        </div>
 
         {filtered.length === 0 && !loading ? (
           <div className="py-10 flex items-center justify-center">
@@ -222,8 +358,14 @@ export default function Gallery() {
           </div>
         ) : isGrid ? (
           <div className="w-full overflow-hidden">
-            <div className="gallery-grid-responsive">
-              {filtered.map((item) => (
+            <div className="gallery-grid-responsive" ref={containerRef}>
+              {virtualized && topSpacer > 0 ? (
+                <div
+                  aria-hidden
+                  style={{ gridColumn: '1 / -1', height: `${topSpacer}px` }}
+                />
+              ) : null}
+              {visibleItems.map((item) => (
                 <GalleryItem
                   key={itemKey(item)}
                   item={item}
@@ -232,6 +374,12 @@ export default function Gallery() {
                   autoPlay={false}
                 />
               ))}
+              {virtualized && bottomSpacer > 0 ? (
+                <div
+                  aria-hidden
+                  style={{ gridColumn: '1 / -1', height: `${bottomSpacer}px` }}
+                />
+              ) : null}
             </div>
           </div>
         ) : (

@@ -1,5 +1,4 @@
 // js/src/components/BottomBar.jsx
-import React from 'react';
 
 function getPercent(progressValue, progressMax) {
   if (!progressMax || progressMax <= 0) return null;
@@ -18,6 +17,7 @@ export default function BottomBar({
   statusPhase = 'idle',
   primaryLabel = 'Render',
   onPrimary,
+  primaryDisabled = false,
 }) {
   const pct = getPercent(progressValue, progressMax);
 
@@ -38,6 +38,7 @@ export default function BottomBar({
 
   const dotExtraClass =
     statusPhase === 'running' ? 'animate-pulse' : '';
+  const isDisabled = busy || primaryDisabled;
 
   return (
     <div className="mt-4 sm:mt-6 pb-4">
@@ -45,7 +46,7 @@ export default function BottomBar({
       <button
         type="button"
         onClick={onPrimary}
-        disabled={busy}
+        disabled={isDisabled}
         className={`w-full rounded-full px-6 py-3 text-sm sm:text-base font-semibold tracking-[0.25em] uppercase
           bg-[linear-gradient(90deg,#FF60D0,#3EF0FF)]
           text-[#050716]

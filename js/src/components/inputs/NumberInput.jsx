@@ -1,4 +1,12 @@
-import React from 'react';
+const sanitizeForId = (value) => {
+  if (value === null || value === undefined) return undefined;
+  const normalized = String(value)
+    .trim()
+    .replace(/[^A-Za-z0-9_-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+  return normalized || undefined;
+};
 
 export default function NumberInput({
   name,
@@ -11,8 +19,10 @@ export default function NumberInput({
   max,
   step,
   isFloat = false,
+  inputId,
 }) {
   const numericStep = step ?? (isFloat ? 0.01 : 1);
+  const fieldId = inputId ?? sanitizeForId(name);
 
   const parseValue = (raw) => {
     if (raw === '' || raw === null || raw === undefined) {
@@ -59,7 +69,7 @@ export default function NumberInput({
   return (
     <div className="w-full flex items-center gap-2">
       <input
-        id={name}
+        id={fieldId}
         name={name}
         type="number"
         inputMode={isFloat ? 'decimal' : 'numeric'}
@@ -71,7 +81,11 @@ export default function NumberInput({
         max={max}
         step={numericStep}
         aria-label={label || name}
-        aria-describedby={description ? `${name}-description` : undefined}
+        aria-describedby={
+          description
+            ? `${fieldId || sanitizeForId(name) || name}-description`
+            : undefined
+        }
         className={
           'w-full rounded-xl border border-[#2A2E4A] bg-[#050716] ' +
           'px-3 py-2.5 text-[13px] sm:text-sm text-[#E5E7FF] ' +

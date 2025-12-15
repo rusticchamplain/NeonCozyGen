@@ -1,3 +1,5 @@
+import asyncio
+import contextlib
 import json
 import mimetypes
 import os
@@ -292,6 +294,218 @@ async def hello(_):
 
 
 # ---------------- Gallery list (moved under /cozygen/api/)
+_GALLERY_CACHE: dict = {}
+_GALLERY_CACHE_TTL_SECONDS = 3.0
+_GALLERY_CACHE_MAX = 64
+
+
+def _is_ext_ok(name: str) -> bool:
+    low = name.lower()
+    return low.endswith(
+        (
+            ".png",
+            ".jpg",
+            ".jpeg",
+            ".gif",
+            ".webp",
+            ".bmp",
+            ".tif",
+            ".tiff",
+            ".mp4",
+            ".webm",
+            ".mov",
+            ".mkv",
+            ".mp3",
+            ".wav",
+            ".flac",
+        )
+    )
+
+
+def _type_for(name: str) -> str:
+    low = name.lower()
+    if low.endswith((".mp4", ".webm", ".mov", ".mkv")):
+        return "video"
+    return "image"
+
+
+def _kind_allowed(name: str, kind: str) -> bool:
+    if kind == "all":
+        return True
+    if kind == "video":
+        return _type_for(name) == "video"
+    if kind == "image":
+        return _type_for(name) == "image"
+    return True
+
+
+def _gallery_cache_key(subfolder: str, show_hidden: bool, recursive: bool, kind: str, page: int, per_page: int, bust: str):
+    return (
+        subfolder or "",
+        bool(show_hidden),
+        bool(recursive),
+        kind or "all",
+        int(page),
+        int(per_page),
+        bust or "",
+    )
+
+
+def _gallery_cache_get(key):
+    entry = _GALLERY_CACHE.get(key)
+    if not entry:
+        return None
+    if entry["expires"] < time.time():
+        _GALLERY_CACHE.pop(key, None)
+        return None
+    return entry["data"]
+
+
+def _gallery_cache_set(key, data):
+    _GALLERY_CACHE[key] = {"data": data, "expires": time.time() + _GALLERY_CACHE_TTL_SECONDS}
+    if len(_GALLERY_CACHE) > _GALLERY_CACHE_MAX:
+        # drop oldest by expiry
+        oldest = sorted(_GALLERY_CACHE.items(), key=lambda kv: kv[1]["expires"])[: len(_GALLERY_CACHE) - _GALLERY_CACHE_MAX]
+        for k, _ in oldest:
+            _GALLERY_CACHE.pop(k, None)
+
+
+def _slice_items(dirs, files_sorted, files_total: int, page: int, per_page: int):
+    start = (page - 1) * per_page
+    end = start + per_page
+    total = len(dirs) + files_total
+    if per_page <= 0:
+        return dirs + files_sorted, total
+
+    if end <= len(dirs):
+        return dirs[start:end], total
+
+    items = []
+    if start < len(dirs):
+        items.extend(dirs[start:])
+        remaining = end - len(dirs)
+        if remaining > 0:
+            items.extend(files_sorted[:remaining])
+        return items, total
+
+    offset = start - len(dirs)
+    items.extend(files_sorted[offset:end - len(dirs)])
+    return items, total
+
+
+def _collect_recursive(path: str, base: str, show_hidden: bool, kind: str, needed_files: int):
+    import heapq
+
+    files_total = 0
+    heap = []  # min-heap keyed by mtime
+    collect_all = needed_files <= 0
+    all_files = [] if collect_all else None
+    for root, dirs, files in os.walk(path):
+        dirs[:] = [d for d in dirs if show_hidden or not d.startswith(".")]
+        for fname in files:
+            if not show_hidden and fname.startswith("."):
+                continue
+            if not _is_ext_ok(fname):
+                continue
+            if not _kind_allowed(fname, kind):
+                continue
+            files_total += 1
+            full = os.path.join(root, fname)
+            rel_sub = os.path.relpath(root, base).replace("\\", "/")
+            if rel_sub == ".":
+                rel_sub = ""
+            mtime = os.path.getmtime(full)
+            item = {
+                "filename": fname,
+                "type": "output",
+                "subfolder": rel_sub,
+                "mtime": mtime,
+            }
+            if collect_all:
+                all_files.append((mtime, item))
+                continue
+            if len(heap) < needed_files:
+                heapq.heappush(heap, (mtime, item))
+            elif mtime > heap[0][0]:
+                heapq.heapreplace(heap, (mtime, item))
+
+    if collect_all:
+        files_sorted = [i for _, i in sorted(all_files, key=lambda x: x[0], reverse=True)]
+    else:
+        files_sorted = [i for _, i in sorted(heap, key=lambda x: x[0], reverse=True)]
+    return [], files_sorted, files_total
+
+
+def _collect_non_recursive(path: str, subfolder: str, show_hidden: bool, kind: str, start: int, per_page: int):
+    import heapq
+
+    dirs = []
+    files_buf = []
+    with os.scandir(path) as it:
+        for entry in it:
+            name = entry.name
+            if not show_hidden and name.startswith("."):
+                continue
+            try:
+                is_dir = entry.is_dir()
+            except OSError:
+                continue
+            if is_dir:
+                try:
+                    mtime = entry.stat().st_mtime
+                except OSError:
+                    mtime = 0
+                dirs.append(
+                    {
+                        "filename": name,
+                        "type": "directory",
+                        "subfolder": os.path.join(subfolder, name).replace("\\", "/"),
+                        "mtime": mtime,
+                    }
+                )
+                continue
+
+            if not _is_ext_ok(name) or not _kind_allowed(name, kind):
+                continue
+            try:
+                mtime = entry.stat().st_mtime
+            except OSError:
+                mtime = 0
+            files_buf.append((mtime, {
+                "filename": name,
+                "type": "output",
+                "subfolder": subfolder.replace("\\", "/"),
+                "mtime": mtime,
+            }))
+
+    files_total = len(files_buf)
+    if per_page <= 0:
+        files_sorted = [i for _, i in sorted(files_buf, key=lambda x: x[0], reverse=True)]
+        return dirs, files_sorted, files_total
+
+    end = (start - len(dirs) if start > len(dirs) else 0) + per_page
+    needed_files = max(0, end)
+    if needed_files and len(files_buf) > needed_files:
+        top = heapq.nlargest(needed_files, files_buf, key=lambda x: x[0])
+        files_sorted = [i for _, i in sorted(top, key=lambda x: x[0], reverse=True)]
+    else:
+        files_sorted = [i for _, i in sorted(files_buf, key=lambda x: x[0], reverse=True)]
+
+    return dirs, files_sorted, files_total
+
+
+async def _load_gallery(path: str, subfolder: str, base: str, show_hidden: bool, recursive: bool, kind: str, page: int, per_page: int):
+    start = (page - 1) * per_page
+
+    def _work():
+        if recursive:
+            needed_files = page * per_page if per_page > 0 else 0
+            return _collect_recursive(path, base, show_hidden, kind, needed_files)
+        return _collect_non_recursive(path, subfolder, show_hidden, kind, start, per_page)
+
+    return await asyncio.to_thread(_work)
+
+
 @routes.get("/cozygen/api/gallery")
 async def gallery_list(request: web.Request):
     subfolder = request.rel_url.query.get("subfolder", "")
@@ -299,10 +513,11 @@ async def gallery_list(request: web.Request):
     recursive = request.rel_url.query.get("recursive", "0") in ("1", "true", "True")
     kind = (request.rel_url.query.get("kind", "all") or "all").lower()
     try:
-        page = int(request.rel_url.query.get("page", "1"))
+        page = max(1, int(request.rel_url.query.get("page", "1")))
         per_page = int(request.rel_url.query.get("per_page", "20"))
     except ValueError:
         return web.json_response({"error": "bad paging"}, status=400)
+    per_page = max(0, min(per_page, 500))
 
     base = folder_paths.get_output_directory()
     path = os.path.normpath(os.path.join(base, subfolder))
@@ -311,110 +526,107 @@ async def gallery_list(request: web.Request):
     if not os.path.isdir(path):
         return web.json_response({"error": "not found"}, status=404)
 
-    def _is_ext_ok(name: str) -> bool:
-        low = name.lower()
-        return low.endswith(
-            (
-                ".png",
-                ".jpg",
-                ".jpeg",
-                ".gif",
-                ".webp",
-                ".bmp",
-                ".tif",
-                ".tiff",
-                ".mp4",
-                ".webm",
-                ".mov",
-                ".mkv",
-                ".mp3",
-                ".wav",
-                ".flac",
-            )
-        )
+    cache_bust = request.rel_url.query.get("cache_bust", "")
+    cache_key = _gallery_cache_key(subfolder, show_hidden, recursive, kind, page, per_page, cache_bust)
+    cached = _gallery_cache_get(cache_key)
+    if cached:
+        return web.json_response(cached)
 
-    def _type_for(name: str) -> str:
-        low = name.lower()
-        if low.endswith((".mp4", ".webm", ".mov", ".mkv")):
-            return "video"
-        return "image"
+    dirs, files_sorted, files_total = await _load_gallery(path, subfolder, base, show_hidden, recursive, kind, page, per_page)
 
-    def _kind_allowed(name: str) -> bool:
-        if kind == "all":
-            return True
-        if kind == "video":
-            return _type_for(name) == "video"
-        if kind == "image":
-            return _type_for(name) == "image"
-        return True
+    items_page, total = _slice_items(dirs, files_sorted, files_total, page, per_page)
+    total_pages = (total + per_page - 1) // per_page if per_page > 0 else 1
+    data = {
+        "items": items_page,
+        "page": page,
+        "per_page": per_page,
+        "total_pages": total_pages,
+        "total_items": total,
+    }
+    _gallery_cache_set(cache_key, data)
+    return web.json_response(data)
 
-    items = []
 
+def _latest_mtime(path: str, recursive: bool, show_hidden: bool) -> float:
+    newest = 0.0
     if recursive:
         for root, dirs, files in os.walk(path):
-            # Hide dot dirs unless show_hidden
             dirs[:] = [d for d in dirs if show_hidden or not d.startswith(".")]
             for fname in files:
                 if not show_hidden and fname.startswith("."):
                     continue
-                if not _is_ext_ok(fname):
+                try:
+                    mt = os.path.getmtime(os.path.join(root, fname))
+                    if mt > newest:
+                        newest = mt
+                except OSError:
                     continue
-                if not _kind_allowed(fname):
-                    continue
-                full = os.path.join(root, fname)
-                rel_sub = os.path.relpath(root, base).replace("\\", "/")
-                if rel_sub == ".":
-                    rel_sub = ""
-                items.append(
-                    {
-                        "filename": fname,
-                        "type": "output",
-                        "subfolder": rel_sub,
-                        "mtime": os.path.getmtime(full),
-                    }
-                )
     else:
-        for name in os.listdir(path):
-            if not show_hidden and name.startswith("."):  # hide dot folders/files
-                continue
-            full = os.path.join(path, name)
-            if os.path.isdir(full):
-                items.append(
-                    {
-                        "filename": name,
-                        "type": "directory",
-                        "subfolder": os.path.join(subfolder, name).replace("\\", "/"),
-                        "mtime": os.path.getmtime(full),
-                    }
-                )
-            else:
-                if not _is_ext_ok(name):
-                    continue
-                if not _kind_allowed(name):
-                    continue
-                items.append(
-                    {
-                        "filename": name,
-                        "type": "output",
-                        "subfolder": subfolder.replace("\\", "/"),
-                        "mtime": os.path.getmtime(full),
-                    }
-                )
+        try:
+            with os.scandir(path) as it:
+                for entry in it:
+                    name = entry.name
+                    if not show_hidden and name.startswith("."):
+                        continue
+                    try:
+                        mt = entry.stat().st_mtime
+                    except OSError:
+                        continue
+                    if mt > newest:
+                        newest = mt
+        except FileNotFoundError:
+            return 0.0
+    return newest
 
-    dirs = [i for i in items if i["type"] == "directory"]
-    files = [i for i in items if i["type"] != "directory"]
-    files.sort(key=lambda x: x["mtime"], reverse=True)
-    items = dirs + files
 
-    total = len(items)
-    total_pages = (total + per_page - 1) // per_page if per_page > 0 else 1
-    start = (page - 1) * per_page
-    end = start + per_page
-    page_items = items[start:end] if per_page > 0 else items
+@routes.get("/cozygen/api/gallery/stream")
+async def gallery_stream(request: web.Request):
+    """Server-Sent Events for gallery changes. Falls back to keepalive comments."""
+    subfolder = request.rel_url.query.get("subfolder", "")
+    show_hidden = request.rel_url.query.get("show_hidden", "0") in ("1", "true", "True")
+    recursive = request.rel_url.query.get("recursive", "0") in ("1", "true", "True")
 
-    return web.json_response(
-        {"items": page_items, "page": page, "per_page": per_page, "total_pages": total_pages, "total_items": total}
+    base = folder_paths.get_output_directory()
+    path = os.path.normpath(os.path.join(base, subfolder))
+    if not path.startswith(base):
+        raise web.HTTPForbidden(text="Invalid path")
+    if not os.path.isdir(path):
+        raise web.HTTPNotFound(text="Not found")
+
+    resp = web.StreamResponse(
+        headers={
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
     )
+    await resp.prepare(request)
+    await resp.write(b":ok\n\n")
+
+    last = await asyncio.to_thread(_latest_mtime, path, recursive, show_hidden)
+    keepalive_at = time.time() + 15
+    try:
+        while True:
+            await asyncio.sleep(2)
+            current = await asyncio.to_thread(_latest_mtime, path, recursive, show_hidden)
+            now = time.time()
+            if current > last:
+                last = current
+                payload = json.dumps(
+                    {"subfolder": subfolder, "recursive": recursive, "mtime": current}
+                )
+                await resp.write(f"data: {payload}\n\n".encode("utf-8"))
+                keepalive_at = now + 15
+            elif now >= keepalive_at:
+                await resp.write(b":keepalive\n\n")
+                keepalive_at = now + 15
+    except asyncio.CancelledError:
+        pass
+    finally:
+        with contextlib.suppress(Exception):
+            await resp.write_eof()
+    return resp
 
 
 # ---------------- Upload (inputs)

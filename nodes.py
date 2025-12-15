@@ -8,12 +8,24 @@ import imageio
 import numpy as np
 import server  # Import server
 import torch
-from comfy.comfy_types import node_typing
 from PIL import Image
 
 from nodes import SaveImage  # type: ignore[attr-defined]
 
 logger = logging.getLogger(__name__)
+
+# Handle different ComfyUI versions for node_typing
+try:
+    from comfy.comfy_types import node_typing
+except ImportError:
+    # Fallback for older ComfyUI versions
+    class _FakeNodeTyping:
+        ANY = "*"
+        PRIMITIVE = "STRING,INT,FLOAT,BOOLEAN"
+        class IO:
+            ANY = "*"
+            PRIMITIVE = "STRING,INT,FLOAT,BOOLEAN"
+    node_typing = _FakeNodeTyping()
 
 
 class _CozyGenDynamicTypes(str):

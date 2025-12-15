@@ -1,5 +1,5 @@
 // js/src/components/WorkflowSelector.jsx
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 
 export default function WorkflowSelector({ workflows, selectedWorkflow, onSelect }) {
   const handleChange = (e) => {

@@ -1,5 +1,5 @@
 // js/src/components/GalleryItem.jsx
-import React, { useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 
 const looksLikeVideo = (name = '') =>
   /\.(mp4|webm|mov|mkv)$/i.test(name);
@@ -199,13 +199,6 @@ export default function GalleryItem({
               </div>
             )}
           </div>
-          <button
-            type="button"
-            onClick={handleClick}
-            className="ml-3 px-2 py-[3px] rounded-full border border-[#3D4270] bg-[#050716] text-[10px] text-[#C3C7FF] hover:border-[#6B5BFF]"
-          >
-            Open
-          </button>
         </div>
       </div>
     );

@@ -1,11 +1,11 @@
 // js/src/components/DynamicForm.jsx
-import React, { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState, useEffect } from 'react';
 import StringInput from './inputs/StringInput';
 import NumberInput from './inputs/NumberInput';
 import BooleanInput from './inputs/BooleanInput';
 import DropdownInput from './inputs/DropdownInput';
 import LoraPairInput from './inputs/LoraPairInput';
-import { LORA_PAIRS } from '../config/loraPairs';
+import { LORA_PAIRS, matchLoraParam } from '../config/loraPairs';
 
 function getParamType(input) {
   const raw = input?.inputs?.param_type || input?.inputs?.Param_type;
@@ -53,6 +53,13 @@ export function resolveParamName(input) {
 
 export function resolveConfig(input) {
   const i = input?.inputs || {};
+  const choices = i.choices || i.options || [];
+  const inferredDefault =
+    i.default_value ??
+    i.value ??
+    i.default_choice ??
+    (choices && choices.length ? choices[0] : '') ??
+    '';
   return {
     paramName: resolveParamName(input),
     label: resolveLabel(input),
@@ -63,7 +70,8 @@ export function resolveConfig(input) {
     min: typeof i.min === 'number' ? i.min : undefined,
     max: typeof i.max === 'number' ? i.max : undefined,
     step: typeof i.step === 'number' ? i.step : undefined,
-    choices: i.choices || i.options || [],
+    choices,
+    defaultValue: inferredDefault,
   };
 }
 
@@ -71,12 +79,39 @@ export default function DynamicForm({
   inputs = [],
   formData = {},
   onFormChange,
+  onParamEdited,
+  onSpotlight,
+  compactControls = true,
+  collapseAllKey = 0,
+  collapseAllCollapsed = true,
+  lastEditedParam = '',
+  spotlightName = '',
+  onCloseSpotlight = () => {},
+  onVisibleParamsChange = () => {},
+  aliasOptions = [],
+  aliasCatalog = [],
 }) {
   const [collapsedCards, setCollapsedCards] = useState({});
+  const [spotlightRenderKey, setSpotlightRenderKey] = useState(0);
+
+  const formatPreview = useCallback((cfg, value) => {
+    if (cfg?.paramType === 'BOOLEAN') return value ? 'On' : 'Off';
+    if (value === null || value === undefined || value === '') return 'Empty';
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      return trimmed ? trimmed : 'Empty';
+    }
+    return String(value);
+  }, []);
 
   const handleValueChange = (paramName, value) => {
     if (!onFormChange) return;
     onFormChange(paramName, value);
+    onParamEdited?.(paramName);
+    setCollapsedCards((prev) => ({
+      ...prev,
+      [paramName]: false,
+    }));
   };
 
   const toggleCollapsed = useCallback((cardId) => {
@@ -86,6 +121,21 @@ export default function DynamicForm({
       [cardId]: !prev?.[cardId],
     }));
   }, []);
+
+  const visibleInputs = useMemo(() => inputs || [], [inputs]);
+
+  // Collapse/expand all when parent changes the key
+  useEffect(() => {
+    const next = {};
+    (inputs || []).forEach((inp) => {
+      const name = resolveParamName(inp);
+      if (name) next[name] = collapseAllCollapsed;
+    });
+    if (lastEditedParam) {
+      next[lastEditedParam] = false;
+    }
+    setCollapsedCards(next);
+  }, [collapseAllKey, collapseAllCollapsed, inputs, lastEditedParam]);
 
   // Build paramName -> input mapping for quick lookup
   const byName = useMemo(() => {
@@ -101,9 +151,12 @@ export default function DynamicForm({
   const activeLoraPairs = useMemo(() => {
     const result = [];
     LORA_PAIRS.forEach((pair) => {
-      const highInput = byName.get(pair.highParam);
-      const lowInput = byName.get(pair.lowParam);
-      if (!highInput || !lowInput) return;
+      const highMatch = matchLoraParam(byName, pair.highParamAliases || pair.highParam);
+      const lowMatch = matchLoraParam(byName, pair.lowParamAliases || pair.lowParam);
+      if (!highMatch || !lowMatch) return;
+
+      const highInput = highMatch.input;
+      const lowInput = lowMatch.input;
 
       const highCfg = resolveConfig(highInput);
       const lowCfg = resolveConfig(lowInput);
@@ -115,8 +168,21 @@ export default function DynamicForm({
       const lowChoices = lowCfg.choices || [];
       if (!highChoices.length || !lowChoices.length) return;
 
+      const highStrengthMatch = matchLoraParam(
+        byName,
+        pair.highStrengthParamAliases || pair.highStrengthParam
+      );
+      const lowStrengthMatch = matchLoraParam(
+        byName,
+        pair.lowStrengthParamAliases || pair.lowStrengthParam
+      );
+
       result.push({
         ...pair,
+        highParam: highMatch.name,
+        lowParam: lowMatch.name,
+        highStrengthParam: highStrengthMatch?.name,
+        lowStrengthParam: lowStrengthMatch?.name,
         highInput,
         lowInput,
         highCfg,
@@ -147,9 +213,176 @@ export default function DynamicForm({
     return set;
   }, [activeLoraPairs]);
 
+  const visibleEntries = useMemo(() => {
+    const entries = [];
+    (visibleInputs || []).forEach((input) => {
+      const cfg = resolveConfig(input);
+      const paramName = cfg.paramName;
+      const loraPair = loraPairByHighParam.get(paramName);
+
+      if (loraPair) {
+        entries.push({
+          name: paramName,
+          label: loraPair.label || cfg.label,
+          description: cfg.description,
+          render: (currentForm) => {
+            const form = currentForm || formData || {};
+            const highStrengthValue = loraPair.highStrengthParam
+              ? form[loraPair.highStrengthParam]
+              : undefined;
+            const lowStrengthValue = loraPair.lowStrengthParam
+              ? form[loraPair.lowStrengthParam]
+              : undefined;
+            const valueStrength = highStrengthValue ?? lowStrengthValue ?? 1.0;
+            return (
+              <LoraPairInput
+                key={`lora-${paramName}-${spotlightRenderKey}`}
+                name={loraPair.id || loraPair.highParam}
+                label={loraPair.label || cfg.label}
+                highParam={loraPair.highParam}
+                lowParam={loraPair.lowParam}
+                highChoices={loraPair.highCfg.choices}
+                lowChoices={loraPair.lowCfg.choices}
+                formData={form}
+                onChangeParam={handleValueChange}
+                highStrengthParam={loraPair.highStrengthParam}
+                lowStrengthParam={loraPair.lowStrengthParam}
+                strengthValue={valueStrength}
+                highStrengthValue={highStrengthValue}
+                lowStrengthValue={lowStrengthValue}
+                onChangeHighStrength={
+                  loraPair.highStrengthParam
+                    ? (val) => handleValueChange(loraPair.highStrengthParam, val)
+                    : undefined
+                }
+                onChangeLowStrength={
+                  loraPair.lowStrengthParam
+                    ? (val) => handleValueChange(loraPair.lowStrengthParam, val)
+                    : undefined
+                }
+                disabled={false}
+              />
+            );
+          },
+        });
+        return;
+      }
+
+      if (consumedParams.has(paramName)) return;
+
+      entries.push({
+        name: paramName,
+        label: cfg.label,
+        description: cfg.description,
+        render: (currentForm) => {
+          const form = currentForm || formData || {};
+          const liveProps = {
+            name: paramName,
+            label: cfg.label,
+            description: cfg.description,
+            value: form[paramName],
+            defaultValue: cfg.defaultValue,
+            disabled: false,
+          };
+          if (cfg.paramType === 'NUMBER') {
+            return (
+              <NumberInput
+                key={`field-${paramName}-number-${spotlightRenderKey}`}
+                {...liveProps}
+                onChange={(v) => handleValueChange(paramName, v)}
+                min={cfg.min}
+                max={cfg.max}
+                step={cfg.step}
+                isFloat={true}
+              />
+            );
+          }
+          if (cfg.paramType === 'BOOLEAN') {
+            return (
+              <BooleanInput
+                key={`field-${paramName}-bool-${spotlightRenderKey}`}
+                {...liveProps}
+                onChange={(v) => handleValueChange(paramName, v)}
+              />
+            );
+          }
+          if (cfg.paramType === 'DROPDOWN') {
+            return (
+              <DropdownInput
+                key={`field-${paramName}-dropdown-${spotlightRenderKey}`}
+                {...liveProps}
+                onChange={(v) => handleValueChange(paramName, v)}
+                options={cfg.choices || []}
+              />
+            );
+          }
+          return (
+            <StringInput
+              key={`field-${paramName}-string-${spotlightRenderKey}`}
+              {...liveProps}
+              onChange={(v) => handleValueChange(paramName, v)}
+              onEnter={(v, e) => {
+                handleValueChange(paramName, v);
+                e?.target?.blur?.();
+                if (spotlightName === paramName) {
+                  onCloseSpotlight?.();
+                }
+              }}
+              multiline={cfg.multiline}
+            />
+          );
+        },
+      });
+    });
+    return entries;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    visibleInputs,
+    loraPairByHighParam,
+    consumedParams,
+    formData,
+    spotlightRenderKey,
+    spotlightName,
+    onCloseSpotlight,
+  ]);
+
+  const entryMap = useMemo(() => {
+    const map = new Map();
+    visibleEntries.forEach((e) => map.set(e.name, e));
+    return map;
+  }, [visibleEntries]);
+
+  useEffect(() => {
+    onVisibleParamsChange?.(visibleEntries);
+  }, [visibleEntries, onVisibleParamsChange]);
+
+  const openSpotlightFor = useCallback(
+    (targetName) => {
+      const order = visibleEntries.map((e) => e.name);
+      const entry = entryMap.get(targetName);
+      if (!entry) return;
+      const idx = order.indexOf(targetName);
+      const prevName = idx > 0 ? order[idx - 1] : null;
+      const nextName = idx >= 0 && idx < order.length - 1 ? order[idx + 1] : null;
+      setSpotlightRenderKey((k) => k + 1);
+      onSpotlight?.({
+        name: targetName,
+        label: entry.label,
+        description: entry.description,
+        render: (latestForm) => entry.render(latestForm || formData),
+        order,
+        index: idx >= 0 ? idx : 0,
+        total: order.length,
+        onPrev: prevName ? () => openSpotlightFor(prevName) : null,
+        onNext: nextName ? () => openSpotlightFor(nextName) : null,
+      });
+    },
+    [entryMap, formData, onSpotlight, visibleEntries]
+  );
+
   return (
     <div className="space-y-3 sm:space-y-3.5">
-      {inputs.map((input) => {
+      {visibleInputs.map((input) => {
         const cfg = resolveConfig(input);
         const paramName = cfg.paramName;
 
@@ -168,77 +401,97 @@ export default function DynamicForm({
             lowCfg,
           } = loraPair;
 
+          const highStrengthValue = highStrengthParam
+            ? formData[highStrengthParam]
+            : undefined;
+          const lowStrengthValue = lowStrengthParam
+            ? formData[lowStrengthParam]
+            : undefined;
           const valueStrength =
-            (highStrengthParam && formData[highStrengthParam]) ??
-            (lowStrengthParam && formData[lowStrengthParam]) ??
-            1.0;
+            highStrengthValue ?? lowStrengthValue ?? 1.0;
 
-    const anchorId = paramName ? `param-${paramName}` : undefined;
-    const cardCollapsed = !!collapsedCards[paramName];
+          const anchorId = paramName ? `param-${paramName}` : undefined;
+          const cardCollapsed = compactControls
+            ? collapsedCards[paramName] ?? true
+            : !!collapsedCards[paramName];
+          const isExpanded = !cardCollapsed;
+          const pairedPreview = formatPreview(cfg, [formData[highParam], formData[lowParam]].filter(Boolean).join(' • '));
 
-    return (
+          const renderLoraPairField = (currentForm = formData) => {
+            const liveHighStrength = highStrengthParam ? currentForm?.[highStrengthParam] : undefined;
+            const liveLowStrength = lowStrengthParam ? currentForm?.[lowStrengthParam] : undefined;
+            const liveValueStrength = liveHighStrength ?? liveLowStrength ?? valueStrength;
+            return (
+              <LoraPairInput
+                key={`lora-${paramName}`}
+                name={id || highParam}
+                label={label || cfg.label}
+                highParam={highParam}
+                lowParam={lowParam}
+                highChoices={highCfg.choices}
+                lowChoices={lowCfg.choices}
+                formData={currentForm}
+                onChangeParam={handleValueChange}
+                highStrengthParam={highStrengthParam}
+                lowStrengthParam={lowStrengthParam}
+                strengthValue={liveValueStrength}
+                highStrengthValue={liveHighStrength}
+                lowStrengthValue={liveLowStrength}
+                onChangeHighStrength={
+                  highStrengthParam
+                    ? (val) => handleValueChange(highStrengthParam, val)
+                    : undefined
+                }
+                onChangeLowStrength={
+                  lowStrengthParam
+                    ? (val) => handleValueChange(lowStrengthParam, val)
+                    : undefined
+                }
+                disabled={false}
+              />
+            );
+          };
+
+          return (
             <div
               key={`lora_pair_${id || highParam}`}
               id={anchorId}
               data-param-name={paramName}
               data-param-label={label || cfg.label}
               data-param-type="lora_pair"
-              className="control-card"
+              className="control-card is-minimal"
             >
-              <div className="control-card-head">
+              <div
+              className="control-card-head control-card-toggle"
+              role="button"
+              tabIndex={0}
+              onClick={() => {
+                toggleCollapsed(paramName);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  toggleCollapsed(paramName);
+                }
+                }}
+                aria-expanded={!cardCollapsed}
+              >
                 <div className="control-card-summary">
-                  <span className="param-chip">LoRA</span>
                   <div className="control-card-title">{label || cfg.label}</div>
+                  <div className="control-card-value-preview">{pairedPreview}</div>
                 </div>
-
-                <button
-                  type="button"
-                  className="control-collapse"
-                  onClick={() => toggleCollapsed(paramName)}
-                  aria-label={cardCollapsed ? 'Expand parameter' : 'Collapse parameter'}
-                >
-                  <svg
-                    viewBox="0 0 16 16"
-                    aria-hidden="true"
-                    className={cardCollapsed ? 'control-collapse-icon collapsed' : 'control-collapse-icon'}
-                  >
-                    <path
-                      d="M3 6l5 5 5-5"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                </button>
               </div>
 
-              {!cardCollapsed && (
+              {isExpanded && (
                 <div className="control-card-body">
-                  <LoraPairInput
-                    name={id || highParam}
-                    label={label || cfg.label}
-                    highParam={highParam}
-                    lowParam={lowParam}
-                    highChoices={highCfg.choices}
-                    lowChoices={lowCfg.choices}
-                    formData={formData}
-                    onChangeParam={handleValueChange}
-                    highStrengthParam={highStrengthParam}
-                    lowStrengthParam={lowStrengthParam}
-                    strengthValue={valueStrength}
-                    onChangeStrength={(val) => {
-                      if (highStrengthParam) handleValueChange(highStrengthParam, val);
-                      if (lowStrengthParam) handleValueChange(lowStrengthParam, val);
-                    }}
-                    disabled={false}
-                  />
+                  <div className="control-card-spotlight">{renderLoraPairField()}</div>
+              </div>
+            )}
+              {!compactControls && (
+                <div className="control-card-foot">
+                  <span className="control-param-id">{paramName}</span>
                 </div>
               )}
-              <div className="control-card-foot">
-                <span className="control-param-id">{paramName}</span>
-              </div>
             </div>
           );
         }
@@ -250,6 +503,7 @@ export default function DynamicForm({
 
         const value = formData[paramName];
         const disabled = false;
+        const previewValue = formatPreview(cfg, value);
 
         const commonFieldProps = {
           name: paramName,
@@ -257,48 +511,67 @@ export default function DynamicForm({
           description: cfg.description,
           value,
           disabled,
+          defaultValue: cfg.defaultValue,
         };
 
-        let field = null;
-
-        if (cfg.paramType === 'NUMBER') {
-          field = (
-            <NumberInput
-              {...commonFieldProps}
-              onChange={(v) => handleValueChange(paramName, v)}
-              min={cfg.min}
-              max={cfg.max}
-              step={cfg.step}
-              isFloat={true}
-            />
-          );
-        } else if (cfg.paramType === 'BOOLEAN') {
-          field = (
-            <BooleanInput
-              {...commonFieldProps}
-              onChange={(v) => handleValueChange(paramName, v)}
-            />
-          );
-        } else if (cfg.paramType === 'DROPDOWN') {
-          field = (
-            <DropdownInput
-              {...commonFieldProps}
-              onChange={(v) => handleValueChange(paramName, v)}
-              options={cfg.choices || []}
-            />
-          );
-        } else {
-          field = (
+        const renderField = (currentForm = formData, expanded = false) => {
+          const liveProps = { ...commonFieldProps, value: currentForm?.[paramName] };
+          if (cfg.paramType === 'NUMBER') {
+            return (
+              <NumberInput
+                key={`field-${paramName}-number-${spotlightRenderKey}`}
+                {...liveProps}
+                onChange={(v) => handleValueChange(paramName, v)}
+                min={cfg.min}
+                max={cfg.max}
+                step={cfg.step}
+                isFloat={true}
+              />
+            );
+          }
+          if (cfg.paramType === 'BOOLEAN') {
+            return (
+              <BooleanInput
+                key={`field-${paramName}-bool-${spotlightRenderKey}`}
+                {...liveProps}
+                onChange={(v) => handleValueChange(paramName, v)}
+              />
+            );
+          }
+          if (cfg.paramType === 'DROPDOWN') {
+            return (
+              <DropdownInput
+                key={`field-${paramName}-dropdown-${spotlightRenderKey}`}
+                {...liveProps}
+                onChange={(v) => handleValueChange(paramName, v)}
+                options={cfg.choices || []}
+              />
+            );
+          }
+          return (
             <StringInput
-              {...commonFieldProps}
+              key={`field-${paramName}-string-${spotlightRenderKey}`}
+              {...liveProps}
+              aliasOptions={aliasOptions}
+              aliasCatalog={aliasCatalog}
               onChange={(v) => handleValueChange(paramName, v)}
-              multiline={cfg.multiline}
+              onEnter={(v, e) => {
+                handleValueChange(paramName, v);
+                e?.target?.blur?.();
+                if (spotlightName === paramName) {
+                  onCloseSpotlight?.();
+                }
+              }}
+              multiline={cfg.multiline || spotlightName === paramName || expanded}
             />
           );
-        }
+        };
 
         const anchorId = paramName ? `param-${paramName}` : undefined;
-        const cardCollapsed = !!collapsedCards[paramName];
+        const cardCollapsed = compactControls
+          ? collapsedCards[paramName] ?? true
+          : !!collapsedCards[paramName];
+        const isExpanded = !cardCollapsed;
 
         return (
           <div
@@ -307,41 +580,41 @@ export default function DynamicForm({
             data-param-name={paramName}
             data-param-label={cfg.label}
             data-param-type="single"
-            className="control-card"
+            className="control-card is-minimal"
           >
-              <div className="control-card-head">
-                <div className="control-card-summary">
-                  <span className="param-chip">{cfg.paramType}</span>
-                  <div className="control-card-title">{cfg.label}</div>
-                </div>
-
-                <button
-                  type="button"
-                  className="control-collapse"
-                  onClick={() => toggleCollapsed(paramName)}
-                  aria-label={cardCollapsed ? 'Expand parameter' : 'Collapse parameter'}
-                >
-                  <svg
-                    viewBox="0 0 16 16"
-                    aria-hidden="true"
-                    className={cardCollapsed ? 'control-collapse-icon collapsed' : 'control-collapse-icon'}
-                  >
-                    <path
-                      d="M3 6l5 5 5-5"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                </button>
+            <div
+              className="control-card-head control-card-toggle"
+              role="button"
+              tabIndex={0}
+              onClick={() => {
+                const nextCollapsed = !cardCollapsed;
+                toggleCollapsed(paramName);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  toggleCollapsed(paramName);
+                }
+              }}
+              aria-expanded={!cardCollapsed}
+            >
+              <div className="control-card-summary">
+                <div className="control-card-title">{cfg.label}</div>
+                <div className="control-card-value-preview">{previewValue}</div>
               </div>
-
-            {!cardCollapsed && <div className="control-card-body">{field}</div>}
-            <div className="control-card-foot">
-              <span className="control-param-id">{paramName}</span>
             </div>
+            {!cardCollapsed && (
+              <div className="control-card-body">
+                {isExpanded ? (
+                  <div className="control-card-spotlight">{renderField(formData, isExpanded)}</div>
+                ) : null}
+              </div>
+            )}
+            {!compactControls && (
+              <div className="control-card-foot">
+                <span className="control-param-id">{paramName}</span>
+              </div>
+            )}
           </div>
         );
       })}

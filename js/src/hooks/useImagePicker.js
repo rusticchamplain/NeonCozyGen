@@ -1,6 +1,7 @@
 // js/src/hooks/useImagePicker.js
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { uploadImage, getGallery } from '../api';
+
+import { getGallery, uploadImage } from '../api';
 
 /* ---------- constants ---------- */
 
@@ -34,12 +35,126 @@ async function getInputItems({
 export const inputFileUrl = (relPath) =>
   `/cozygen/input/file?path=${encodeURIComponent(relPath)}`;
 
+const OUTPUT_VALUE_PREFIX = 'output::';
+
+const normalizeFolder = (folder = '') =>
+  folder.replace(/\\/g, '/').replace(/^\/+/, '').replace(/\/+$/, '');
+
+const normalizeFilename = (name = '') => {
+  const cleaned = name.replace(/\\/g, '/').split('/').filter(Boolean);
+  return cleaned[cleaned.length - 1] || '';
+};
+
+const encodeOutputSelection = ({ subfolder = '', filename = '' } = {}) => {
+  const cleanFilename = normalizeFilename(filename);
+  if (!cleanFilename) return '';
+  const cleanFolder = normalizeFolder(subfolder);
+  return `${OUTPUT_VALUE_PREFIX}${cleanFolder}::${cleanFilename}`;
+};
+
+const decodeOutputSelection = (value = '') => {
+  if (typeof value !== 'string' || !value.startsWith(OUTPUT_VALUE_PREFIX)) {
+    return null;
+  }
+  const rest = value.slice(OUTPUT_VALUE_PREFIX.length);
+  if (!rest) return null;
+  const sep = rest.lastIndexOf('::');
+  const filename = sep === -1 ? rest : rest.slice(sep + 2);
+  if (!filename) return null;
+  const subfolder = sep === -1 ? '' : rest.slice(0, sep);
+  return {
+    subfolder,
+    filename,
+  };
+};
+
+export const outputFileUrl = ({
+  filename = '',
+  subfolder = '',
+  type = 'output',
+} = {}) => {
+  const cleanFilename = normalizeFilename(filename);
+  if (!cleanFilename) return '';
+  const params = new URLSearchParams({
+    filename: cleanFilename,
+    subfolder: normalizeFolder(subfolder),
+    type: type || 'output',
+  });
+  return `/view?${params.toString()}`;
+};
+
+const parentFromRelPath = (path = '') =>
+  path.split('/').slice(0, -1).join('/');
+
+const deriveParentFromSelection = (selection) => {
+  if (typeof selection !== 'string' || !selection) {
+    if (selection?.path) {
+      return parentFromRelPath(selection.path);
+    }
+    return '';
+  }
+  const decoded = decodeOutputSelection(selection);
+  if (decoded) {
+    return normalizeFolder(decoded.subfolder);
+  }
+  return parentFromRelPath(selection);
+};
+
+const mapInputEntries = (items = []) =>
+  items.map((item) => {
+    const relPath = item.rel_path || item.name || '';
+    const name = item.name || relPath || 'Untitled';
+    const isDir = Boolean(item.is_dir);
+    const previewUrl = isDir ? '' : inputFileUrl(relPath);
+    return {
+      ...item,
+      name,
+      rel_path: relPath,
+      is_dir: isDir,
+      is_image: !isDir && isImage(name),
+      is_video: !isDir && isVideo(name),
+      source: 'input',
+      preview_url: previewUrl,
+    };
+  });
+
+const mapOutputEntries = (items = []) =>
+  items.map((item) => {
+    const filename = item.filename || '';
+    const subfolder = item.subfolder || '';
+    const isDir = item.type === 'directory';
+    const relPath = isDir
+      ? subfolder || filename
+      : [subfolder, filename].filter(Boolean).join('/');
+    const name = filename || subfolder || relPath || 'Untitled';
+    const previewUrl = isDir
+      ? ''
+      : outputFileUrl({
+          filename,
+          subfolder,
+          type: item.type,
+        });
+    return {
+      ...item,
+      name,
+      rel_path: relPath,
+      is_dir: isDir,
+      is_image: !isDir && isImage(filename),
+      is_video: !isDir && isVideo(filename),
+      source: 'output',
+      preview_url: previewUrl,
+    };
+  });
+
 /* ---------- localStorage helpers ---------- */
 
 const ls = {
   get(key, fallback) {
     try {
-      const v = JSON.parse(localStorage.getItem(key));
+      const v =
+        typeof window !== 'undefined'
+          ? JSON.parse(localStorage.getItem(key))
+          : null;
       return v ?? fallback;
     } catch {
       return fallback;
@@ -47,7 +162,9 @@ const ls = {
   },
   set(key, val) {
     try {
-      localStorage.setItem(key, JSON.stringify(val));
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(key, JSON.stringify(val));
+      }
     } catch {
       // ignore
     }
@@ -92,6 +209,7 @@ export function useImagePicker({ input, value, onFormChange }) {
     // reset navigation when switching sources
     setCwd('');
     setPage(1);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const displayName = useMemo(() => {
@@ -110,7 +228,11 @@ export function useImagePicker({ input, value, onFormChange }) {
     }
 
     if (!value) return 'No file selected.';
-    if (typeof value === 'string') return value.split('/').pop();
+    if (typeof value === 'string') {
+      const decoded = decodeOutputSelection(value);
+      if (decoded?.filename) return decoded.filename.split('/').pop();
+      return value.split('/').pop();
+    }
     if (value?.path) return value.path.split('/').pop();
     return 'No file selected.';
   }, [previewUrl, value]);
@@ -118,7 +240,18 @@ export function useImagePicker({ input, value, onFormChange }) {
   // keep preview in sync with form value
   useEffect(() => {
     if (typeof value === 'string' && value) {
-      setPreviewUrl(inputFileUrl(value));
+      const decoded = decodeOutputSelection(value);
+      if (decoded?.filename) {
+        setPreviewUrl(
+          outputFileUrl({
+            filename: decoded.filename,
+            subfolder: decoded.subfolder,
+            type: 'output',
+          })
+        );
+      } else {
+        setPreviewUrl(inputFileUrl(value));
+      }
       setImgReady(false);
     } else if (value?.url) {
       setPreviewUrl(value.url);
@@ -144,6 +277,7 @@ export function useImagePicker({ input, value, onFormChange }) {
         onFormChange(param, { source: 'Upload', path: resp.filename, url });
       }
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [classType, onFormChange, param]
   );
 
@@ -160,22 +294,12 @@ export function useImagePicker({ input, value, onFormChange }) {
 
   const openServer = useCallback(() => {
     // try to open near the currently selected value
-    const parent = (
-      typeof value === 'string' ? value : value?.path || ''
-    )
-      .split('/')
-      .slice(0, -1)
-      .join('/');
+    const parent = deriveParentFromSelection(value);
     const start = parent || ls.get(LS_LAST_CWD, '');
     setCwd(start);
     setPage(1);
     setServerOpen(true);
-
-    try {
-      window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
-    } catch {
-      window.scrollTo(0, 0);
-    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
 
   const closeServer = useCallback(() => {
@@ -218,28 +342,7 @@ export function useImagePicker({ input, value, onFormChange }) {
           const data = await getGallery(cwd, page, perPage);
           if (cancelled) return;
 
-          const items = (data && data.items) || [];
-          const mapped = items.map((item) => {
-            const filename = item.filename || '';
-            const subfolder = item.subfolder || '';
-            const isDir = item.type === 'directory';
-
-            const relPath = isDir
-              ? subfolder || filename
-              : [subfolder, filename].filter(Boolean).join('/');
-
-            const name = filename || subfolder || relPath || 'Untitled';
-
-            return {
-              ...item,
-              name,
-              rel_path: relPath,
-              is_dir: isDir,
-              is_image: !isDir && isImage(filename),
-              is_video: !isDir && isVideo(filename),
-              source: 'output',
-            };
-          });
+          const mapped = mapOutputEntries((data && data.items) || []);
 
           if (!cancelled) {
             setEntries(mapped);
@@ -266,7 +369,7 @@ export function useImagePicker({ input, value, onFormChange }) {
               exts: '',
             });
             if (!cancelled) {
-              setEntries(broad.items || []);
+              setEntries(mapInputEntries(broad.items || []));
               setTotalPages(broad.total_pages || 1);
               setImagesOnly(false);
             }
@@ -274,7 +377,7 @@ export function useImagePicker({ input, value, onFormChange }) {
           }
 
           if (!cancelled) {
-            setEntries(resp.items || []);
+            setEntries(mapInputEntries(resp.items || []));
             setTotalPages(resp.total_pages || 1);
           }
         }
@@ -325,23 +428,66 @@ export function useImagePicker({ input, value, onFormChange }) {
   }, [entries, search, imagesOnly]);
 
   const selectServer = useCallback(
-    (relPath) => {
-      const url = inputFileUrl(relPath);
-      setPreviewUrl(url);
+    (entryOrPath) => {
+      if (!entryOrPath) return;
+      const entry =
+        typeof entryOrPath === 'object' ? entryOrPath : null;
+      const source = entry?.source || 'inputs';
+
+      if (source === 'output') {
+        const encoded = encodeOutputSelection({
+          subfolder: entry?.subfolder || '',
+          filename: entry?.filename || entry?.name || '',
+        });
+        if (!encoded) return;
+
+        const preview =
+          entry?.preview_url ||
+          outputFileUrl({
+            filename: entry?.filename,
+            subfolder: entry?.subfolder,
+            type: entry?.type,
+          });
+
+        setPreviewUrl(preview);
+        setImgReady(false);
+        ls.set(LS_LAST_CWD, normalizeFolder(entry?.subfolder || ''));
+
+        if (classType === 'CozyGenImageInput') {
+          onFormChange(param, encoded);
+        } else {
+          onFormChange(param, {
+            source: 'OutputGallery',
+            path: encoded,
+            url: preview,
+          });
+        }
+
+        setServerOpen(false);
+        return;
+      }
+
+      const relPath =
+        typeof entryOrPath === 'string'
+          ? entryOrPath
+          : entry?.rel_path || entry?.path || '';
+      if (!relPath) return;
+
+      const preview = entry?.preview_url || inputFileUrl(relPath);
+
+      setPreviewUrl(preview);
       setImgReady(false);
-      ls.set(
-        LS_LAST_CWD,
-        relPath.split('/').slice(0, -1).join('/')
-      );
+      ls.set(LS_LAST_CWD, parentFromRelPath(relPath));
 
       if (classType === 'CozyGenImageInput') {
         onFormChange(param, relPath);
       } else {
-        onFormChange(param, { source: 'Server', path: relPath, url });
+        onFormChange(param, { source: 'Server', path: relPath, url: preview });
       }
 
       setServerOpen(false);
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [classType, onFormChange, param]
   );
 

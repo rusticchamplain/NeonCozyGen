@@ -1,4 +1,3 @@
-import React from 'react';
 import ImageInput from '../../ImageInput';
 
 export default function PrimaryImagePanel({

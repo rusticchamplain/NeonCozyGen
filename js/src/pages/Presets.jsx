@@ -1,4 +1,4 @@
-import React, {
+import {
   useCallback,
   useEffect,
   useMemo,
@@ -9,8 +9,8 @@ import {
   resolveConfig,
   resolveParamName,
 } from '../components/DynamicForm';
-import ImageInput from '../components/ImageInput';
 import PresetCard from '../components/presets/PresetCard';
+import PresetImageInputRow from '../components/presets/PresetImageInputRow';
 import LoraPairInput from '../components/inputs/LoraPairInput';
 import {
   listPresets,
@@ -27,7 +27,8 @@ import {
   WORKFLOW_MODE_OPTIONS,
 } from '../utils/presets';
 import { saveFormState } from '../utils/storage';
-import { LORA_PAIRS } from '../config/loraPairs';
+import { LORA_PAIRS, matchLoraParam } from '../config/loraPairs';
+import usePromptAliases from '../hooks/usePromptAliases';
 
 function buildPreviewUrl(example) {
   if (!example || !example.filename) return null;
@@ -89,6 +90,163 @@ function deriveCardTags(card) {
   return [...new Set(tags)].slice(0, 4);
 }
 
+const MAX_QUICK_CONTROLS = 4;
+const QUICK_PARAM_RULES = [
+  {
+    id: 'prompt',
+    weight: 1,
+    test: (cfg) =>
+      /prompt/i.test(cfg.label || '') &&
+      !/negative/i.test(cfg.label || ''),
+  },
+  {
+    id: 'negative_prompt',
+    weight: 2,
+    test: (cfg) =>
+      /negative/i.test(cfg.label || '') &&
+      /prompt/i.test(cfg.label || ''),
+  },
+  {
+    id: 'steps',
+    weight: 3,
+    test: (cfg) => /step/i.test(cfg.label || cfg.paramName || ''),
+  },
+  {
+    id: 'cfg',
+    weight: 4,
+    test: (cfg) =>
+      /cfg|guidance/i.test(cfg.label || cfg.paramName || ''),
+  },
+  {
+    id: 'seed',
+    weight: 5,
+    test: (cfg) => /seed/i.test(cfg.label || cfg.paramName || ''),
+  },
+  {
+    id: 'sampler',
+    weight: 6,
+    test: (cfg) =>
+      /sampler|schedule/i.test(cfg.label || cfg.paramName || ''),
+  },
+  {
+    id: 'frames',
+    weight: 7,
+    test: (cfg) => /frame/i.test(cfg.label || cfg.paramName || ''),
+  },
+  {
+    id: 'dimensions',
+    weight: 8,
+    test: (cfg) =>
+      /width|height|resolution/i.test(cfg.label || cfg.paramName || ''),
+  },
+];
+
+function selectQuickInputs(inputs = [], preset) {
+  if (!inputs.length) return [];
+
+  const byName = new Map();
+  inputs.forEach((input) => {
+    const name = resolveParamName(input);
+    if (name) byName.set(name, input);
+  });
+
+  const explicitList = Array.isArray(preset?.meta?.quick_params)
+    ? preset.meta.quick_params
+        .map((name) => String(name || '').trim())
+        .filter((name) => !!name && byName.has(name))
+    : null;
+
+  if (explicitList && explicitList.length) {
+    return explicitList.slice(0, MAX_QUICK_CONTROLS).map((name) => {
+      const input = byName.get(name);
+      return {
+        cfg: resolveConfig(input),
+        input,
+      };
+    });
+  }
+
+  const candidates = [];
+  inputs.forEach((input) => {
+    if (!input || input.class_type === 'CozyGenImageInput') return;
+    const cfg = resolveConfig(input);
+    const priority = QUICK_PARAM_RULES.reduce((score, rule) => {
+      if (score !== Infinity) return score;
+      return rule.test(cfg) ? rule.weight : Infinity;
+    }, Infinity);
+    if (priority === Infinity) return;
+    candidates.push({
+      cfg,
+      input,
+      priority,
+    });
+  });
+
+  candidates.sort((a, b) => a.priority - b.priority);
+  return candidates.slice(0, MAX_QUICK_CONTROLS);
+}
+
+function renderQuickField(field, value, onChange) {
+  const inputId = `quick-${field.paramName}`;
+  const commonProps = {
+    id: inputId,
+    name: field.paramName,
+    className: 'quick-field-control',
+    placeholder:
+      typeof field.placeholder === 'string' ? field.placeholder : '',
+  };
+
+  if (field.paramType === 'DROPDOWN') {
+    const choices = Array.isArray(field.choices) ? field.choices : [];
+    return (
+      <select
+        {...commonProps}
+        value={value ?? ''}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        <option value="">Preset value</option>
+        {choices.map((choice) => (
+          <option key={choice} value={choice}>
+            {choice}
+          </option>
+        ))}
+      </select>
+    );
+  }
+
+  if (field.paramType === 'BOOLEAN') {
+    return (
+      <label className="quick-field-boolean" htmlFor={inputId}>
+        <input
+          id={inputId}
+          name={field.paramName}
+          type="checkbox"
+          checked={!!value}
+          onChange={(e) => onChange(e.target.checked)}
+        />
+        <span>Enable</span>
+      </label>
+    );
+  }
+
+  const inputType = field.paramType === 'NUMBER' ? 'number' : 'text';
+  return (
+    <input
+      {...commonProps}
+      type={inputType}
+      value={
+        typeof value === 'number' && Number.isFinite(value)
+          ? value
+          : value ?? ''
+      }
+      onChange={(e) => onChange(e.target.value)}
+      min={field.min}
+      max={field.max}
+      step={field.step || (field.paramType === 'NUMBER' ? 'any' : undefined)}
+    />
+  );
+}
+
 export default function Presets() {
   const {
     workflows,
@@ -105,6 +263,7 @@ export default function Presets() {
     setFormData,
     handleFormChange,
   } = useWorkflowForm(selectedWorkflow);
+  const { aliasLookup } = usePromptAliases();
 
   const {
     isLoading: isGenerating,
@@ -117,6 +276,7 @@ export default function Presets() {
     imageInputs,
     formData,
     setFormData,
+    promptAliases: aliasLookup,
   });
   const handleBuilderGenerate = useCallback(() => {
     if (!selectedWorkflow) return;
@@ -133,14 +293,12 @@ export default function Presets() {
   const [filterMode, setFilterMode] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [savingPresetKey, setSavingPresetKey] = useState(null);
-  const composerFileInputRef = useRef(null);
-  const [composerName, setComposerName] = useState('');
-  const [composerDescription, setComposerDescription] = useState('');
-  const [composerTags, setComposerTags] = useState('');
-  const [composerPreview, setComposerPreview] = useState(null);
-  const [composerSaving, setComposerSaving] = useState(false);
-  const [composerStatus, setComposerStatus] = useState('');
-  const [composerError, setComposerError] = useState('');
+  const [libraryCollapsed, setLibraryCollapsed] = useState(true);
+  const [quickEditKey, setQuickEditKey] = useState('');
+  const [quickOverrides, setQuickOverrides] = useState({});
+  const [presetSelectionCollapsed, setPresetSelectionCollapsed] = useState(true);
+  const imageSectionRefs = useRef({});
+  const pendingImageFocusRef = useRef(null);
 
   const orderedDynamicInputs = useMemo(
     () => applyFieldOrder(selectedWorkflow, dynamicInputs),
@@ -233,6 +391,23 @@ export default function Presets() {
   }, [presetLibrary, selectedPresetKey]);
 
   useEffect(() => {
+    if (quickEditKey && quickEditKey !== selectedPresetKey) {
+      setQuickEditKey('');
+    }
+  }, [quickEditKey, selectedPresetKey]);
+
+  const scrollImageSection = useCallback((key) => {
+    if (!key) return;
+    const node = imageSectionRefs.current[key];
+    if (!node) return;
+    node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    node.classList.add('preset-card-section--highlight');
+    setTimeout(() => {
+      node.classList.remove('preset-card-section--highlight');
+    }, 800);
+  }, []);
+
+  useEffect(() => {
     if (!pendingPreset) return;
     if (!workflowData) return;
     if (pendingPreset.workflow !== selectedWorkflow) return;
@@ -243,6 +418,14 @@ export default function Presets() {
     }
     setPendingPreset(null);
   }, [pendingPreset, selectedWorkflow, workflowData, setFormData]);
+
+  useEffect(() => {
+    if (!selectedPresetKey) return;
+    if (pendingImageFocusRef.current === selectedPresetKey) {
+      scrollImageSection(selectedPresetKey);
+      pendingImageFocusRef.current = null;
+    }
+  }, [selectedPresetKey, scrollImageSection]);
 
   const presetCards = useMemo(
     () =>
@@ -285,12 +468,12 @@ export default function Presets() {
     });
     const result = [];
     LORA_PAIRS.forEach((pair) => {
-      const highInput = byName.get(pair.highParam);
-      const lowInput = byName.get(pair.lowParam);
-      if (!highInput || !lowInput) return;
+      const highMatch = matchLoraParam(byName, pair.highParamAliases || pair.highParam);
+      const lowMatch = matchLoraParam(byName, pair.lowParamAliases || pair.lowParam);
+      if (!highMatch || !lowMatch) return;
 
-      const highCfg = resolveConfig(highInput);
-      const lowCfg = resolveConfig(lowInput);
+      const highCfg = resolveConfig(highMatch.input);
+      const lowCfg = resolveConfig(lowMatch.input);
       if (
         highCfg.paramType !== 'DROPDOWN' ||
         lowCfg.paramType !== 'DROPDOWN' ||
@@ -300,8 +483,21 @@ export default function Presets() {
         return;
       }
 
+      const highStrengthMatch = matchLoraParam(
+        byName,
+        pair.highStrengthParamAliases || pair.highStrengthParam
+      );
+      const lowStrengthMatch = matchLoraParam(
+        byName,
+        pair.lowStrengthParamAliases || pair.lowStrengthParam
+      );
+
       result.push({
         ...pair,
+        highParam: highMatch.name,
+        lowParam: lowMatch.name,
+        highStrengthParam: highStrengthMatch?.name,
+        lowStrengthParam: lowStrengthMatch?.name,
         highCfg,
         lowCfg,
       });
@@ -309,12 +505,25 @@ export default function Presets() {
     return result;
   }, [builderReady, orderedDynamicInputs]);
 
-  const canQuickLaunch = builderReady && !isGenerating;
+  const clearSelection = useCallback(() => {
+    setQuickEditKey((prev) => (prev === selectedPresetKey ? '' : prev));
+    setQuickOverrides((prev) => {
+      if (!selectedPresetKey || !prev[selectedPresetKey]) return prev;
+      const next = { ...prev };
+      delete next[selectedPresetKey];
+      return next;
+    });
+    setSelectedPresetKey('');
+  }, [selectedPresetKey]);
 
   const applyPreset = useCallback(
     (workflow, preset) => {
       if (!preset?.name) return;
       const key = `${workflow}::${preset.name}`;
+      if (selectedPresetKey === key) {
+        clearSelection();
+        return;
+      }
       setSelectedPresetKey(key);
       setPendingPreset({ workflow, values: preset.values || {} });
       if (workflow !== selectedWorkflow) {
@@ -327,86 +536,82 @@ export default function Presets() {
         }
       }
     },
-    [selectWorkflow, selectedWorkflow, setFormData]
+    [selectedPresetKey, clearSelection, selectWorkflow, selectedWorkflow, setFormData]
   );
 
-  const clearSelection = useCallback(() => {
-    setSelectedPresetKey('');
-  }, []);
-
-  const handleComposerFileChange = useCallback(
-    async (event) => {
-      const file = event.target.files?.[0];
-      if (!file) return;
-      try {
-        const dataUrl = await fileToDataUrl(file);
-        setComposerPreview({
-          kind: 'data',
-          data: dataUrl,
-          mime: file.type,
-          name: file.name,
-          updatedAt: Date.now(),
-        });
-        setComposerError('');
-      } catch (err) {
-        console.error('Composer preview failed', err);
-        setComposerError('Failed to load preview file.');
-      } finally {
-        if (event.target) event.target.value = '';
+  const focusImageSection = useCallback(
+    (card) => {
+      if (!card?.name) return;
+      const key = `${card.workflow}::${card.name}`;
+      if (selectedPresetKey !== key) {
+        pendingImageFocusRef.current = key;
+        applyPreset(card.workflow, card);
+      } else {
+        scrollImageSection(key);
       }
+    },
+    [applyPreset, scrollImageSection, selectedPresetKey]
+  );
+
+  const handleQuickOverrideChange = useCallback(
+    (key, paramName, rawValue, paramType) => {
+      const normalizeValue = () => {
+        if (paramType === 'NUMBER') {
+          if (rawValue === '' || rawValue === null || typeof rawValue === 'undefined') {
+            return '';
+          }
+          const num = Number(rawValue);
+          return Number.isNaN(num) ? '' : num;
+        }
+        if (paramType === 'BOOLEAN') {
+          return !!rawValue;
+        }
+        if (rawValue === '' || rawValue === null || typeof rawValue === 'undefined') {
+          return '';
+        }
+        return rawValue;
+      };
+
+      const nextValue = normalizeValue();
+      setQuickOverrides((prev) => {
+        const next = { ...prev };
+        const entry = { ...(prev[key] || {}) };
+        if (typeof nextValue === 'undefined') {
+          delete entry[paramName];
+        } else {
+          entry[paramName] = nextValue;
+        }
+        if (Object.keys(entry).length === 0) {
+          delete next[key];
+        } else {
+          next[key] = entry;
+        }
+        return next;
+      });
     },
     []
   );
 
-  const clearComposerPreview = useCallback(() => {
-    setComposerPreview(null);
+  const handleClearQuickOverrides = useCallback((key) => {
+    setQuickOverrides((prev) => {
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
   }, []);
 
-  const handleCreatePreset = useCallback(async () => {
-    if (!selectedWorkflow) {
-      setComposerError('Select a workflow to capture a preset.');
-      return;
-    }
-    const name = composerName.trim();
-    if (!name) {
-      setComposerError('Name your preset.');
-      return;
-    }
-    setComposerSaving(true);
-    setComposerError('');
-    try {
-      const meta = {};
-      if (composerDescription.trim()) meta.description = composerDescription.trim();
-      const tagList = composerTags
-        .split(',')
-        .map((tag) => tag.trim())
-        .filter(Boolean);
-      if (tagList.length) meta.tags = tagList;
-      if (composerPreview) meta.preview = composerPreview;
-
-      await savePreset(selectedWorkflow, name, { ...(formData || {}) }, meta);
-      setComposerName('');
-      setComposerDescription('');
-      setComposerTags('');
-      setComposerPreview(null);
-      setComposerStatus(`Saved “${name}”`);
-      loadPresetLibrary();
-    } catch (err) {
-      console.error('Composer save failed', err);
-      setComposerError('Failed to save preset.');
-    } finally {
-      setComposerSaving(false);
-      setTimeout(() => setComposerStatus(''), 2500);
-    }
-  }, [
-    composerDescription,
-    composerName,
-    composerPreview,
-    composerTags,
-    formData,
-    loadPresetLibrary,
-    selectedWorkflow,
-  ]);
+  const handleQuickEditToggle = useCallback(
+    (card) => {
+      if (!card?.name) return;
+      const key = `${card.workflow}::${card.name}`;
+      if (selectedPresetKey !== key) {
+        applyPreset(card.workflow, card);
+      }
+      setQuickEditKey((prev) => (prev === key ? '' : key));
+    },
+    [selectedPresetKey, applyPreset]
+  );
 
   const handleCardPreviewUpload = useCallback(
     async (workflow, preset, file) => {
@@ -453,9 +658,14 @@ export default function Presets() {
   if (workflowsLoading) {
     return (
       <div className="page-shell">
-        <div className="ui-panel text-center text-sm text-[#9DA3FFCC]">
-          Loading workflows…
-        </div>
+        <details className="ui-panel collapsible-card">
+          <summary className="collapsible-card-summary">
+            <span className="collapsible-card-summary-label">Preset library</span>
+          </summary>
+          <div className="collapsible-card-body text-center text-sm text-[#9DA3FFCC]">
+            Loading workflows…
+          </div>
+        </details>
       </div>
     );
   }
@@ -463,176 +673,104 @@ export default function Presets() {
   if (!workflows || workflows.length === 0) {
     return (
       <div className="page-shell">
-        <div className="ui-panel text-center text-sm text-[#9DA3FFCC]">
-          No workflows found. Drop workflow JSON files into CozyGen/workflows and refresh.
-        </div>
+        <details className="ui-panel collapsible-card">
+          <summary className="collapsible-card-summary">
+            <span className="collapsible-card-summary-label">Preset library</span>
+          </summary>
+          <div className="collapsible-card-body text-center text-sm text-[#9DA3FFCC]">
+            No workflows found. Drop workflow JSON files into CozyGen/workflows and refresh.
+          </div>
+        </details>
       </div>
     );
   }
 
   return (
     <div className="page-shell page-stack">
-      <section className="ui-panel space-y-4">
-        <div className="flex items-center justify-between gap-4 flex-wrap">
+      <details
+        className="ui-panel collapsible-card"
+        open={!libraryCollapsed}
+        onToggle={(event) => setLibraryCollapsed(!event.target.open)}
+      >
+        <summary className="collapsible-card-summary">
+          <span className="collapsible-card-summary-label">Preset library</span>
+        </summary>
+        <div className="collapsible-card-body space-y-4">
           <div className="ui-section-text">
             <span className="ui-kicker">Preset library</span>
             <h1 className="ui-title">Pick, tap, launch.</h1>
-            <p className="ui-hint">Reuse or capture full parameter stacks.</p>
           </div>
-          <button
-            type="button"
-            onClick={loadPresetLibrary}
-            className="ui-button is-ghost is-compact"
-          >
-            Refresh
-          </button>
-        </div>
-        <div className="flex flex-wrap items-center gap-3 text-[11px] text-[#7C82BF]">
-          <span>{filteredCards.length} presets</span>
-          {libraryError && <span className="text-[#FF9BEA]">{libraryError}</span>}
-        </div>
-        <div className="filter-rail flex items-center gap-2 overflow-x-auto rounded-full border border-[#1F2342] bg-[#050716] px-2 py-1 text-[11px] uppercase tracking-[0.16em] text-[#9DA3FF]">
-          {[{ id: 'all', label: 'All' }, ...WORKFLOW_MODE_OPTIONS].map((mode) => (
+          <div className="flex items-center gap-2">
             <button
-              key={mode.id}
               type="button"
-              onClick={() => setFilterMode(mode.id)}
-              className={`shrink-0 rounded-full px-3 py-1 border ${
-                filterMode === mode.id
-                  ? 'bg-[#11152C] border-[#3EF0FF99] text-[#F8F4FF]'
-                  : 'border-transparent text-[#8B90C9]'
-              }`}
+              onClick={loadPresetLibrary}
+              className="ui-button is-ghost is-compact"
             >
-              {mode.label}
+              Refresh
             </button>
-          ))}
-          <div className="mx-1 h-4 w-px bg-[#1F2342]" />
-          <label className="flex items-center gap-1 rounded-full bg-[#0C0F2C] px-3 py-1 text-[#C3C7FF]">
-            <span className="text-xs">Search</span>
-            <input
-              type="search"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Keywords"
-              className="w-24 bg-transparent text-[11px] text-[#F8F4FF] placeholder-[#61679B] focus:outline-none"
-            />
-          </label>
-        </div>
-      </section>
-
-      <section className="ui-panel space-y-4">
-        <div className="ui-section-head">
-          <div className="ui-section-text">
-            <span className="ui-kicker">Preset composer</span>
-            <div className="ui-title">Capture current settings</div>
-            <p className="ui-hint">
-              Name the stack, add tags, and attach a reference image or clip.
-            </p>
           </div>
-        </div>
-        {composerStatus && (
-          <div className="text-[11px] text-[#3EF0FF]">{composerStatus}</div>
-        )}
-        {composerError && (
-          <div className="text-[11px] text-[#FF9BEA]">{composerError}</div>
-        )}
-        {selectedWorkflow && workflowData ? (
-          <>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <input
-                type="text"
-                value={composerName}
-                onChange={(e) => setComposerName(e.target.value)}
-                placeholder="Preset name"
-                className="rounded-xl border border-[#2A2E4A] bg-[#050716] px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[#3EF0FF80]"
-              />
-              <input
-                type="text"
-                value={composerTags}
-                onChange={(e) => setComposerTags(e.target.value)}
-                placeholder="Tags (comma separated)"
-                className="rounded-xl border border-[#2A2E4A] bg-[#050716] px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[#3EF0FF80]"
-              />
-              <textarea
-                value={composerDescription}
-                onChange={(e) => setComposerDescription(e.target.value)}
-                rows={3}
-                placeholder="Description"
-                className="sm:col-span-2 rounded-xl border border-[#2A2E4A] bg-[#050716] px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[#3EF0FF80]"
-              />
-            </div>
-            <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex flex-wrap items-center gap-3 text-[11px] text-[#7C82BF]">
+            <span>{filteredCards.length} presets</span>
+            {libraryError && <span className="text-[#FF9BEA]">{libraryError}</span>}
+          </div>
+          <div className="filter-rail flex items-center gap-2 overflow-x-auto rounded-full border border-[#1F2342] bg-[#050716] px-2 py-1 text-[11px] uppercase tracking-[0.16em] text-[#9DA3FF]">
+            {[{ id: 'all', label: 'All' }, ...WORKFLOW_MODE_OPTIONS].map((mode) => (
               <button
+                key={mode.id}
                 type="button"
-                className="ui-button is-muted is-compact"
-                onClick={() => composerFileInputRef.current?.click()}
+                onClick={() => setFilterMode(mode.id)}
+                className={`shrink-0 rounded-full px-3 py-1 border ${
+                  filterMode === mode.id
+                    ? 'bg-[#11152C] border-[#3EF0FF99] text-[#F8F4FF]'
+                    : 'border-transparent text-[#8B90C9]'
+                }`}
               >
-                {composerPreview ? 'Change reference' : 'Upload reference'}
+                {mode.label}
               </button>
+            ))}
+            <div className="mx-1 h-4 w-px bg-[#1F2342]" />
+            <label className="flex items-center gap-1 rounded-full bg-[#0C0F2C] px-3 py-1 text-[#C3C7FF]">
+              <span className="text-xs">Search</span>
               <input
-                ref={composerFileInputRef}
-                type="file"
-                accept="image/*,video/*"
-                hidden
-                onChange={handleComposerFileChange}
+                type="search"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Keywords"
+                className="w-24 bg-transparent text-[11px] text-[#F8F4FF] placeholder-[#61679B] focus:outline-none"
               />
-              {composerPreview && (
-                <div className="composer-preview-thumb">
-                  {composerPreview.mime?.startsWith('video') ? (
-                    <video
-                      src={composerPreview.data}
-                      muted
-                      playsInline
-                      autoPlay
-                      loop
-                    />
-                  ) : (
-                    <img src={composerPreview.data} alt="Preview" />
-                  )}
-                  <button
-                    type="button"
-                    className="ui-button is-ghost is-compact"
-                    onClick={clearComposerPreview}
-                  >
-                    Remove
-                  </button>
-                </div>
-              )}
-            </div>
-            <button
-              type="button"
-              className="ui-button is-primary"
-              onClick={handleCreatePreset}
-              disabled={composerSaving || !composerName.trim()}
-            >
-              {composerSaving ? 'Saving…' : 'Save preset'}
-            </button>
-          </>
-        ) : (
-          <p className="ui-hint">
-            Select a workflow in Studio to capture its parameters as a preset.
-          </p>
-        )}
-      </section>
-
-      <section className="space-y-4">
-        {presetLoading ? (
-          <div className="ui-card text-center text-sm text-[#9DA3FFCC]">Loading presets…</div>
-        ) : filteredCards.length === 0 ? (
-          <div className="ui-card text-center text-sm text-[#9DA3FFCC]">
-            No presets yet. Save one from Studio or the Wizard.
+            </label>
           </div>
-        ) : (
-          <div
-            className={[
-              'preset-grid',
-              'grid gap-5 sm:grid-cols-2 xl:grid-cols-3',
-              selectedPresetInfo ? 'has-active' : '',
-            ]
-              .filter(Boolean)
-              .join(' ')}
-          >
-            {filteredCards.map((card) => {
+        </div>
+      </details>
+
+      <details
+        className="ui-panel collapsible-card"
+        open={!presetSelectionCollapsed}
+        onToggle={(event) => setPresetSelectionCollapsed(!event.target.open)}
+      >
+        <summary className="collapsible-card-summary">
+          <span className="collapsible-card-summary-label">Preset selection</span>
+        </summary>
+        <div className="collapsible-card-body space-y-4">
+          {presetLoading ? (
+            <div className="ui-card text-center text-sm text-[#9DA3FFCC]">
+              Loading presets…
+            </div>
+          ) : filteredCards.length === 0 ? (
+            <div className="ui-card text-center text-sm text-[#9DA3FFCC]">
+              No presets yet. Save one from Studio to get started.
+            </div>
+          ) : (
+            <div
+              className={[
+                'preset-grid',
+                'grid gap-5 sm:grid-cols-2 xl:grid-cols-3',
+                selectedPresetInfo ? 'has-active' : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+            >
+              {filteredCards.map((card) => {
               const key = `${card.workflow}::${card.name}`;
               const tags = deriveCardTags(card);
               const isActive = selectedPresetKey === key;
@@ -649,8 +787,16 @@ export default function Presets() {
                   Object.values(card.values || {}).some(
                     (val) => typeof val === 'string' && IMAGE_VALUE_REGEX.test(val)
                   )) || false;
-              const canLaunchCard = isActive ? canQuickLaunch : false;
+              const quickOverridesForCard = quickOverrides[key] || {};
+              let readyToRender = false;
               const previewSaving = savingPresetKey === key;
+              const bindImageSectionRef = (node) => {
+                if (node) {
+                  imageSectionRefs.current[key] = node;
+                } else {
+                  delete imageSectionRefs.current[key];
+                }
+              };
 
               let cardBody = null;
               if (isActive) {
@@ -677,17 +823,87 @@ export default function Presets() {
                     imageInputs.some(
                       (imgInput) => !formData[imgInput.inputs.param_name]
                     );
-                  const readyToRender =
+                  readyToRender =
                     builderReady &&
                     (!needsImageInput || !missingImages) &&
                     !isGenerating;
+                  const quickFields =
+                    quickEditKey === key
+                      ? selectQuickInputs(orderedDynamicInputs, card)
+                      : [];
+                  const showQuickFields =
+                    quickEditKey === key && quickFields.length > 0;
 
                   cardBody = (
                     <>
-                      <div className="preset-card-section">
+                      {quickEditKey === key && (
+                        <div className="preset-card-section">
+                          <h4>Quick tweaks</h4>
+                          {showQuickFields ? (
+                            <div className="quick-field-grid">
+                              {quickFields.map(({ cfg }) => {
+                                const fallbackValue =
+                                  formData[cfg.paramName] ??
+                                  card.values?.[cfg.paramName] ??
+                                  '';
+                                const hasExplicitOverride = Object.prototype.hasOwnProperty.call(
+                                  quickOverridesForCard,
+                                  cfg.paramName
+                                );
+                                const overrideValue = quickOverridesForCard[cfg.paramName];
+                                const liveValue = hasExplicitOverride ? overrideValue : fallbackValue;
+                                const placeholder =
+                                  !hasExplicitOverride &&
+                                  (typeof fallbackValue === 'number' || typeof fallbackValue === 'string')
+                                    ? `Preset: ${fallbackValue}`
+                                    : '';
+                                return (
+                                  <div key={cfg.paramName} className="quick-field">
+                                    <label
+                                      htmlFor={`quick-${cfg.paramName}`}
+                                      className="quick-field-label"
+                                    >
+                                      {cfg.label}
+                                    </label>
+                                    {renderQuickField(
+                                      { ...cfg, placeholder },
+                                      liveValue,
+                                      (nextVal) =>
+                                        handleQuickOverrideChange(
+                                          key,
+                                          cfg.paramName,
+                                          nextVal,
+                                          cfg.paramType
+                                        )
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : null}
+                          <div className="quick-field-footer">
+                            <button
+                              type="button"
+                              className="ui-button is-ghost is-compact"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleClearQuickOverrides(key);
+                              }}
+                              disabled={
+                                !quickOverridesForCard ||
+                                !Object.keys(quickOverridesForCard).length
+                              }
+                            >
+                              Reset overrides
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="preset-card-section" ref={bindImageSectionRef}>
                         <h4>Image inputs</h4>
                         {imageInputs.length ? (
-                          <div className="space-y-2">
+                          <div className="preset-image-list">
                             {imageInputs.map((imgInput) => {
                               const paramName = imgInput.inputs.param_name;
                               const presetValue = selectedPresetInfo.values?.[paramName];
@@ -695,7 +911,7 @@ export default function Presets() {
                                 formData[paramName] ||
                                 (typeof presetValue === 'string' ? presetValue : '');
                               return (
-                                <ImageInput
+                                <PresetImageInputRow
                                   key={imgInput.id}
                                   input={imgInput}
                                   value={value}
@@ -714,12 +930,14 @@ export default function Presets() {
                           <h4>LoRA controls</h4>
                           <div className="space-y-2">
                             {activeLoraPairs.map((pair) => {
+                              const highStrengthValue = pair.highStrengthParam
+                                ? formData[pair.highStrengthParam]
+                                : undefined;
+                              const lowStrengthValue = pair.lowStrengthParam
+                                ? formData[pair.lowStrengthParam]
+                                : undefined;
                               const strengthValue =
-                                (pair.highStrengthParam &&
-                                  formData[pair.highStrengthParam]) ??
-                                (pair.lowStrengthParam &&
-                                  formData[pair.lowStrengthParam]) ??
-                                1.0;
+                                highStrengthValue ?? lowStrengthValue ?? 1.0;
                               return (
                                 <LoraPairInput
                                   key={pair.id || pair.highParam}
@@ -734,14 +952,20 @@ export default function Presets() {
                                   highStrengthParam={pair.highStrengthParam}
                                   lowStrengthParam={pair.lowStrengthParam}
                                   strengthValue={strengthValue}
-                                  onChangeStrength={(val) => {
-                                    if (pair.highStrengthParam) {
-                                      handleFormChange(pair.highStrengthParam, val);
-                                    }
-                                    if (pair.lowStrengthParam) {
-                                      handleFormChange(pair.lowStrengthParam, val);
-                                    }
-                                  }}
+                                  highStrengthValue={highStrengthValue}
+                                  lowStrengthValue={lowStrengthValue}
+                                  onChangeHighStrength={
+                                    pair.highStrengthParam
+                                      ? (val) =>
+                                          handleFormChange(pair.highStrengthParam, val)
+                                      : undefined
+                                  }
+                                  onChangeLowStrength={
+                                    pair.lowStrengthParam
+                                      ? (val) =>
+                                          handleFormChange(pair.lowStrengthParam, val)
+                                      : undefined
+                                  }
                                 />
                               );
                             })}
@@ -781,7 +1005,6 @@ export default function Presets() {
                   );
                 }
               }
-
               return (
                 <PresetCard
                   key={key}
@@ -795,16 +1018,15 @@ export default function Presets() {
                   tags={tags}
                   requiresImages={requiresImages}
                   onActivate={() => applyPreset(card.workflow, card)}
-                  onBuilder={() => applyPreset(card.workflow, card)}
-                  onQuickLaunch={handleBuilderGenerate}
+                  onQuickEdit={() => handleQuickEditToggle(card)}
+                  quickEditActive={quickEditKey === key}
                   onAssignMode={(mode) => handleAssignMode(card.workflow, mode)}
                   onUploadPreview={(file) =>
                     handleCardPreviewUpload(card.workflow, card, file)
                   }
+                  onImages={() => focusImageSection(card)}
                   onClear={clearSelection}
                   savingMode={typeSaving === card.workflow}
-                  canQuickLaunch={canLaunchCard}
-                  launching={isGenerating && isActive}
                   description={(card.meta?.description || '').trim()}
                   previewSaving={previewSaving}
                 >
@@ -814,7 +1036,8 @@ export default function Presets() {
             })}
           </div>
         )}
-      </section>
+        </div>
+      </details>
     </div>
   );
 }

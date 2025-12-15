@@ -1,5 +1,5 @@
 // js/src/components/presets/PresetCard.jsx
-import React, { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 
 export default function PresetCard({
   workflow,
@@ -11,16 +11,15 @@ export default function PresetCard({
   tags = [],
   isSelected,
   requiresImages = false,
-  canQuickLaunch = false,
-  launching = false,
   onActivate,
-  onBuilder,
-  onQuickLaunch,
+  onQuickEdit,
+  onImages,
   onAssignMode,
   onUploadPreview,
   onClear,
   savingMode,
   previewSaving = false,
+  quickEditActive = false,
   children,
   description,
 }) {
@@ -31,6 +30,39 @@ export default function PresetCard({
     if (isSelected && cardRef.current) {
       cardRef.current.focus();
     }
+  }, [isSelected]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+    const node = cardRef.current;
+
+    if (!isSelected || !node) {
+      const active = document.activeElement;
+      if (
+        !isSelected &&
+        node &&
+        active &&
+        node.contains(active) &&
+        typeof active.blur === 'function'
+      ) {
+        active.blur();
+      }
+      return undefined;
+    }
+
+    const keepFocusOnCard = (event) => {
+      if (!cardRef.current) return;
+      if (!cardRef.current.contains(event.target)) {
+        requestAnimationFrame(() => {
+          cardRef.current?.focus();
+        });
+      }
+    };
+
+    document.addEventListener('focusin', keepFocusOnCard, true);
+    return () => {
+      document.removeEventListener('focusin', keepFocusOnCard, true);
+    };
   }, [isSelected]);
 
   useEffect(() => {
@@ -144,10 +176,12 @@ export default function PresetCard({
 
       <div className="preset-card-underbar">
         <div className="preset-card-tagrow">
-          <span className="ui-pill is-muted">{modeLabel}</span>
-          {requiresImages && <span className="ui-pill is-soft">Image input</span>}
+          <span className="preset-card-chip is-kind">{modeLabel}</span>
+          {requiresImages && (
+            <span className="preset-card-chip is-alert">Image input</span>
+          )}
           {tags.map((tag) => (
-            <span key={tag} className="ui-pill is-soft">
+            <span key={tag} className="preset-card-chip">
               {tag}
             </span>
           ))}
@@ -171,21 +205,20 @@ export default function PresetCard({
             className="ui-button is-muted is-compact"
             onClick={(e) => {
               e.stopPropagation();
-              onBuilder?.();
+              onQuickEdit?.();
             }}
           >
-            Builder
+            {quickEditActive ? 'Hide tweaks' : 'Quick tweaks'}
           </button>
           <button
             type="button"
             className="ui-button is-ghost is-compact"
-            disabled={!canQuickLaunch || launching}
             onClick={(e) => {
               e.stopPropagation();
-              if (canQuickLaunch && !launching) onQuickLaunch?.();
+              onImages?.();
             }}
           >
-            {launching ? 'Rendering…' : 'Quick launch'}
+            Images
           </button>
         </div>
       </div>

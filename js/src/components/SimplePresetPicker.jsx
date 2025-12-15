@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { listPresets } from '../api';
 import { normalizePresetValue } from '../utils/presets';
 

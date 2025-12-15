@@ -66,8 +66,11 @@ function Login() {
 
           <form className="space-y-4" onSubmit={handleSubmit}>
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">Username</label>
+              <label htmlFor="login-username" className="block text-sm font-medium text-slate-300 mb-2">
+                Username
+              </label>
               <input
+                id="login-username"
                 type="text"
                 className="w-full rounded-xl border border-slate-700 bg-slate-800/70 px-4 py-3 text-white placeholder-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/40 transition"
                 value={username}
@@ -77,8 +80,11 @@ function Login() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">Password</label>
+              <label htmlFor="login-password" className="block text-sm font-medium text-slate-300 mb-2">
+                Password
+              </label>
               <input
+                id="login-password"
                 type="password"
                 className="w-full rounded-xl border border-slate-700 bg-slate-800/70 px-4 py-3 text-white placeholder-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/40 transition"
                 value={password}

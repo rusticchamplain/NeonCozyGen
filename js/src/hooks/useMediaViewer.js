@@ -12,10 +12,10 @@ export function useMediaViewer(mediaItems) {
       setViewerOpen(false);
       return;
     }
-    setViewerIndex((prev) => {
-      if (prev == null) return prev;
-      if (prev >= mediaItems.length) return mediaItems.length - 1;
-      return prev;
+    setViewerIndex((prevIndex) => {
+      if (prevIndex === null || prevIndex === undefined) return prevIndex;
+      if (prevIndex >= mediaItems.length) return mediaItems.length - 1;
+      return prevIndex;
     });
   }, [mediaItems]);
 
@@ -37,22 +37,23 @@ export function useMediaViewer(mediaItems) {
 
   const next = useCallback(() => {
     if (!mediaItems || !mediaItems.length) return;
-    setViewerIndex((prev) => {
-      if (prev == null) return prev;
-      return (prev + 1) % mediaItems.length;
+    setViewerIndex((prevIndex) => {
+      if (prevIndex === null || prevIndex === undefined) return prevIndex;
+      return (prevIndex + 1) % mediaItems.length;
     });
   }, [mediaItems]);
 
-  const prev = useCallback(() => {
+  const prevItem = useCallback(() => {
     if (!mediaItems || !mediaItems.length) return;
-    setViewerIndex((prev) => {
-      if (prev == null) return prev;
-      return (prev - 1 + mediaItems.length) % mediaItems.length;
+    setViewerIndex((prevIndex) => {
+      if (prevIndex === null || prevIndex === undefined) return prevIndex;
+      return (prevIndex - 1 + mediaItems.length) % mediaItems.length;
     });
   }, [mediaItems]);
 
   const currentMedia =
-    viewerIndex != null &&
+    viewerIndex !== null &&
+    viewerIndex !== undefined &&
     viewerIndex >= 0 &&
     mediaItems &&
     viewerIndex < mediaItems.length
@@ -66,8 +67,7 @@ export function useMediaViewer(mediaItems) {
     open,
     close,
     next,
-    prev,
+    prev: prevItem,
     setViewerOpen,
   };
 }
-

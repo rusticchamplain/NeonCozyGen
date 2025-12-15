@@ -1,6 +1,6 @@
 // js/src/components/ImagePickerSheet.jsx
-import React, { useEffect } from 'react';
-import { inputFileUrl } from '../hooks/useImagePicker';
+import { useEffect } from 'react';
+import { inputFileUrl, outputFileUrl } from '../hooks/useImagePicker';
 
 export default function ImagePickerSheet({
   open,
@@ -248,43 +248,61 @@ export default function ImagePickerSheet({
 
             <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3">
               {!loading &&
-                shownEntries.map((it) => (
-                  <button
-                    key={it.rel_path}
-                    type="button"
-                    className="text-left rounded-xl border border-[#3D4270] bg-[#050716] px-2.5 py-2 transition hover:border-[#3EF0FF80]"
-                    onClick={() => {
-                      if (it.is_dir) {
-                        setCwd(it.rel_path);
-                        setPage(1);
-                      } else {
-                        onSelect(it.rel_path);
-                      }
-                    }}
-                  >
-                    {it.is_dir ? (
-                      <div className="flex items-center gap-2">
-                        <div className="h-7 w-7 rounded-xl bg-[radial-gradient(circle_at_0%_0%,#3EF0FF,transparent_55%),radial-gradient(circle_at_100%_100%,#FF60D0,transparent_55%)] opacity-90" />
-                        <div className="text-[11px] text-[#E5E7FF] truncate">
-                          {it.name}
+                shownEntries.map((it) => {
+                  const key = `${it.source || 'input'}::${it.rel_path || it.name}`;
+                  const thumbSrc = it.is_dir
+                    ? ''
+                    : it.preview_url ||
+                      (it.source === 'output'
+                        ? outputFileUrl({
+                            filename: it.filename,
+                            subfolder: it.subfolder,
+                            type: it.type,
+                          })
+                        : inputFileUrl(it.rel_path || ''));
+
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      className="text-left rounded-xl border border-[#3D4270] bg-[#050716] px-2.5 py-2 transition hover:border-[#3EF0FF80]"
+                      onClick={() => {
+                        if (it.is_dir) {
+                          setCwd(it.rel_path || '');
+                          setPage(1);
+                        } else {
+                          onSelect(it);
+                        }
+                      }}
+                    >
+                      {it.is_dir ? (
+                        <div className="flex items-center gap-2">
+                          <div className="h-7 w-7 rounded-xl bg-[radial-gradient(circle_at_0%_0%,#3EF0FF,transparent_55%),radial-gradient(circle_at_100%_100%,#FF60D0,transparent_55%)] opacity-90" />
+                          <div className="text-[11px] text-[#E5E7FF] truncate">
+                            {it.name}
+                          </div>
                         </div>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="aspect-square w-full rounded-lg overflow-hidden mb-2 bg-[#111325] flex items-center justify-center">
-                          <img
-                            className="w-full h-full object-cover"
-                            alt={it.name}
-                            src={inputFileUrl(it.rel_path)}
-                          />
-                        </div>
-                        <div className="text-[10px] text-[#C3C7FF] truncate">
-                          {it.name}
-                        </div>
-                      </>
-                    )}
-                  </button>
-                ))}
+                      ) : (
+                        <>
+                          <div className="aspect-square w-full rounded-lg overflow-hidden mb-2 bg-[#111325] flex items-center justify-center">
+                            {thumbSrc ? (
+                              <img
+                                className="w-full h-full object-cover"
+                                alt={it.name}
+                                src={thumbSrc}
+                              />
+                            ) : (
+                              <div className="w-full h-full bg-[#1b1f3b]" />
+                            )}
+                          </div>
+                          <div className="text-[10px] text-[#C3C7FF] truncate">
+                            {it.name}
+                          </div>
+                        </>
+                      )}
+                    </button>
+                  );
+                })}
             </div>
           </div>
 

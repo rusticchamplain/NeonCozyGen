@@ -1,10 +1,12 @@
 // js/src/hooks/useExecutionQueue.js
 import { useCallback, useEffect, useRef, useState } from 'react';
+
 import { queuePrompt } from '../api';
 import { getToken } from '../utils/auth';
-import { injectFormValues } from '../utils/workflowGraph';
+import { saveLastRenderPayload } from '../utils/globalRender';
+import { applyAliasesToForm, applyPromptAliases } from '../utils/promptAliases';
 import { saveFormState } from '../utils/storage';
-import { applyAliasesToForm } from '../utils/promptAliases';
+import { injectFormValues } from '../utils/workflowGraph';
 
 /**
  * Handles:
@@ -83,6 +85,15 @@ export function useExecutionQueue({
     }
   };
 
+  const emitFinished = () => {
+    if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return;
+    try {
+      window.dispatchEvent(new CustomEvent('cozygen:queue-finished'));
+    } catch {
+      // ignore
+    }
+  };
+
   const scheduleIdleReset = () => {
     clearIdleTimer();
     // drift back to Idle a bit after finish / error, if nothing new has started
@@ -105,6 +116,7 @@ export function useExecutionQueue({
     setStatusText('Finished');
     setStatusPhase('finished');
     scheduleIdleReset();
+    emitFinished();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -333,7 +345,35 @@ export function useExecutionQueue({
 
     try {
       // Queue prompt
-      await queuePrompt({ prompt: finalWorkflow });
+      let expandedWorkflow = finalWorkflow;
+      if (promptAliases) {
+        const expandValue = (val) => {
+          if (typeof val === 'string') return applyPromptAliases(val, promptAliases);
+          if (Array.isArray(val)) return val.map((item) => expandValue(item));
+          if (val && typeof val === 'object') {
+            const next = Array.isArray(val) ? [] : {};
+            Object.entries(val).forEach(([k, v]) => {
+              next[k] = expandValue(v);
+            });
+            return next;
+          }
+          return val;
+        };
+        try {
+          expandedWorkflow = expandValue(finalWorkflow);
+        } catch {
+          expandedWorkflow = finalWorkflow;
+        }
+      }
+
+      // Save the expanded workflow so it can be re-queued from Gallery or other pages
+      saveLastRenderPayload({
+        workflowName: selectedWorkflow,
+        workflow: expandedWorkflow,
+        timestamp: Date.now(),
+      });
+
+      await queuePrompt({ prompt: expandedWorkflow });
       // From here on, WebSocket + heuristic drive progress/status
     } catch (err) {
       console.error('Failed to queue prompt', err);

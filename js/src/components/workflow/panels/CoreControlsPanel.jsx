@@ -1,4 +1,3 @@
-import React from 'react';
 import DynamicForm from '../../DynamicForm';
 
 function normalizeInputs(inputs) {

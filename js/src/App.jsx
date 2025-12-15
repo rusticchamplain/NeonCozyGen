@@ -1,19 +1,15 @@
 // js/src/App.jsx
-import React, { useEffect } from 'react';
-import {
-  HashRouter,
-  Routes,
-  Route,
-  Navigate,
-  useLocation,
-} from 'react-router-dom';
+import { useEffect } from 'react';
+import { HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import TopBar from './components/TopBar';
+import BottomNav from './components/BottomNav';
 import MainPage from './pages/MainPage';
 import Gallery from './pages/Gallery';
-import Prompts from './pages/Prompts';
-import PersonalizeWorkflows from './pages/PersonalizeWorkflows';
-import WizardPage from './pages/WizardPage';
 import Presets from './pages/Presets';
+import LoraLibrary from './pages/LoraLibrary';
+import Aliases from './pages/Aliases';
+import Login from './pages/Login';
+import { AuthProvider, useAuth } from './hooks/useAuth';
 
 /* Scroll to top on route change */
 function ScrollToTop() {
@@ -24,27 +20,107 @@ function ScrollToTop() {
   return null;
 }
 
-function App() {
-  return (
-    <HashRouter>
-      <div className="min-h-screen bg-[#050716] text-[#F8F4FF]">
-        <TopBar />
-        <ScrollToTop />
-        <main className="max-w-7xl mx-auto px-3 sm:px-4 py-4">
-          <Routes>
-            <Route path="/" element={<WizardPage />} />
-            <Route path="/studio" element={<MainPage />} />
-            <Route path="/gallery" element={<Gallery />} />
-            <Route path="/prompts" element={<Prompts />} />
-            <Route path="/personalize" element={<PersonalizeWorkflows />} />
-            <Route path="/presets" element={<Presets />} />
-            {/* Fallback */}
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </main>
+function RequireAuth({ children }) {
+  const { authed, ready } = useAuth();
+  const location = useLocation();
+
+  if (!ready) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-200">
+        Loading…
       </div>
-    </HashRouter>
+    );
+  }
+
+  if (!authed) {
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  return children;
+}
+
+function App() {
+  const { pathname } = useLocation();
+  const { defaultCreds, authed } = useAuth();
+  const isLogin = pathname === '/login';
+
+  return (
+    <div className="app-shell min-h-screen">
+      {!isLogin && <TopBar />}
+      {!isLogin && authed && defaultCreds && (
+        <div className="bg-amber-500/10 text-amber-200 border border-amber-400/50 px-4 py-2 text-sm text-center">
+          Default CozyGen credentials are still in use. Change <code className="font-mono">COZYGEN_AUTH_USER</code> /
+          <code className="font-mono">COZYGEN_AUTH_PASS</code> on the server.
+        </div>
+      )}
+      <ScrollToTop />
+      <main className={`${isLogin ? 'px-0 py-0' : 'max-w-7xl mx-auto px-3 sm:px-4 py-4 pb-24 md:pb-6'}`}>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+
+          <Route
+            path="/"
+            element={
+              <RequireAuth>
+                <MainPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/studio"
+            element={
+              <RequireAuth>
+                <MainPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/gallery"
+            element={
+              <RequireAuth>
+                <Gallery />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/presets"
+            element={
+              <RequireAuth>
+                <Presets />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/lora-library"
+            element={
+              <RequireAuth>
+                <LoraLibrary />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/aliases"
+            element={
+              <RequireAuth>
+                <Aliases />
+              </RequireAuth>
+            }
+          />
+          {/* Fallback */}
+          <Route path="*" element={<Navigate to="/studio" replace />} />
+        </Routes>
+      </main>
+      {!isLogin && <BottomNav />}
+    </div>
   );
 }
 
-export default App;
+export default function AppWithProviders() {
+  return (
+    <HashRouter>
+      <AuthProvider>
+        <App />
+      </AuthProvider>
+    </HashRouter>
+  );
+}

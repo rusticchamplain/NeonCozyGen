@@ -1,5 +1,5 @@
 // js/src/components/PresetSelector.jsx
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { listPresets, savePreset, deletePreset } from '../api';
 import { normalizePresetItems } from '../utils/presets';
 
@@ -29,7 +29,20 @@ export default function PresetSelector({
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const refresh = useCallback(async (preserveSel = true) => {
+  const selectionRef = useRef(sel);
+  useEffect(() => {
+    selectionRef.current = sel;
+  }, [sel]);
+
+  const refresh = useCallback(async (options = {}) => {
+    const normalizedOptions =
+      typeof options === 'boolean'
+        ? { preserveSelection: options }
+        : options || {};
+    const {
+      preserveSelection = true,
+      selection: forcedSelection,
+    } = normalizedOptions;
     setLoading(true);
     try {
       const data = await listPresets(workflow);
@@ -42,25 +55,29 @@ export default function PresetSelector({
       const list = Object.keys(map).sort((a, b) => a.localeCompare(b));
       setItems(map);
       setNames(list);
-      if (preserveSel && sel && map[sel]) {
-        // keep current selection
+      const previousSelection =
+        typeof forcedSelection === 'string'
+          ? forcedSelection
+          : selectionRef.current;
+      if (preserveSelection && previousSelection && map[previousSelection]) {
+        setSel(previousSelection);
       } else {
         setSel(list[0] || '');
       }
     } finally {
       setLoading(false);
     }
-  }, [workflow, sel]);
+  }, [workflow]);
 
   useEffect(() => {
-    refresh(false);
+    refresh({ preserveSelection: false });
   }, [workflow, refresh]);
 
   useEffect(() => {
     const handler = (evt) => {
       const targetWorkflow = evt?.detail?.workflow;
       if (targetWorkflow && targetWorkflow !== workflow) return;
-      refresh(true);
+      refresh({ preserveSelection: true });
     };
     window.addEventListener('cozygen:preset-changed', handler);
     return () => window.removeEventListener('cozygen:preset-changed', handler);
@@ -92,8 +109,7 @@ export default function PresetSelector({
       typeof readCurrentValues === 'function' ? readCurrentValues() : {};
     await savePreset(workflow, name, values);
     setNewName('');
-    await refresh();
-    setSel(name);
+    await refresh({ preserveSelection: true, selection: name });
     setStatusTemp(`Saved “${name}”`);
   }
 
@@ -102,18 +118,18 @@ export default function PresetSelector({
     const values =
       typeof readCurrentValues === 'function' ? readCurrentValues() : {};
     await savePreset(workflow, sel, values);
-    await refresh(true);
+    await refresh({ preserveSelection: true, selection: sel });
     setStatusTemp(`Updated “${sel}”`);
   }
 
   async function doDelete() {
     if (!sel) return;
     await deletePreset(workflow, sel);
-    await refresh(false);
+    await refresh({ preserveSelection: false });
     setStatusTemp(`Deleted “${sel}”`);
   }
 
-  const hasPresets = useMemo(() => names.length > 0, [names.length]);
+  const hasPresets = useMemo(() => names.length > 0, [names]);
 
   return (
     <div className="space-y-3">

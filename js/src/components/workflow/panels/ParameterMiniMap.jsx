@@ -1,5 +1,3 @@
-import React from 'react';
-
 const STYLE_VARIANTS = {
   sticky:
     'sticky top-16 z-10 -mx-3 mb-3 rounded-2xl border border-[#1F2342] bg-[#050716F2] px-3 py-2 shadow-[0_10px_30px_rgba(5,7,22,0.82)] backdrop-blur-md sm:mx-0',

@@ -1,54 +1,32 @@
-import React, { forwardRef } from 'react';
+import { forwardRef } from 'react';
+import { Link } from 'react-router-dom';
 import PresetSelector from '../../PresetSelector';
 
 function PresetPanel(
   {
     workflow,
-    presetsOpen,
-    setPresetsOpen,
     onApplyPresetPatch,
     readCurrentValues,
-    walkthroughMode,
-    guideActive,
   },
   ref
 ) {
-  const sectionClass = [
-    'ui-panel scroll-mt-28 space-y-4',
-    walkthroughMode ? 'guide-surface' : '',
-    walkthroughMode && guideActive ? 'guide-focus' : '',
-  ]
-    .filter(Boolean)
-    .join(' ');
-
   return (
-    <section className={sectionClass} ref={ref}>
-      <header className="ui-section-head">
-        <div className="ui-section-text">
+    <div className="ui-panel scroll-mt-28 space-y-3" ref={ref}>
+      <div className="flex items-center justify-between">
+        <div>
           <span className="ui-kicker">Presets</span>
-          <p className="ui-hint">Save or reuse full stacks.</p>
-          {walkthroughMode && (
-            <p className="guide-hint">
-              Pull a saved setup or capture the current values.
-            </p>
-          )}
+          <h3 className="text-sm font-semibold text-[#F8F4FF] mt-1">Save or reuse a setup</h3>
         </div>
-        <button
-          type="button"
-          className="ui-button is-ghost is-compact"
-          onClick={() => setPresetsOpen((v) => !v)}
-        >
-          {presetsOpen ? 'Collapse' : 'Expand'}
-        </button>
-      </header>
-      {presetsOpen && (
-        <PresetSelector
-          workflow={workflow || 'default'}
-          onApply={onApplyPresetPatch}
-          readCurrentValues={readCurrentValues}
-        />
-      )}
-    </section>
+        <Link to="/presets" className="ui-button is-muted is-compact">
+          Manage
+        </Link>
+      </div>
+      <PresetSelector
+        workflow={workflow || 'default'}
+        onApply={onApplyPresetPatch}
+        readCurrentValues={readCurrentValues}
+      />
+    </div>
   );
 }
 

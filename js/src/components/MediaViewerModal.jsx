@@ -1,5 +1,4 @@
 // js/src/components/MediaViewerModal.jsx
-import React from 'react';
 import Modal from 'react-modal';
 
 Modal.setAppElement('#root');
@@ -29,6 +28,8 @@ export default function MediaViewerModal({
   if (!media) return null;
 
   const url = mediaUrl(media);
+  const locationLabel = media.subfolder || 'Gallery';
+  const isClip = isVideo(media.filename);
 
   return (
     <Modal
@@ -38,64 +39,69 @@ export default function MediaViewerModal({
       className="react-modal-content"
       contentLabel="Preview"
     >
-      <div className="flex flex-col h-full bg-[#050716] text-[#F8F4FF] border border-[#3EF0FF33] rounded-2xl overflow-hidden">
-        <div className="flex items-center justify-between px-3 sm:px-4 py-2 border-b border-[#3D4270] bg-[#050716F2]">
-          <div className="flex-1 min-w-0">
-            <div className="text-xs sm:text-sm font-medium truncate">
+      <div className="media-viewer-panel">
+        <header className="media-viewer-head">
+          <div className="media-viewer-meta">
+            <div className="media-viewer-title" title={media.filename}>
               {media.filename}
             </div>
-            <div className="text-[10px] sm:text-[11px] text-[#9DA3FFCC]">
-              {media.subfolder || 'root collection'}
+            <div className="media-viewer-sub">
+              <span className="media-chip">{locationLabel}</span>
+              <span className={`media-chip ${isClip ? 'is-clip' : 'is-still'}`}>
+                {isClip ? 'Video' : 'Image'}
+              </span>
             </div>
           </div>
-          <div className="flex items-center gap-1 sm:gap-2">
+          <div className="media-viewer-actions">
             <button
               type="button"
+              className="media-btn ghost"
               onClick={onPrev}
-              className="hidden sm:inline-flex px-2 py-1 rounded-full border border-[#3D4270] text-[11px] hover:bg-[#111325]"
+              aria-label="Previous item"
             >
               ←
             </button>
             <button
               type="button"
+              className="media-btn ghost"
               onClick={onNext}
-              className="hidden sm:inline-flex px-2 py-1 rounded-full border border-[#3D4270] text-[11px] hover:bg-[#111325]"
+              aria-label="Next item"
             >
               →
             </button>
-            <a
-              href={url}
-              target="_blank"
-              rel="noreferrer"
-              className="px-2.5 py-1 rounded-full border border-[#3D4270] text-[11px] hover:bg-[#111325]"
-            >
+            <a href={url} target="_blank" rel="noreferrer" className="media-btn">
               Open
             </a>
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-2.5 py-1 rounded-full border border-[#3D4270] text-[11px] hover:bg-[#111325]"
-            >
+            <button type="button" className="media-btn solid" onClick={onClose}>
               Close
             </button>
           </div>
-        </div>
+        </header>
 
-        <div className="flex-1 min-h-0 p-3 flex items-center justify-center bg-[#050716]">
-          {isVideo(media.filename) ? (
-            <video
-              src={url}
-              controls
-              className="max-w-full max-h-[calc(100vh-160px)] rounded-xl shadow-[0_0_26px_rgba(0,0,0,0.8)]"
-              autoPlay
-            />
-          ) : (
-            <img
-              src={url}
-              alt={media.filename}
-              className="max-w-full max-h-[calc(100vh-160px)] rounded-xl shadow-[0_0_26px_rgba(0,0,0,0.8)]"
-            />
-          )}
+        <div className="media-viewer-stage">
+          <button
+            type="button"
+            className="media-stage-nav is-left"
+            onClick={onPrev}
+            aria-label="Previous"
+          >
+            ←
+          </button>
+          <div className="media-viewer-frame">
+            {isClip ? (
+              <video src={url} controls className="media-viewer-media" autoPlay />
+            ) : (
+              <img src={url} alt={media.filename} className="media-viewer-media" />
+            )}
+          </div>
+          <button
+            type="button"
+            className="media-stage-nav is-right"
+            onClick={onNext}
+            aria-label="Next"
+          >
+            →
+          </button>
         </div>
       </div>
     </Modal>

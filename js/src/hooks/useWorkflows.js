@@ -1,5 +1,6 @@
 // js/src/hooks/useWorkflows.js
-import { useEffect, useState, useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+
 import { getWorkflows } from '../api';
 
 /**
@@ -30,12 +31,21 @@ export function useWorkflows() {
         const list = data?.workflows || [];
         setWorkflows(list);
 
-        const stored = localStorage.getItem('selectedWorkflow');
+        let stored = null;
+        try {
+          stored = typeof window !== 'undefined' ? localStorage.getItem('selectedWorkflow') : null;
+        } catch {
+          stored = null;
+        }
         if (stored && list.includes(stored)) {
           setSelectedWorkflow(stored);
         } else if (list.length > 0) {
           setSelectedWorkflow(list[0]);
-          localStorage.setItem('selectedWorkflow', list[0]);
+          try {
+            if (typeof window !== 'undefined') localStorage.setItem('selectedWorkflow', list[0]);
+          } catch {
+            // ignore
+          }
         } else {
           setSelectedWorkflow(null);
         }
@@ -58,7 +68,7 @@ export function useWorkflows() {
   const selectWorkflow = useCallback((workflowName) => {
     setSelectedWorkflow(workflowName);
     try {
-      localStorage.setItem('selectedWorkflow', workflowName);
+      if (typeof window !== 'undefined') localStorage.setItem('selectedWorkflow', workflowName);
     } catch {
       // ignore
     }

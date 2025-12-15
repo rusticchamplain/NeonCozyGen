@@ -1,11 +1,10 @@
 // js/src/components/ImageInput.jsx
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useImagePicker } from '../hooks/useImagePicker';
 import ImagePickerSheet from './ImagePickerSheet';
 
 export default function ImageInput({ input, value, onFormChange }) {
   const {
-    param,
     previewUrl,
     imgReady,
     setImgReady,
@@ -87,20 +86,20 @@ export default function ImageInput({ input, value, onFormChange }) {
   };
 
   return (
-    <div className="rounded-2xl border border-[#2A2E4A] bg-[#050716] p-3 sm:p-4 shadow-[0_0_22px_rgba(5,7,22,0.8)]">
-      <div className="mb-2 flex items-baseline justify-between gap-2">
-        <h3 className="text-xs sm:text-sm font-semibold text-[#F8F4FF]">
-          {param}
-        </h3>
-        <span className="text-[10px] sm:text-xs text-[#9DA3FFCC] truncate">
+    <div className="asset-card">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold text-[#F8F4FF] truncate">
           {displayName}
+        </h3>
+        <span className="text-[11px] text-[#C3C7FFB3] truncate">
+          Image
         </span>
       </div>
 
       {/* preview / drop zone */}
       <div
         ref={dropRef}
-        className="mb-3 rounded-xl border border-dashed border-[#3D4270] bg-[#050716] flex items-center justify-center min-h-[120px] sm:min-h-[160px] overflow-hidden"
+        className="mb-3 rounded-xl border border-dashed border-[#3D4270] bg-[#0b1226] flex items-center justify-center min-h-[140px] sm:min-h-[180px] overflow-hidden"
       >
         {previewUrl ? (
           <img
@@ -130,36 +129,28 @@ export default function ImageInput({ input, value, onFormChange }) {
       />
 
       {/* controls */}
-      <div className="flex flex-col gap-2">
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            onClick={triggerBrowse}
-            className="rounded-lg border border-[#3D4270] bg-[#050716] px-3 py-1.5 text-[11px] text-[#C3C7FF] text-center hover:border-[#3EF0FF80]"
-          >
-            Browse…
-          </button>
-          <button
-            type="button"
-            className="rounded-lg border border-[#3D4270] bg-[#050716] px-3 py-1.5 text-[11px] text-[#C3C7FF] text-center hover:border-[#3EF0FF80]"
-            onClick={openServer}
-          >
-            From Server
-          </button>
-        </div>
-        <div className="flex items-center justify-between">
-          <p className="text-[10px] text-[#9DA3FFCC] pr-2">
-            Tip: “From Server” opens your last folder. Drag &amp; drop is
-            supported.
-          </p>
-          <button
-            type="button"
-            className="text-[11px] text-[#FF9BEA] hover:underline flex-shrink-0"
-            onClick={clearImage}
-          >
-            Clear
-          </button>
-        </div>
+      <div className="flex items-center gap-2 flex-wrap">
+        <button
+          type="button"
+          className="ui-button is-primary is-compact"
+          onClick={openServer}
+        >
+          Choose
+        </button>
+        <button
+          type="button"
+          className="ui-button is-muted is-compact"
+          onClick={triggerBrowse}
+        >
+          Upload
+        </button>
+        <button
+          type="button"
+          className="ui-button is-ghost is-compact"
+          onClick={clearImage}
+        >
+          Clear
+        </button>
       </div>
 
       <ImagePickerSheet

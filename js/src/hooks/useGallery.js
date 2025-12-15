@@ -1,5 +1,6 @@
 // js/src/hooks/useGallery.js
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+
 import { getGallery } from '../api';
 
 const isHidden = (name = '') => name.startsWith('.');
@@ -53,7 +54,15 @@ export function useGallery() {
     const load = async () => {
       setLoading(true);
       try {
-        const data = await getGallery(path, page, perPage, showHidden, recursive, kind);
+        const data = await getGallery(
+          path,
+          page,
+          perPage,
+          showHidden,
+          recursive,
+          kind,
+          reloadKey
+        );
         if (cancelled) return;
         if (data && data.items) {
           setItems(data.items);
@@ -183,6 +192,79 @@ export function useGallery() {
   const refresh = useCallback(() => {
     setReloadKey((prev) => prev + 1);
   }, []);
+
+  // Refresh when a generation finishes (event emitted by useExecutionQueue).
+  useEffect(() => {
+    const handler = () => refresh();
+    if (typeof window !== 'undefined' && window.addEventListener) {
+      window.addEventListener('cozygen:queue-finished', handler);
+    }
+    return () => {
+      if (typeof window !== 'undefined' && window.removeEventListener) {
+        window.removeEventListener('cozygen:queue-finished', handler);
+      }
+    };
+  }, [refresh]);
+
+  // Auto-refresh when new outputs land: prefer SSE, fall back to polling.
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+
+    let stopped = false;
+    let es;
+    let pollTimer;
+
+    const stopTimers = () => {
+      if (pollTimer) {
+        clearTimeout(pollTimer);
+        pollTimer = null;
+      }
+    };
+
+    const schedulePoll = (delay = 8000) => {
+      stopTimers();
+      pollTimer = window.setTimeout(() => {
+        if (stopped) return;
+        refresh();
+        schedulePoll(8000);
+      }, delay);
+    };
+
+    const openSSE = () => {
+      if (!('EventSource' in window)) {
+        schedulePoll();
+        return;
+      }
+      const qs = new URLSearchParams({
+        subfolder: path || '',
+        recursive: recursive ? '1' : '0',
+        show_hidden: showHidden ? '1' : '0',
+      });
+      es = new EventSource(`/cozygen/api/gallery/stream?${qs.toString()}`);
+      es.onmessage = () => {
+        if (stopped) return;
+        refresh();
+      };
+      es.onerror = () => {
+        if (es) {
+          es.close();
+          es = null;
+        }
+        schedulePoll();
+      };
+    };
+
+    openSSE();
+
+    return () => {
+      stopped = true;
+      stopTimers();
+      if (es) {
+        es.close();
+        es = null;
+      }
+    };
+  }, [path, recursive, showHidden, refresh]);
 
   return {
     // raw state

@@ -66,13 +66,24 @@ export async function uploadImage(file) {
 }
 
 /* ---- Gallery API (moved) ---- */
-export async function getGallery(subfolder = '', page = 1, perPage = 50, showHidden = false, recursive = false, kind = 'all') {
+export async function getGallery(
+  subfolder = '',
+  page = 1,
+  perPage = 50,
+  showHidden = false,
+  recursive = false,
+  kind = 'all',
+  cacheBust = ''
+) {
   const qs = new URLSearchParams({
     subfolder, page: String(page), per_page: String(perPage),
     show_hidden: showHidden ? '1' : '0',
     recursive: recursive ? '1' : '0',
     kind,
   });
+  if (cacheBust) {
+    qs.set('cache_bust', String(cacheBust));
+  }
   return jget(`/cozygen/api/gallery?${qs.toString()}`);
 }
 

@@ -45,18 +45,7 @@ export default function TopBar() {
             <span className="brand-text">CozyGen</span>
           </Link>
 
-          <button
-            type="button"
-            className={`mobile-menu-toggle btn-touch ${menuOpen ? 'is-active' : ''} md:hidden`}
-            onClick={toggleMenu}
-            aria-expanded={menuOpen}
-            aria-controls="cozygen-mobile-nav"
-          >
-            <span className="mobile-menu-label">{menuOpen ? 'Close' : 'Menu'}</span>
-            <span className="mobile-menu-icon">
-              <span />
-            </span>
-          </button>
+          <div className="flex-1" />
 
           <button
             type="button"
@@ -67,6 +56,19 @@ export default function TopBar() {
             <span className="text-lg">🚪</span>
             <span className="hidden sm:inline text-xs uppercase tracking-wide">Logout</span>
             {user ? <span className="text-slate-400 text-xs">@{user}</span> : null}
+          </button>
+
+          <button
+            type="button"
+            className={`mobile-menu-toggle btn-touch ${menuOpen ? 'is-active' : ''} md:hidden`}
+            onClick={toggleMenu}
+            aria-expanded={menuOpen}
+            aria-controls="cozygen-mobile-nav"
+            aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+          >
+            <span className="mobile-menu-icon">
+              <span />
+            </span>
           </button>
         </div>
       </div>

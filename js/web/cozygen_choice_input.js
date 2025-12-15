@@ -17,7 +17,7 @@ async function getChoices(choiceType) {
 
 app.registerExtension({
 	name: "CozyGen.ChoiceInput",
-	async beforeRegisterNodeDef(nodeType, nodeData, app) {
+	async beforeRegisterNodeDef(nodeType, nodeData) {
 		if (nodeData.name === "CozyGenChoiceInput") {
 			// This function is called when the node is created in the graph
 			const onNodeCreated = nodeType.prototype.onNodeCreated;
@@ -46,7 +46,7 @@ app.registerExtension({
 
                 if (bypassWidget && bypassWidget.value) {
                     this.addWidget("toggle", "Bypass", false, (v) => {
-                        console.log(`Bypass toggled to: ${v}`);
+                        console.info(`Bypass toggled to: ${v}`);
                     });
                 }
 			};

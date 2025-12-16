@@ -90,6 +90,7 @@ export default function DynamicForm({
   onVisibleParamsChange = () => {},
   aliasOptions = [],
   aliasCatalog = [],
+  onOpenComposer,
 }) {
   const [collapsedCards, setCollapsedCards] = useState({});
   const [spotlightRenderKey, setSpotlightRenderKey] = useState(0);
@@ -320,6 +321,9 @@ export default function DynamicForm({
             <StringInput
               key={`field-${paramName}-string-${spotlightRenderKey}`}
               {...liveProps}
+              aliasOptions={aliasOptions}
+              aliasCatalog={aliasCatalog}
+              onOpenComposer={onOpenComposer}
               onChange={(v) => handleValueChange(paramName, v)}
               onEnter={(v, e) => {
                 handleValueChange(paramName, v);
@@ -554,6 +558,7 @@ export default function DynamicForm({
               {...liveProps}
               aliasOptions={aliasOptions}
               aliasCatalog={aliasCatalog}
+              onOpenComposer={onOpenComposer}
               onChange={(v) => handleValueChange(paramName, v)}
               onEnter={(v, e) => {
                 handleValueChange(paramName, v);

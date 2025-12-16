@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import BottomBar from '../components/BottomBar';
 import ImageInput from '../components/ImageInput';
 import FieldSpotlight from '../components/FieldSpotlight';
+import PromptComposer from '../components/PromptComposer';
 import WorkflowHeader from '../components/workflow/WorkflowHeader';
 import AdvancedModeLayout from '../components/workflow/AdvancedModeLayout';
 import CollapsibleSection from '../components/CollapsibleSection';
@@ -72,6 +73,8 @@ function MainPage() {
   const [spotlight, setSpotlight] = useState(null);
   const spotlightName = spotlight?.name || '';
   const handleCloseSpotlight = useCallback(() => setSpotlight(null), []);
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [composerField, setComposerField] = useState('prompt');
   const [visibleParams, setVisibleParams] = useState([]);
   const spotlightCacheRef = useRef(new Map());
   const galleryPending = useGalleryPending();
@@ -150,6 +153,39 @@ function MainPage() {
       return next;
     });
   };
+
+  // Prompt Composer handlers
+  const openComposer = useCallback((fieldName = 'prompt') => {
+    setComposerField(fieldName);
+    setComposerOpen(true);
+  }, []);
+
+  const handleComposerChange = useCallback((newValue) => {
+    if (composerField) {
+      handleFormChange(composerField, newValue);
+    }
+  }, [composerField, handleFormChange]);
+
+  // Find the best prompt field to edit
+  const promptFieldName = useMemo(() => {
+    // Prefer explicit "prompt" field
+    if (typeof formData?.prompt === 'string') return 'prompt';
+    // Look for common prompt field names
+    const promptLike = ['prompt', 'positive_prompt', 'text', 'positive'];
+    for (const key of promptLike) {
+      if (typeof formData?.[key] === 'string') return key;
+    }
+    // Fall back to first string field with an alias token
+    const withAlias = Object.entries(formData || {}).find(
+      ([, v]) => typeof v === 'string' && v.includes('$')
+    );
+    if (withAlias) return withAlias[0];
+    // Or just the first string field
+    const firstString = Object.entries(formData || {}).find(
+      ([, v]) => typeof v === 'string'
+    );
+    return firstString?.[0] || 'prompt';
+  }, [formData]);
 
   useEffect(() => {
     let cancelled = false;
@@ -302,52 +338,6 @@ function MainPage() {
 
   return (
     <div className="page-shell page-stack">
-      {workflowData ? (
-        <div className="space-y-2 mb-3">
-          <div className="inline-workflow-bar">
-            <div className="inline-workflow-left">
-              <span className="inline-workflow-label">Workflow</span>
-            </div>
-            <div className="inline-workflow-right">
-              <select
-                value={selectedWorkflow || ''}
-                onChange={(e) => handleWorkflowSelect(e.target.value)}
-                className="inline-workflow-select"
-              >
-                <option value="">Select workflow</option>
-                {workflows.map((wf) => (
-                  <option key={wf} value={wf}>
-                    {wf}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-          <div className="inline-preset-bar">
-            <div className="inline-preset-left">
-              <span className="inline-preset-label">Preset</span>
-              {inlinePresetStatus ? (
-                <span className="inline-preset-status">{inlinePresetStatus}</span>
-              ) : null}
-            </div>
-            <div className="inline-preset-right">
-              <select
-                value={inlinePresetSel}
-                onChange={(e) => handleInlinePresetSelect(e.target.value)}
-                className="inline-preset-select"
-              >
-                <option value="">None</option>
-                {inlinePresets.map((p) => (
-                  <option key={p.name} value={p.name}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
       <CollapsibleSection
         kicker="Parameters"
         title="🎛️ Controls"
@@ -355,6 +345,41 @@ function MainPage() {
         bodyClassName="control-shell"
         defaultOpen
       >
+        {/* Minimal context bar for workflow/preset selection */}
+        <div className="context-bar">
+          <div className="context-chip">
+            <select
+              value={selectedWorkflow || ''}
+              onChange={(e) => handleWorkflowSelect(e.target.value)}
+              className="context-select"
+              aria-label="Workflow"
+            >
+              <option value="">Select workflow…</option>
+              {workflows.map((wf) => (
+                <option key={wf} value={wf}>{wf}</option>
+              ))}
+            </select>
+          </div>
+          {workflowData && inlinePresets.length > 0 ? (
+            <div className="context-chip is-secondary">
+              <select
+                value={inlinePresetSel}
+                onChange={(e) => handleInlinePresetSelect(e.target.value)}
+                className="context-select"
+                aria-label="Preset"
+              >
+                <option value="">No preset</option>
+                {inlinePresets.map((p) => (
+                  <option key={p.name} value={p.name}>{p.name}</option>
+                ))}
+              </select>
+              {inlinePresetStatus ? (
+                <span className="context-status">{inlinePresetStatus}</span>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+
         {workflowData ? (
           <AdvancedModeLayout
             workflowName={selectedWorkflow}
@@ -370,6 +395,7 @@ function MainPage() {
             onVisibleParamsChange={(order) => setVisibleParams(order || [])}
             aliasOptions={aliasOptions}
             aliasCatalog={aliasCatalog}
+            onOpenComposer={openComposer}
             onParamEdited={(name) => {
               setLastEditedParam(name || '');
               try {
@@ -384,8 +410,9 @@ function MainPage() {
             }}
           />
         ) : (
-          <div className="rounded-2xl border border-[#2A2E4A] bg-[#050716] px-3 py-6 text-[12px] text-[#9DA3FFCC] text-center">
-            Pick a workflow to begin.
+          <div className="empty-state-inline">
+            <span className="empty-state-arrow">↑</span>
+            <span>Select a workflow above to get started</span>
           </div>
         )}
         {workflowData ? (
@@ -394,6 +421,13 @@ function MainPage() {
               <span className="font-semibold text-[#E5E7FF]">
                 Expanded prompt
               </span>
+              <button
+                type="button"
+                onClick={() => openComposer(promptFieldName)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#2A2E4A] bg-[#0F1A2F] text-[11px] font-medium text-[#E5E7FF] hover:border-[#5EF1D4] hover:bg-[#0F1A2F]/80 transition-colors"
+              >
+                <span>Compose</span>
+              </button>
             </div>
             <div className="max-h-32 overflow-y-auto whitespace-pre-wrap break-words text-[#D8DEFF] text-[12px] border border-[#1D2440] rounded-lg px-2 py-2 bg-[#080E1D]">
               {expandedPrompt || '—'}
@@ -453,6 +487,17 @@ function MainPage() {
       >
         {null}
       </FieldSpotlight>
+
+      <PromptComposer
+        open={composerOpen}
+        onClose={() => setComposerOpen(false)}
+        value={formData?.[composerField] || ''}
+        onChange={handleComposerChange}
+        aliasOptions={aliasOptions}
+        aliasCatalog={aliasCatalog}
+        aliasLookup={aliasLookup}
+        fieldLabel={composerField}
+      />
     </div>
   );
 }

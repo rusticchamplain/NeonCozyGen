@@ -36,6 +36,8 @@ export default function TopBar() {
     window.location.hash = '#/login';
   };
 
+  const ALL_LINKS = [...PRIMARY_LINKS, ...SECONDARY_LINKS];
+
   return (
     <header className="top-bar">
       <div className="top-bar-shell">
@@ -45,17 +47,36 @@ export default function TopBar() {
             <span className="brand-text">CozyGen</span>
           </Link>
 
+          {/* Desktop Navigation */}
+          <nav className="desktop-nav" aria-label="Main navigation">
+            {ALL_LINKS.map((link) => (
+              <NavLink
+                key={link.to}
+                to={link.to}
+                end={link.end}
+                className={navLinkClasses}
+              >
+                <span className="inline-flex items-center gap-1.5">
+                  <span>{link.label}</span>
+                  {link.to === '/gallery' && galleryPending ? (
+                    <span className="badge-dot" aria-hidden="true" />
+                  ) : null}
+                </span>
+              </NavLink>
+            ))}
+          </nav>
+
           <div className="flex-1" />
 
           <button
             type="button"
-            className="hidden md:inline-flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/60 px-3 py-2 text-slate-200 text-sm hover:bg-slate-800 transition"
+            className="desktop-logout-btn"
             onClick={handleLogout}
             title="Sign out"
           >
-            <span className="text-lg">🚪</span>
-            <span className="hidden sm:inline text-xs uppercase tracking-wide">Logout</span>
-            {user ? <span className="text-slate-400 text-xs">@{user}</span> : null}
+            <span className="logout-icon">🚪</span>
+            <span className="logout-label">Logout</span>
+            {user ? <span className="logout-user">@{user}</span> : null}
           </button>
 
           <button

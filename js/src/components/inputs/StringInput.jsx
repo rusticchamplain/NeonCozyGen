@@ -11,6 +11,7 @@ export default function StringInput({
   multiline = false,
   aliasOptions = [],
   aliasCatalog = [],
+  onOpenComposer,
 }) {
   const textRef = useRef(null);
   const wrapperRef = useRef(null);
@@ -34,26 +35,78 @@ export default function StringInput({
   );
 
   const withSubcategory = useMemo(() => {
+    // Human-readable labels for technical subcategory prefixes
+    const subLabels = {
+      precip: 'Weather',
+      ambient: 'Atmosphere',
+      sky: 'Sky',
+      urbex: 'Urban Exploration',
+      scifi: 'Sci-Fi',
+      framing: 'Framing',
+      angle: 'Angle',
+      perspective: 'Perspective',
+      composition: 'Composition',
+      motion: 'Motion',
+    };
+
+    // Special full-name mappings for known problematic aliases
+    const specialNames = {
+      'sky_hour': 'Golden Hour',
+      'sky_blue': 'Clear Blue Sky',
+      'sky_clouds': 'Sunset Clouds',
+      'sky_lights': 'Aurora Borealis',
+      'sky_night': 'Starry Night',
+      'sky_rainbow': 'Rainbow',
+      'ambient_mist': 'Misty Fog',
+      'ambient_blossom': 'Cherry Blossoms',
+      'ambient_leaves': 'Autumn Leaves',
+      'ambient_storm': 'Sandstorm',
+      'ambient_heatwave': 'Heat Wave',
+      'precip_day': 'Rainy Day',
+      'precip_thunderstorm': 'Thunderstorm',
+      'precip_snowfall': 'Snowfall',
+      'precip_blizzard': 'Blizzard',
+      'painterly_painterly': 'Painterly',
+      'explorer_explorer': 'Explorer',
+      'painterly_e_print': 'Ukiyo-e Print',
+      'painterly_wash_monochrome': 'Ink Wash',
+    };
+
     return aliasEntries.map((entry) => {
       const name = entry.name || '';
       const tokenPart = entry.token || name;
       const base = tokenPart.includes(':') ? tokenPart.split(':')[1] : tokenPart;
-      const parts = base.split('_').filter(Boolean);
+
+      // Check for special name mapping first
+      if (specialNames[base]) {
+        const parts = base.split('_').filter(Boolean);
+        const sub = parts.length > 0 ? parts[0] : 'other';
+        return { ...entry, subcategory: sub, displayName: specialNames[base] };
+      }
+
+      // Remove trailing numbers (e.g., "neon_1" -> "neon")
+      const cleanBase = base.replace(/_(\d+)$/, '');
+      const parts = cleanBase.split('_').filter(Boolean);
       const sub = parts.length > 0 ? parts[0] : 'other';
       const mainParts = parts.length > 1 ? parts.slice(1) : [];
-      const friendlyMain = mainParts
-        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-        .join(' ')
-        .trim();
-      const friendlyWhole = parts
-        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-        .join(' ')
-        .trim();
-      const subLabel = sub.charAt(0).toUpperCase() + sub.slice(1);
-      const displayName =
-        friendlyMain
-          ? `${subLabel} - ${friendlyMain}`
-          : friendlyWhole || base || name;
+
+      // Capitalize each word
+      const capitalize = (w) => w.charAt(0).toUpperCase() + w.slice(1);
+
+      const friendlyMain = mainParts.map(capitalize).join(' ').trim();
+      const friendlyWhole = parts.map(capitalize).join(' ').trim();
+
+      // Get human-readable subcategory label
+      const subLabel = subLabels[sub.toLowerCase()] || capitalize(sub);
+
+      // Avoid redundant display like "Painterly - Painterly"
+      let displayName;
+      if (!friendlyMain || friendlyMain.toLowerCase() === subLabel.toLowerCase()) {
+        displayName = friendlyWhole || base || name;
+      } else {
+        displayName = `${subLabel} - ${friendlyMain}`;
+      }
+
       return { ...entry, subcategory: sub, displayName };
     });
   }, [aliasEntries]);
@@ -261,45 +314,52 @@ export default function StringInput({
         />
         {tokens.length ? (
           <div className="flex flex-wrap gap-1">
-            {tokens.map((t) => (
-              <span
-                key={`${t.token}-${t.index}`}
-                className="inline-flex items-center gap-1 rounded-md bg-[#0F1A2F] border border-[#2A2E4A] px-2 py-1 text-[11px] text-[#E5E7FF]"
-                onClick={() => {
-                  const start = t.index;
-                  const end = t.index + t.length;
-                  const el = textRef.current;
-                if (el) {
-                  el.focus();
-                  el.setSelectionRange(start, end);
-                }
-                openPicker();
-              }}
-            >
-                ${t.token}$
-                <button
-                  type="button"
-                  className="text-[#FF8F70]"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    removeToken(t);
+            {tokens.map((t) => {
+              const entry = withSubcategory.find(
+                (e) => e.token?.toLowerCase() === t.token.toLowerCase()
+              );
+              const friendlyName = entry?.displayName || t.token;
+              return (
+                <span
+                  key={`${t.token}-${t.index}`}
+                  className="inline-flex items-center gap-1 rounded-md bg-[#0F1A2F] border border-[#2A2E4A] px-2 py-1 text-[11px] text-[#E5E7FF]"
+                  title={`$${t.token}$`}
+                  onClick={() => {
+                    const start = t.index;
+                    const end = t.index + t.length;
+                    const el = textRef.current;
+                    if (el) {
+                      el.focus();
+                      el.setSelectionRange(start, end);
+                    }
+                    openPicker();
                   }}
-                  aria-label={`Remove ${t.token}`}
                 >
-                  ×
-                </button>
-              </span>
-            ))}
+                  {friendlyName}
+                  <button
+                    type="button"
+                    className="text-[#FF8F70]"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeToken(t);
+                    }}
+                    aria-label={`Remove ${t.token}`}
+                  >
+                    ×
+                  </button>
+                </span>
+              );
+            })}
           </div>
         ) : null}
         {aliasEntries.length ? (
           <button
             type="button"
             className="absolute right-2 top-1/2 -translate-y-1/2 h-8 w-8 rounded-lg border border-[#2A2E4A] bg-[#0F1A2F] text-sm text-[#E5E7FF] shadow-sm hover:border-[#5EF1D4] transition"
-            onClick={() => openPicker()}
-            title="Insert alias"
+            onClick={() => onOpenComposer ? onOpenComposer(name) : openPicker()}
+            title={onOpenComposer ? "Open prompt composer" : "Insert alias"}
           >
-            🔖
+            {onOpenComposer ? '✏️' : '🔖'}
           </button>
         ) : null}
         {showPicker ? (
@@ -430,46 +490,53 @@ export default function StringInput({
       />
       {tokens.length ? (
         <div className="flex flex-wrap gap-1">
-          {tokens.map((t) => (
-            <span
-              key={`${t.token}-${t.index}`}
-              className="inline-flex items-center gap-1 rounded-md bg-[#0F1A2F] border border-[#2A2E4A] px-2 py-1 text-[11px] text-[#E5E7FF]"
-              onClick={() => {
-                const start = t.index;
-                const end = t.index + t.length;
-                const el = textRef.current;
-                if (el) {
-                  el.focus();
-                  el.setSelectionRange(start, end);
-                }
-                openPicker();
-              }}
-            >
-              ${t.token}$
-              <button
-                type="button"
-                className="text-[#FF8F70]"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  removeToken(t);
+          {tokens.map((t) => {
+            const entry = withSubcategory.find(
+              (e) => e.token?.toLowerCase() === t.token.toLowerCase()
+            );
+            const friendlyName = entry?.displayName || t.token;
+            return (
+              <span
+                key={`${t.token}-${t.index}`}
+                className="inline-flex items-center gap-1 rounded-md bg-[#0F1A2F] border border-[#2A2E4A] px-2 py-1 text-[11px] text-[#E5E7FF]"
+                title={`$${t.token}$`}
+                onClick={() => {
+                  const start = t.index;
+                  const end = t.index + t.length;
+                  const el = textRef.current;
+                  if (el) {
+                    el.focus();
+                    el.setSelectionRange(start, end);
+                  }
+                  openPicker();
                 }}
-                aria-label={`Remove ${t.token}`}
               >
-                ×
-              </button>
-            </span>
-          ))}
+                {friendlyName}
+                <button
+                  type="button"
+                  className="text-[#FF8F70]"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    removeToken(t);
+                  }}
+                  aria-label={`Remove ${t.token}`}
+                >
+                  ×
+                </button>
+              </span>
+            );
+          })}
         </div>
       ) : null}
       {aliasEntries.length ? (
         <button
           type="button"
           className="absolute right-2 top-1/2 -translate-y-1/2 h-8 w-8 rounded-lg border border-[#2A2E4A] bg-[#0F1A2F] text-sm text-[#E5E7FF] shadow-sm hover:border-[#5EF1D4] transition"
-            onClick={() => openPicker()}
-            title="Insert alias"
-          >
-            🔖
-          </button>
+          onClick={() => onOpenComposer ? onOpenComposer(name) : openPicker()}
+          title={onOpenComposer ? "Open prompt composer" : "Insert alias"}
+        >
+          {onOpenComposer ? '✏️' : '🔖'}
+        </button>
       ) : null}
       {showPicker ? (
         <div className="fixed inset-0 z-50 sm:z-40 flex items-center justify-center">

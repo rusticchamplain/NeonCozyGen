@@ -13,6 +13,7 @@ export default function AdvancedModeLayout({
   onVisibleParamsChange,
   aliasOptions = [],
   aliasCatalog = [],
+  onOpenComposer,
 }) {
   return (
     <div className="space-y-4">
@@ -29,6 +30,7 @@ export default function AdvancedModeLayout({
         onVisibleParamsChange={onVisibleParamsChange}
         aliasOptions={aliasOptions}
         aliasCatalog={aliasCatalog}
+        onOpenComposer={onOpenComposer}
       />
     </div>
   );

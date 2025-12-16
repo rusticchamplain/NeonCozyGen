@@ -41,7 +41,7 @@ export default function BottomBar({
   const isDisabled = busy || primaryDisabled;
 
   return (
-    <div className="mt-4 sm:mt-6 pb-4">
+    <div className="dock-bar-inner">
       {/* main button */}
       <button
         type="button"

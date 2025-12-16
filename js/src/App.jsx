@@ -45,16 +45,16 @@ function App() {
   const isLogin = pathname === '/login';
 
   return (
-    <div className="app-shell min-h-screen">
+    <div className="app-shell">
       {!isLogin && <TopBar />}
       {!isLogin && authed && defaultCreds && (
-        <div className="bg-amber-500/10 text-amber-200 border border-amber-400/50 px-4 py-2 text-sm text-center">
+        <div className="flex-shrink-0 bg-amber-500/10 text-amber-200 border-b border-amber-400/50 px-4 py-2 text-sm text-center">
           Default CozyGen credentials are still in use. Change <code className="font-mono">COZYGEN_AUTH_USER</code> /
           <code className="font-mono">COZYGEN_AUTH_PASS</code> on the server.
         </div>
       )}
       <ScrollToTop />
-      <main className={`${isLogin ? 'px-0 py-0' : 'max-w-7xl mx-auto px-3 sm:px-4 py-4 pb-24 md:pb-6'}`}>
+      <main className={`${isLogin ? 'px-0 py-0' : 'max-w-7xl mx-auto px-3 sm:px-4 py-4'}`}>
         <Routes>
           <Route path="/login" element={<Login />} />
 

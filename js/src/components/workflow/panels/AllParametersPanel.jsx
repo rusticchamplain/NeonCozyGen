@@ -43,6 +43,7 @@ export default function AllParametersPanel({
   onVisibleParamsChange,
   aliasOptions = [],
   aliasCatalog = [],
+  onOpenComposer,
 }) {
   const allInputs = useMemo(
     () =>
@@ -58,18 +59,19 @@ export default function AllParametersPanel({
       <div className="control-stack">
         <DynamicForm
           inputs={allInputs}
-        formData={formData}
-        onFormChange={onFormChange}
-        compactControls={compactControls}
-        collapseAllKey={collapseAllState?.key ?? 0}
-        collapseAllCollapsed={collapseAllState?.collapsed ?? true}
-        onSpotlight={onSpotlight}
-        spotlightName={spotlightName}
-        onCloseSpotlight={onCloseSpotlight}
-        onVisibleParamsChange={onVisibleParamsChange}
-        aliasOptions={aliasOptions}
-        aliasCatalog={aliasCatalog}
-      />
+          formData={formData}
+          onFormChange={onFormChange}
+          compactControls={compactControls}
+          collapseAllKey={collapseAllState?.key ?? 0}
+          collapseAllCollapsed={collapseAllState?.collapsed ?? true}
+          onSpotlight={onSpotlight}
+          spotlightName={spotlightName}
+          onCloseSpotlight={onCloseSpotlight}
+          onVisibleParamsChange={onVisibleParamsChange}
+          aliasOptions={aliasOptions}
+          aliasCatalog={aliasCatalog}
+          onOpenComposer={onOpenComposer}
+        />
       </div>
     </section>
   );

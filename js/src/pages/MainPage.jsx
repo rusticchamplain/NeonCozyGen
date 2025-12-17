@@ -4,7 +4,7 @@ import BottomBar from '../components/BottomBar';
 import ImageInput from '../components/ImageInput';
 import FieldSpotlight from '../components/FieldSpotlight';
 import PromptComposer from '../components/PromptComposer';
-import AdvancedModeLayout from '../components/workflow/AdvancedModeLayout';
+import WorkflowFormLayout from '../components/workflow/WorkflowFormLayout';
 import CollapsibleSection from '../components/CollapsibleSection';
 
 import { useWorkflows } from '../hooks/useWorkflows';
@@ -84,7 +84,7 @@ const PromptPreviewCard = memo(function PromptPreviewCard({
           <span>Compose</span>
         </button>
       </div>
-      <div className="max-h-32 overflow-y-auto whitespace-pre-wrap break-words text-[#D8DEFF] text-[12px] border border-[#1D2440] rounded-lg px-2 py-2 bg-[#080E1D]">
+      <div className="max-h-32 overflow-hidden whitespace-pre-wrap break-words text-[#D8DEFF] text-[12px] border border-[#1D2440] rounded-lg px-2 py-2 bg-[#080E1D]">
         {expandedPrompt || '—'}
       </div>
     </div>
@@ -125,7 +125,6 @@ function MainPage() {
     promptAliases: aliasLookup,
   });
 
-  const workflowSectionRef = useRef(null);
   const parameterSectionRef = useRef(null);
   const imageSectionRef = useRef(null);
   const [inlinePresets, setInlinePresets] = useState([]);
@@ -408,13 +407,6 @@ function MainPage() {
   );
 
   useEffect(() => {
-    // Auto-collapse workflow after first successful load to keep focus on controls
-    if (hasWorkflowLoaded && workflowSectionRef.current?.open) {
-      workflowSectionRef.current.open = false;
-    }
-  }, [hasWorkflowLoaded]);
-
-  useEffect(() => {
     const handler = () => {
       if (!hasWorkflowLoaded || isLoading) return;
       handleGenerate();
@@ -452,7 +444,7 @@ function MainPage() {
   }
 
   return (
-    <div className="page-shell page-stack">
+    <div className="page-shell page-stack has-dock">
       <CollapsibleSection
         kicker="Parameters"
         title="🎛️ Controls"
@@ -472,7 +464,7 @@ function MainPage() {
         />
 
         {workflowData ? (
-          <AdvancedModeLayout
+          <WorkflowFormLayout
             workflowName={selectedWorkflow}
             dynamicInputs={orderedDynamicInputs}
             formData={formData}

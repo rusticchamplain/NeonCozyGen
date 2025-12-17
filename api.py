@@ -26,7 +26,6 @@ DATA_DIR = os.path.join(EXT_DIR, "data")
 PRESETS_DIR = os.path.join(DATA_DIR, "presets")
 THUMBS_DIR = os.path.join(DATA_DIR, "thumbs")
 ALIASES_FILE = os.path.join(DATA_DIR, "aliases.json")
-PROMPTS_FILE = os.path.join(DATA_DIR, "prompts.json")
 WORKFLOW_TYPES_FILE = os.path.join(DATA_DIR, "workflow_types.json")
 LORA_LIBRARY_FILE = os.path.join(DATA_DIR, "lora_library.json")
 WORKFLOW_MODE_CHOICES = {
@@ -37,10 +36,9 @@ WORKFLOW_MODE_CHOICES = {
 }
 os.makedirs(PRESETS_DIR, exist_ok=True)
 os.makedirs(THUMBS_DIR, exist_ok=True)
-for p in (ALIASES_FILE, PROMPTS_FILE):
-    if not os.path.exists(p):
-        with open(p, "w", encoding="utf-8") as f:
-            json.dump({}, f)
+if not os.path.exists(ALIASES_FILE):
+    with open(ALIASES_FILE, "w", encoding="utf-8") as f:
+        json.dump({}, f)
 if not os.path.exists(WORKFLOW_TYPES_FILE):
     with open(WORKFLOW_TYPES_FILE, "w", encoding="utf-8") as f:
         json.dump({"version": 1, "workflows": {}}, f)
@@ -692,7 +690,7 @@ async def get_choices(request: web.Request):
     return web.json_response({"error": f"invalid type {kind}"}, status=400)
 
 
-# ---------------- Aliases/Prompts (kept for compatibility)
+# ---------------- Aliases
 @routes.get("/cozygen/api/aliases")
 async def get_aliases(_):
     return web.json_response(_load(ALIASES_FILE, {}))
@@ -701,17 +699,6 @@ async def get_aliases(_):
 @routes.post("/cozygen/api/aliases")
 async def post_aliases(request):
     _save(ALIASES_FILE, await request.json())
-    return web.json_response({"status": "ok"})
-
-
-@routes.get("/cozygen/api/prompts")
-async def get_prompts(_):
-    return web.json_response(_load(PROMPTS_FILE, {}))
-
-
-@routes.post("/cozygen/api/prompts")
-async def post_prompts(request):
-    _save(PROMPTS_FILE, await request.json())
     return web.json_response({"status": "ok"})
 
 

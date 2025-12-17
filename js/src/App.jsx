@@ -1,5 +1,5 @@
 // js/src/App.jsx
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import TopBar from './components/TopBar';
 import BottomNav from './components/BottomNav';
@@ -12,11 +12,17 @@ import Login from './pages/Login';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 
 /* Scroll to top on route change */
-function ScrollToTop() {
+function ScrollToTop({ containerRef }) {
   const { pathname, hash } = useLocation();
   useEffect(() => {
-    if (!hash) window.scrollTo(0, 0);
-  }, [pathname, hash]);
+    if (hash) return;
+    const el = containerRef?.current;
+    if (el && typeof el.scrollTo === 'function') {
+      el.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+      return;
+    }
+    if (typeof window !== 'undefined') window.scrollTo(0, 0);
+  }, [pathname, hash, containerRef]);
   return null;
 }
 
@@ -43,6 +49,7 @@ function App() {
   const { pathname } = useLocation();
   const { defaultCreds, authed } = useAuth();
   const isLogin = pathname === '/login';
+  const contentRef = useRef(null);
 
   return (
     <div className="app-shell">
@@ -53,8 +60,11 @@ function App() {
           <code className="font-mono">COZYGEN_AUTH_PASS</code> on the server.
         </div>
       )}
-      <ScrollToTop />
-      <main className={`${isLogin ? 'px-0 py-0' : 'max-w-7xl mx-auto px-3 sm:px-4 py-4'}`}>
+      <ScrollToTop containerRef={contentRef} />
+      <main
+        ref={contentRef}
+        className={isLogin ? 'app-content is-login' : 'app-content'}
+      >
         <Routes>
           <Route path="/login" element={<Login />} />
 

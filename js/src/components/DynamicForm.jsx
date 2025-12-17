@@ -65,7 +65,6 @@ export function resolveConfig(input) {
     label: resolveLabel(input),
     description: resolveDescription(input),
     paramType: getParamType(input),
-    advancedOnly: !!i.advanced_only,
     multiline: !!i.multiline,
     min: typeof i.min === 'number' ? i.min : undefined,
     max: typeof i.max === 'number' ? i.max : undefined,

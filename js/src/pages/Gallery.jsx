@@ -3,7 +3,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import GalleryNav from '../components/GalleryNav';
 import GalleryItem from '../components/GalleryItem';
 import MediaViewerModal from '../components/MediaViewerModal';
-import CollapsibleSection from '../components/CollapsibleSection';
 import { useGallery } from '../hooks/useGallery';
 import { useMediaViewer } from '../hooks/useMediaViewer';
 
@@ -229,222 +228,220 @@ export default function Gallery() {
 
   return (
     <div className="page-shell page-stack">
-      <CollapsibleSection title="🖼️ Gallery" meta={summaryMeta}>
-        <GalleryNav
-          subfolder={path}
-          crumbs={crumbs}
-          dirChips={dirChips}
-          onBack={goBack}
-          onRoot={goRoot}
-          onCrumb={(p) => goToPath(p)}
-          onSelectDir={(subfolder) => selectDir(subfolder)}
-        />
+      <div className="screen-sticky rounded-2xl">
+        <div className="px-3 pt-2 pb-3 space-y-3">
+          <GalleryNav
+            subfolder={path}
+            crumbs={crumbs}
+            dirChips={dirChips}
+            onBack={goBack}
+            onRoot={goRoot}
+            onCrumb={(p) => goToPath(p)}
+            onSelectDir={(subfolder) => selectDir(subfolder)}
+          />
 
-        {/* Unified Gallery Toolbar */}
-        <div className="gallery-toolbar">
-          <div className="gallery-toolbar-left">
-            {/* Type filter pills */}
-            <div className="gallery-pills" role="group" aria-label="Filter by type">
-              {[
-                { key: 'all', label: 'All' },
-                { key: 'image', label: 'Images' },
-                { key: 'video', label: 'Videos' },
-              ].map((opt) => (
-                <button
-                  key={opt.key}
-                  type="button"
-                  className={`gallery-pill ${kind === opt.key ? 'is-active' : ''}`}
-                  onClick={() => setKind(opt.key)}
-                  aria-pressed={kind === opt.key}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="gallery-toolbar-right">
-            {/* View toggle */}
-            <div className="gallery-view-toggle" role="group" aria-label="View mode">
-              <button
-                type="button"
-                className={viewMode === 'grid' ? 'is-active' : ''}
-                onClick={() => setViewMode('grid')}
-                aria-pressed={viewMode === 'grid'}
-                title="Grid view"
-              >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                  <rect x="1" y="1" width="6" height="6" rx="1" />
-                  <rect x="9" y="1" width="6" height="6" rx="1" />
-                  <rect x="1" y="9" width="6" height="6" rx="1" />
-                  <rect x="9" y="9" width="6" height="6" rx="1" />
-                </svg>
-              </button>
-              <button
-                type="button"
-                className={viewMode === 'feed' ? 'is-active' : ''}
-                onClick={() => setViewMode('feed')}
-                aria-pressed={viewMode === 'feed'}
-                title="Feed view"
-              >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                  <rect x="2" y="1" width="12" height="5" rx="1" />
-                  <rect x="2" y="8" width="12" height="5" rx="1" />
-                </svg>
-              </button>
-            </div>
-
-            {/* Options */}
-            <div className="gallery-options">
-              <button
-                type="button"
-                className={`gallery-option-btn ${recursive ? 'is-active' : ''}`}
-                onClick={() => setRecursive((prev) => !prev)}
-                title={recursive ? 'Showing subfolders' : 'This folder only'}
-              >
-                {recursive ? '📂' : '📁'}
-              </button>
-              <button
-                type="button"
-                className={`gallery-option-btn ${showHidden ? 'is-active' : ''}`}
-                onClick={() => setShowHidden((prev) => !prev)}
-                title={showHidden ? 'Showing hidden' : 'Hiding hidden'}
-              >
-                {showHidden ? '👁' : '👁‍🗨'}
-              </button>
-              {viewMode === 'feed' && (
-                <button
-                  type="button"
-                  className={`gallery-option-btn ${feedAutoplay ? 'is-active' : ''}`}
-                  onClick={() => setFeedAutoplay((prev) => !prev)}
-                  title={feedAutoplay ? 'Autoplay on' : 'Autoplay off'}
-                >
-                  {feedAutoplay ? '▶️' : '⏸️'}
-                </button>
-              )}
-              <button
-                type="button"
-                className="gallery-option-btn"
-                onClick={refresh}
-                title="Refresh"
-              >
-                ⟳
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Pagination bar */}
-        <div className="gallery-pagination">
-          <div className="gallery-pagination-info">
-            {loading ? (
-              <span className="gallery-loading-text">Loading…</span>
-            ) : (
-              <span>{filtered.length} items</span>
-            )}
-          </div>
-          <div className="gallery-pagination-controls">
-            <button
-              type="button"
-              className="gallery-page-btn"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page <= 1 || loading}
-              aria-label="Previous page"
-            >
-              ‹
-            </button>
-            <span className="gallery-page-indicator">
-              {page} / {totalPages}
-            </span>
-            <button
-              type="button"
-              className="gallery-page-btn"
-              onClick={() => setPage((p) => (p < totalPages ? p + 1 : p))}
-              disabled={page >= totalPages || loading}
-              aria-label="Next page"
-            >
-              ›
-            </button>
-            <select
-              value={perPage}
-              onChange={(e) => setPerPage(parseInt(e.target.value, 10) || 30)}
-              className="gallery-page-size"
-              aria-label="Items per page"
-            >
-              <option value={15}>15</option>
-              <option value={30}>30</option>
-              <option value={60}>60</option>
-              <option value={120}>120</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Loading skeleton */}
-        {loading && filtered.length === 0 ? (
-          <div className="gallery-grid-responsive">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} className="gallery-skeleton-item">
-                <div className="gallery-skeleton-thumb skeleton" />
-                <div className="gallery-skeleton-label skeleton skeleton-text" />
+          {/* Compact, anchored toolbar (no big page header) */}
+          <div className="gallery-toolbar">
+            <div className="gallery-toolbar-left">
+              <div className="gallery-pills" role="group" aria-label="Filter by type">
+                {[
+                  { key: 'all', label: 'All' },
+                  { key: 'image', label: 'Images' },
+                  { key: 'video', label: 'Videos' },
+                ].map((opt) => (
+                  <button
+                    key={opt.key}
+                    type="button"
+                    className={`gallery-pill ${kind === opt.key ? 'is-active' : ''}`}
+                    onClick={() => setKind(opt.key)}
+                    aria-pressed={kind === opt.key}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
               </div>
-            ))}
-          </div>
-        ) : filtered.length === 0 && !loading ? (
-          <div className="gallery-empty">
-            <div className="gallery-empty-icon">🖼️</div>
-            <div className="gallery-empty-title">No media found</div>
-            <div className="gallery-empty-desc">
-              {kind !== 'all'
-                ? `No ${kind}s match your filters. Try selecting "All" or adjusting your search.`
-                : 'This folder is empty. Render something new or navigate to a different folder.'}
+            </div>
+
+            <div className="gallery-toolbar-right">
+              <div className="gallery-view-toggle" role="group" aria-label="View mode">
+                <button
+                  type="button"
+                  className={viewMode === 'grid' ? 'is-active' : ''}
+                  onClick={() => setViewMode('grid')}
+                  aria-pressed={viewMode === 'grid'}
+                  title="Grid view"
+                >
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                    <rect x="1" y="1" width="6" height="6" rx="1" />
+                    <rect x="9" y="1" width="6" height="6" rx="1" />
+                    <rect x="1" y="9" width="6" height="6" rx="1" />
+                    <rect x="9" y="9" width="6" height="6" rx="1" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  className={viewMode === 'feed' ? 'is-active' : ''}
+                  onClick={() => setViewMode('feed')}
+                  aria-pressed={viewMode === 'feed'}
+                  title="Feed view"
+                >
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                    <rect x="2" y="1" width="12" height="5" rx="1" />
+                    <rect x="2" y="8" width="12" height="5" rx="1" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="gallery-options">
+                <button
+                  type="button"
+                  className={`gallery-option-btn ${recursive ? 'is-active' : ''}`}
+                  onClick={() => setRecursive((prev) => !prev)}
+                  title={recursive ? 'Showing subfolders' : 'This folder only'}
+                >
+                  {recursive ? '📂' : '📁'}
+                </button>
+                <button
+                  type="button"
+                  className={`gallery-option-btn ${showHidden ? 'is-active' : ''}`}
+                  onClick={() => setShowHidden((prev) => !prev)}
+                  title={showHidden ? 'Showing hidden' : 'Hiding hidden'}
+                >
+                  {showHidden ? '👁' : '👁‍🗨'}
+                </button>
+                {viewMode === 'feed' && (
+                  <button
+                    type="button"
+                    className={`gallery-option-btn ${feedAutoplay ? 'is-active' : ''}`}
+                    onClick={() => setFeedAutoplay((prev) => !prev)}
+                    title={feedAutoplay ? 'Autoplay on' : 'Autoplay off'}
+                  >
+                    {feedAutoplay ? '▶️' : '⏸️'}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="gallery-option-btn"
+                  onClick={refresh}
+                  title="Refresh"
+                >
+                  ⟳
+                </button>
+              </div>
             </div>
           </div>
-        ) : isGrid ? (
-          <div className="w-full overflow-hidden">
-            <div className="gallery-grid-responsive" ref={containerRef}>
-              {virtualized && topSpacer > 0 ? (
-                <div
-                  aria-hidden
-                  style={{ gridColumn: '1 / -1', height: `${topSpacer}px` }}
-                />
-              ) : null}
-              {visibleItems.map((item) => (
+
+          {/* Compact pagination/status row (anchored) */}
+          <div className="gallery-pagination">
+            <div className="gallery-pagination-info">
+              {loading ? (
+                <span className="gallery-loading-text">Loading…</span>
+              ) : (
+                <span>{summaryMeta}</span>
+              )}
+            </div>
+            <div className="gallery-pagination-controls">
+              <button
+                type="button"
+                className="gallery-page-btn"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1 || loading}
+                aria-label="Previous page"
+              >
+                ‹
+              </button>
+              <span className="gallery-page-indicator">
+                {page} / {totalPages}
+              </span>
+              <button
+                type="button"
+                className="gallery-page-btn"
+                onClick={() => setPage((p) => (p < totalPages ? p + 1 : p))}
+                disabled={page >= totalPages || loading}
+                aria-label="Next page"
+              >
+                ›
+              </button>
+              <select
+                value={perPage}
+                onChange={(e) => setPerPage(parseInt(e.target.value, 10) || 30)}
+                className="gallery-page-size"
+                aria-label="Items per page"
+              >
+                <option value={15}>15</option>
+                <option value={30}>30</option>
+                <option value={60}>60</option>
+                <option value={120}>120</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Grid/feed content (scrolls under anchored toolbar) */}
+      {loading && filtered.length === 0 ? (
+        <div className="gallery-grid-responsive">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="gallery-skeleton-item">
+              <div className="gallery-skeleton-thumb skeleton" />
+              <div className="gallery-skeleton-label skeleton skeleton-text" />
+            </div>
+          ))}
+        </div>
+      ) : filtered.length === 0 && !loading ? (
+        <div className="gallery-empty">
+          <div className="gallery-empty-icon">🖼️</div>
+          <div className="gallery-empty-title">No media found</div>
+          <div className="gallery-empty-desc">
+            {kind !== 'all'
+              ? `No ${kind}s match your filters. Try selecting "All" or adjusting your search.`
+              : 'This folder is empty. Render something new or navigate to a different folder.'}
+          </div>
+        </div>
+      ) : isGrid ? (
+        <div className="w-full overflow-hidden">
+          <div className="gallery-grid-responsive" ref={containerRef}>
+            {virtualized && topSpacer > 0 ? (
+              <div
+                aria-hidden
+                style={{ gridColumn: '1 / -1', height: `${topSpacer}px` }}
+              />
+            ) : null}
+            {visibleItems.map((item) => (
+              <GalleryItem
+                key={itemKey(item)}
+                item={item}
+                onSelect={handleItemSelect}
+                variant="grid"
+                autoPlay={false}
+              />
+            ))}
+            {virtualized && bottomSpacer > 0 ? (
+              <div
+                aria-hidden
+                style={{ gridColumn: '1 / -1', height: `${bottomSpacer}px` }}
+              />
+            ) : null}
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-4 items-center">
+          {filtered
+            .filter((item) => item.type !== 'directory')
+            .map((item) => (
+            <div key={itemKey(item)} className="w-full flex justify-center">
+              <div className="w-full max-w-[480px] sm:max-w-[640px] rounded-2xl border border-[#2A2E4A] bg-[#050716] px-3 py-3 shadow-[0_0_24px_rgba(5,7,22,0.9)]">
                 <GalleryItem
-                  key={itemKey(item)}
                   item={item}
                   onSelect={handleItemSelect}
-                  variant="grid"
-                  autoPlay={false}
+                  variant="feed"
+                  autoPlay={feedAutoplay}
                 />
-              ))}
-              {virtualized && bottomSpacer > 0 ? (
-                <div
-                  aria-hidden
-                  style={{ gridColumn: '1 / -1', height: `${bottomSpacer}px` }}
-                />
-              ) : null}
-            </div>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-4 items-center">
-            {/* Use filtered (same as grid) but skip directories in feed view */}
-            {filtered
-              .filter((item) => item.type !== 'directory')
-              .map((item) => (
-              <div key={itemKey(item)} className="w-full flex justify-center">
-                <div className="w-full max-w-[480px] sm:max-w-[640px] rounded-2xl border border-[#2A2E4A] bg-[#050716] px-3 py-3 shadow-[0_0_24px_rgba(5,7,22,0.9)]">
-                  <GalleryItem
-                    item={item}
-                    onSelect={handleItemSelect}
-                    variant="feed"
-                    autoPlay={feedAutoplay}
-                  />
-                </div>
               </div>
-            ))}
-          </div>
-        )}
-      </CollapsibleSection>
+            </div>
+          ))}
+        </div>
+      )}
 
       <MediaViewerModal
         isOpen={viewerOpen}

@@ -1,6 +1,6 @@
 import AllParametersPanel from './panels/AllParametersPanel';
 
-export default function AdvancedModeLayout({
+export default function WorkflowFormLayout({
   dynamicInputs,
   formData,
   onFormChange,

@@ -50,9 +50,17 @@ export function useGallery() {
   // fetch gallery data when path/page/perPage changes
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
 
     const load = async () => {
       setLoading(true);
+      try {
+        if (typeof performance !== 'undefined' && performance.mark) {
+          performance.mark('cozygen:gallery:fetch');
+        }
+      } catch {
+        // ignore perf marker errors
+      }
       try {
         const data = await getGallery(
           path,
@@ -61,7 +69,8 @@ export function useGallery() {
           showHidden,
           recursive,
           kind,
-          reloadKey
+          reloadKey,
+          { signal: controller.signal }
         );
         if (cancelled) return;
         if (data && data.items) {
@@ -71,14 +80,29 @@ export function useGallery() {
           setItems([]);
           setTotalPages(1);
         }
+        try {
+          if (typeof performance !== 'undefined' && performance.measure) {
+            performance.mark('cozygen:gallery:ready');
+            performance.measure(
+              'cozygen:gallery:first-paint',
+              'cozygen:gallery:fetch',
+              'cozygen:gallery:ready'
+            );
+          }
+        } catch {
+          // ignore perf marker errors
+        }
       } catch (err) {
+        if (err?.name === 'AbortError') {
+          return;
+        }
         console.error('Failed to load gallery', err);
         if (!cancelled) {
           setItems([]);
           setTotalPages(1);
         }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled && !controller.signal.aborted) setLoading(false);
       }
     };
 
@@ -88,6 +112,7 @@ export function useGallery() {
 
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [path, page, perPage, reloadKey, showHidden, recursive, kind]);
 

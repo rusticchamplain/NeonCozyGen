@@ -45,13 +45,21 @@ export function useWorkflowForm(selectedWorkflow) {
     }
 
     let cancelled = false;
+    const controller = new AbortController();
 
     async function load() {
       setLoading(true);
       setError(null);
+      try {
+        if (typeof performance !== 'undefined' && performance.mark) {
+          performance.mark('cozygen:workflow:load');
+        }
+      } catch {
+        // ignore perf marker errors
+      }
 
       try {
-        const data = await getWorkflow(selectedWorkflow);
+        const data = await getWorkflow(selectedWorkflow, { signal: controller.signal });
         if (cancelled) return;
 
         // Normalize ids & ensure param_name for image nodes
@@ -89,10 +97,12 @@ export function useWorkflowForm(selectedWorkflow) {
 
               if (choiceType) {
                 try {
-                  const choicesData = await getChoices(choiceType);
+                  const choicesData = await getChoices(choiceType, { signal: controller.signal });
                   input.inputs.choices = choicesData.choices || [];
                 } catch (err) {
-                  console.error(`Choices for ${pn} failed`, err);
+                  if (err?.name !== 'AbortError') {
+                    console.error(`Choices for ${pn} failed`, err);
+                  }
                   input.inputs.choices = [];
                 }
               }
@@ -148,6 +158,18 @@ export function useWorkflowForm(selectedWorkflow) {
         });
 
         setFormData(initialForm);
+        try {
+          if (typeof performance !== 'undefined' && performance.measure) {
+            performance.mark('cozygen:workflow:ready');
+            performance.measure(
+              `cozygen:workflow:ready:${selectedWorkflow || 'unknown'}`,
+              'cozygen:workflow:load',
+              'cozygen:workflow:ready'
+            );
+          }
+        } catch {
+          // ignore perf marker errors
+        }
       } catch (e) {
         if (cancelled) return;
         console.error('Failed to load workflow', e);
@@ -163,6 +185,7 @@ export function useWorkflowForm(selectedWorkflow) {
 
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [selectedWorkflow]);
 

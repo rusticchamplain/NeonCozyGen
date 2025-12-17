@@ -1,5 +1,5 @@
 // js/src/pages/Gallery.jsx
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import GalleryNav from '../components/GalleryNav';
 import GalleryItem from '../components/GalleryItem';
 import MediaViewerModal from '../components/MediaViewerModal';
@@ -13,9 +13,7 @@ const FEED_AUTOPLAY_STORAGE_KEY = 'cozygen_gallery_feed_autoplay';
 function useVirtualGrid(items, enabled) {
   // Approximate grid virtualization to keep DOM nodes low when many tiles are shown.
   const containerRef = useRef(null);
-  const [scrollY, setScrollY] = useState(() =>
-    typeof window !== 'undefined' ? window.scrollY || 0 : 0
-  );
+  const [scrollY, setScrollY] = useState(0);
   const [metrics, setMetrics] = useState({
     width: 0,
     cols: 0,
@@ -23,23 +21,58 @@ function useVirtualGrid(items, enabled) {
     viewport: typeof window !== 'undefined' ? window.innerHeight || 800 : 800,
   });
 
+  const resolveScrollParent = (node) => {
+    if (!node || typeof window === 'undefined') return null;
+    let current = node.parentElement;
+    while (current) {
+      const style = window.getComputedStyle(current);
+      if (style.overflowY === 'auto' || style.overflowY === 'scroll') {
+        return current;
+      }
+      current = current.parentElement;
+    }
+    return window;
+  };
+
   useEffect(() => {
     if (!enabled) return undefined;
     const el = containerRef.current;
     if (!el || typeof window === 'undefined') return undefined;
     if (typeof ResizeObserver === 'undefined') return undefined;
 
+    const scrollParent = resolveScrollParent(el) || window;
+
     const updateMetrics = () => {
       const rect = el.getBoundingClientRect();
       const width = rect.width || el.clientWidth || 1;
       const cols = Math.max(1, Math.floor(width / 160)); // min 160px cards
-      const top = rect.top + (window.scrollY || 0);
-      setMetrics({
-        width,
-        cols,
-        top,
-        viewport: window.innerHeight || 800,
+      const scrollOffset = scrollParent === window ? (window.scrollY || 0) : (scrollParent.scrollTop || 0);
+      const parentRect = scrollParent === window
+        ? { top: 0 }
+        : scrollParent.getBoundingClientRect();
+      const top = scrollParent === window
+        ? rect.top + (window.scrollY || 0)
+        : rect.top - parentRect.top + scrollOffset;
+      const viewport = scrollParent === window
+        ? window.innerHeight || 800
+        : scrollParent.clientHeight || 800;
+      setMetrics((prev) => {
+        if (
+          prev.width === width &&
+          prev.cols === cols &&
+          prev.top === top &&
+          prev.viewport === viewport
+        ) {
+          return prev;
+        }
+        return {
+          width,
+          cols,
+          top,
+          viewport,
+        };
       });
+      setScrollY(scrollOffset);
     };
 
     updateMetrics();
@@ -54,16 +87,19 @@ function useVirtualGrid(items, enabled) {
       ticking = true;
       window.requestAnimationFrame(() => {
         ticking = false;
-        setScrollY(window.scrollY || 0);
+        const scrollOffset = scrollParent === window
+          ? (window.scrollY || 0)
+          : (scrollParent.scrollTop || 0);
+        setScrollY(scrollOffset);
       });
     };
 
-    window.addEventListener('scroll', onScroll, { passive: true });
+    scrollParent.addEventListener('scroll', onScroll, { passive: true });
 
     return () => {
       ro.disconnect();
       window.removeEventListener('resize', updateMetrics);
-      window.removeEventListener('scroll', onScroll);
+      scrollParent.removeEventListener('scroll', onScroll);
     };
   }, [enabled]);
 
@@ -163,13 +199,13 @@ export default function Gallery() {
     }
   }, [feedAutoplay]);
 
-  const handleItemSelect = (item) => {
+  const handleItemSelect = useCallback((item) => {
     if (item.type === 'directory') {
       selectDir(item.subfolder);
       return;
     }
     openMedia(item);
-  };
+  }, [openMedia, selectDir]);
 
   const isGrid = viewMode === 'grid';
 

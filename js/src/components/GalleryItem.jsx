@@ -1,5 +1,5 @@
 // js/src/components/GalleryItem.jsx
-import { useEffect, useRef } from 'react';
+import { memo, useEffect, useRef } from 'react';
 
 const looksLikeVideo = (name = '') =>
   /\.(mp4|webm|mov|mkv)$/i.test(name);
@@ -88,7 +88,12 @@ const FeedVideoPlayer = ({ src, poster, autoPlay }) => {
   );
 };
 
-export default function GalleryItem({
+const tileVisibilityStyles = {
+  contentVisibility: 'auto',
+  containIntrinsicSize: '260px 320px',
+};
+
+function GalleryItem({
   item,
   onSelect,
   variant = 'grid', // 'grid' | 'feed'
@@ -137,6 +142,7 @@ export default function GalleryItem({
         type="button"
         onClick={handleClick}
         className="group flex flex-col items-start justify-between rounded-xl border border-[#2A2E4A] bg-[#050716] px-3 py-2 text-left hover:border-[#6B5BFF] hover:bg-[#0B0E27] transition-colors"
+        style={tileVisibilityStyles}
       >
         <div className="flex items-center gap-2">
           <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-[#6B5BFF] to-[#FF4F9A] opacity-80 group-hover:opacity-100 flex items-center justify-center text-[11px] text-white">
@@ -157,8 +163,12 @@ export default function GalleryItem({
 
   // ----- FEED VARIANT: large vertical card -----
   if (variant === 'feed') {
+    const feedVisibilityStyles = {
+      contentVisibility: 'auto',
+      containIntrinsicSize: '520px 720px',
+    };
     return (
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-2" style={feedVisibilityStyles}>
         <button
           type="button"
           onClick={handleClick}
@@ -173,6 +183,7 @@ export default function GalleryItem({
                 alt={displayName}
                 className="w-full h-auto max-h-[80vh] rounded-2xl object-contain bg-black/40"
                 loading="lazy"
+                decoding="async"
               />
             ) : (
               <div className="flex items-center justify-center py-16 text-[11px] text-[#9DA3FFCC]">
@@ -210,6 +221,7 @@ export default function GalleryItem({
       type="button"
       onClick={handleClick}
       className="group relative w-full overflow-hidden rounded-xl border border-[#2A2E4A] bg-[#050716] hover:border-[#6B5BFF] hover:bg-[#0B0E27] transition-colors"
+      style={tileVisibilityStyles}
     >
       <div className="relative w-full aspect-[4/5] bg-[#020312]">
         {thumbSrc ? (
@@ -247,3 +259,5 @@ export default function GalleryItem({
     </button>
   );
 }
+
+export default memo(GalleryItem);

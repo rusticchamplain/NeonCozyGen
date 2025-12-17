@@ -17,32 +17,44 @@ const handleResponse = async (url, res) => {
   return res.text();
 };
 
-const jget = async (url) => {
-  const res = await fetch(url, { headers: { ...authHeaders() } });
+const jget = async (url, options = {}) => {
+  const { signal } = options;
+  const res = await fetch(url, {
+    headers: { ...authHeaders() },
+    signal,
+  });
   return handleResponse(url, res);
 };
-const jpost = async (url, body) => {
+const jpost = async (url, body, options = {}) => {
+  const { signal } = options;
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(body),
     credentials: 'include',
+    signal,
   });
   return handleResponse(url, res);
 };
-const jdel = async (url) => {
-  const res = await fetch(url, { method: 'DELETE', headers: { ...authHeaders() }, credentials: 'include' });
+const jdel = async (url, options = {}) => {
+  const { signal } = options;
+  const res = await fetch(url, {
+    method: 'DELETE',
+    headers: { ...authHeaders() },
+    credentials: 'include',
+    signal,
+  });
   return handleResponse(url, res);
 };
 
-export async function getWorkflows() {
-  return jget('/cozygen/workflows');
+export async function getWorkflows(options = {}) {
+  return jget('/cozygen/workflows', options);
 }
-export async function getWorkflow(filename) {
-  return jget(`/cozygen/workflows/${encodeURIComponent(filename)}`);
+export async function getWorkflow(filename, options = {}) {
+  return jget(`/cozygen/workflows/${encodeURIComponent(filename)}`, options);
 }
-export async function getChoices(type) {
-  return jget(`/cozygen/get_choices?type=${encodeURIComponent(type)}`);
+export async function getChoices(type, options = {}) {
+  return jget(`/cozygen/get_choices?type=${encodeURIComponent(type)}`, options);
 }
 export async function queuePrompt(body) {
   const res = await fetch('/prompt', {
@@ -73,7 +85,8 @@ export async function getGallery(
   showHidden = false,
   recursive = false,
   kind = 'all',
-  cacheBust = ''
+  cacheBust = '',
+  options = {}
 ) {
   const qs = new URLSearchParams({
     subfolder, page: String(page), per_page: String(perPage),
@@ -84,7 +97,7 @@ export async function getGallery(
   if (cacheBust) {
     qs.set('cache_bust', String(cacheBust));
   }
-  return jget(`/cozygen/api/gallery?${qs.toString()}`);
+  return jget(`/cozygen/api/gallery?${qs.toString()}`, options);
 }
 
 function emitPresetChange(workflow) {
@@ -103,8 +116,8 @@ function emitPresetChange(workflow) {
 }
 
 /* ---- Presets API ---- */
-export async function listPresets(workflow) {
-  return jget(`/cozygen/api/presets?workflow=${encodeURIComponent(workflow || 'default')}`);
+export async function listPresets(workflow, options = {}) {
+  return jget(`/cozygen/api/presets?workflow=${encodeURIComponent(workflow || 'default')}`, options);
 }
 export async function savePreset(workflow, name, values, meta) {
   const body = { name, values };

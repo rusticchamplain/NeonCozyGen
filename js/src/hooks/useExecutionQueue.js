@@ -41,6 +41,7 @@ export function useExecutionQueue({
 
   const websocketRef = useRef(null);
   const workflowDataRef = useRef(workflowData);
+  const formDataRef = useRef(formData);
 
   // Refs for heuristic + idle reset
   const hasActiveJobRef = useRef(false);
@@ -70,6 +71,10 @@ export function useExecutionQueue({
   useEffect(() => {
     statusPhaseRef.current = statusPhase;
   }, [statusPhase]);
+
+  useEffect(() => {
+    formDataRef.current = formData;
+  }, [formData]);
 
   const clearFinishTimer = () => {
     if (finishTimerRef.current) {
@@ -294,7 +299,7 @@ export function useExecutionQueue({
     setProgressMax(0);
 
     // Prepare workflow outside try block so it's accessible in catch for debugging
-    const baseForm = formData || {};
+    const baseForm = formDataRef.current || {};
     const effectiveFormData = overrides
       ? { ...baseForm, ...(overrides || {}) }
       : baseForm;
@@ -388,7 +393,6 @@ export function useExecutionQueue({
     workflowData,
     dynamicInputs,
     imageInputs,
-    formData,
     promptAliases,
     selectedWorkflow,
     setFormData,

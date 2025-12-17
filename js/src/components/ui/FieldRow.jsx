@@ -12,6 +12,10 @@ export default function FieldRow({
   const isCollapsible = typeof onToggle === 'function';
   const descriptionId = id ? `${id}-description` : undefined;
   const panelId = id ? `${id}-panel` : undefined;
+  const previewTitle =
+    typeof preview === 'string' || typeof preview === 'number'
+      ? String(preview)
+      : undefined;
 
   const HeadTag = isCollapsible ? 'button' : 'div';
   const headProps = isCollapsible
@@ -46,7 +50,7 @@ export default function FieldRow({
 
         <div className="field-row-trailing">
           {trailing ? <div className="field-row-trailing-control">{trailing}</div> : null}
-          {preview ? <div className="field-row-preview">{preview}</div> : null}
+          {preview ? <div className="field-row-preview" title={previewTitle}>{preview}</div> : null}
           {isCollapsible ? (
             <div className="field-row-chevron" aria-hidden="true">
               ›
@@ -63,4 +67,3 @@ export default function FieldRow({
     </div>
   );
 }
-

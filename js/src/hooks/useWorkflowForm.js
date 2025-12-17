@@ -5,6 +5,7 @@ import { getChoices, getWorkflow } from '../api';
 import {
   loadFormState,
   saveFormState,
+  flushFormState,
 } from '../utils/storage';
 
 // Map known param names to choice types for dynamic dropdowns
@@ -184,6 +185,9 @@ export function useWorkflowForm(selectedWorkflow) {
     load();
 
     return () => {
+      // Session-only persistence uses debounced writes; flush on unmount/workflow switch
+      // so quick navigation (e.g., Studio -> Gallery -> Studio) doesn't drop dropdown changes.
+      flushFormState(selectedWorkflow);
       cancelled = true;
       controller.abort();
     };
@@ -226,7 +230,7 @@ export function useWorkflowForm(selectedWorkflow) {
     // state
     formData,
 
-    // setters (for presets, etc.)
+    // setters (for UI helpers, etc.)
     setFormData,
 
     // helpers

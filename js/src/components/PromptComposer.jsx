@@ -1,5 +1,8 @@
 // js/src/components/PromptComposer.jsx
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import BottomSheet from './ui/BottomSheet';
+import { IconGrip, IconX } from './Icons';
+import { formatCategoryLabel, formatSubcategoryLabel, presentAliasEntry } from '../utils/aliasPresentation';
 
 export default function PromptComposer({
   open,
@@ -36,86 +39,13 @@ export default function PromptComposer({
   }, [open, value]);
 
   const aliasEntries = useMemo(
-    () => (Array.isArray(aliasCatalog) ? aliasCatalog.filter((e) => e && e.name) : []),
+    () =>
+      (Array.isArray(aliasCatalog) ? aliasCatalog.filter((e) => e && e.name) : []).map((e) => ({
+        ...e,
+        ...presentAliasEntry(e),
+      })),
     [aliasCatalog]
   );
-
-  const withSubcategory = useMemo(() => {
-    // Human-readable labels for technical subcategory prefixes
-    const subLabels = {
-      precip: 'Weather',
-      ambient: 'Atmosphere',
-      sky: 'Sky',
-      urbex: 'Urban Exploration',
-      scifi: 'Sci-Fi',
-      framing: 'Framing',
-      angle: 'Angle',
-      perspective: 'Perspective',
-      composition: 'Composition',
-      motion: 'Motion',
-    };
-
-    // Special full-name mappings for known problematic aliases
-    const specialNames = {
-      'sky_hour': 'Golden Hour',
-      'sky_blue': 'Clear Blue Sky',
-      'sky_clouds': 'Sunset Clouds',
-      'sky_lights': 'Aurora Borealis',
-      'sky_night': 'Starry Night',
-      'sky_rainbow': 'Rainbow',
-      'ambient_mist': 'Misty Fog',
-      'ambient_blossom': 'Cherry Blossoms',
-      'ambient_leaves': 'Autumn Leaves',
-      'ambient_storm': 'Sandstorm',
-      'ambient_heatwave': 'Heat Wave',
-      'precip_day': 'Rainy Day',
-      'precip_thunderstorm': 'Thunderstorm',
-      'precip_snowfall': 'Snowfall',
-      'precip_blizzard': 'Blizzard',
-      'painterly_painterly': 'Painterly',
-      'explorer_explorer': 'Explorer',
-      'painterly_e_print': 'Ukiyo-e Print',
-      'painterly_wash_monochrome': 'Ink Wash',
-    };
-
-    return aliasEntries.map((entry) => {
-      const name = entry.name || '';
-      const tokenPart = entry.token || name;
-      const base = tokenPart.includes(':') ? tokenPart.split(':')[1] : tokenPart;
-
-      // Check for special name mapping first
-      if (specialNames[base]) {
-        const parts = base.split('_').filter(Boolean);
-        const sub = parts.length > 0 ? parts[0] : 'other';
-        return { ...entry, subcategory: sub, displayName: specialNames[base] };
-      }
-
-      // Remove trailing numbers (e.g., "neon_1" -> "neon")
-      const cleanBase = base.replace(/_(\d+)$/, '');
-      const parts = cleanBase.split('_').filter(Boolean);
-      const sub = parts.length > 0 ? parts[0] : 'other';
-      const mainParts = parts.length > 1 ? parts.slice(1) : [];
-
-      // Capitalize each word
-      const capitalize = (w) => w.charAt(0).toUpperCase() + w.slice(1);
-
-      const friendlyMain = mainParts.map(capitalize).join(' ').trim();
-      const friendlyWhole = parts.map(capitalize).join(' ').trim();
-
-      // Get human-readable subcategory label
-      const subLabel = subLabels[sub.toLowerCase()] || capitalize(sub);
-
-      // Avoid redundant display like "Painterly - Painterly"
-      let displayName;
-      if (!friendlyMain || friendlyMain.toLowerCase() === subLabel.toLowerCase()) {
-        displayName = friendlyWhole || base || name;
-      } else {
-        displayName = `${subLabel} - ${friendlyMain}`;
-      }
-
-      return { ...entry, subcategory: sub, displayName };
-    });
-  }, [aliasEntries]);
 
   const categories = useMemo(() => {
     const set = new Set(['All']);
@@ -127,17 +57,17 @@ export default function PromptComposer({
 
   const subcategories = useMemo(() => {
     const set = new Set(['All']);
-    withSubcategory.forEach((e) => {
+    aliasEntries.forEach((e) => {
       if (!pickerCategory || pickerCategory === 'All' || e.category === pickerCategory) {
         if (e.subcategory) set.add(e.subcategory);
       }
     });
     return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [withSubcategory, pickerCategory]);
+  }, [aliasEntries, pickerCategory]);
 
   const filteredAliases = useMemo(() => {
     const term = pickerSearch.trim().toLowerCase();
-    return withSubcategory
+    return aliasEntries
       .filter((e) => {
         if (pickerCategory !== 'All' && (e.category || '') !== pickerCategory) return false;
         if (pickerSubcategory !== 'All' && (e.subcategory || 'other') !== pickerSubcategory)
@@ -146,7 +76,8 @@ export default function PromptComposer({
         return (
           e.token?.toLowerCase().includes(term) ||
           e.text?.toLowerCase().includes(term) ||
-          e.name?.toLowerCase().includes(term)
+          e.name?.toLowerCase().includes(term) ||
+          e.displayName?.toLowerCase().includes(term)
         );
       })
       .sort((a, b) => {
@@ -155,7 +86,7 @@ export default function PromptComposer({
         if (subA !== subB) return subA.localeCompare(subB);
         return a.token.localeCompare(b.token);
       });
-  }, [withSubcategory, pickerCategory, pickerSubcategory, pickerSearch]);
+  }, [aliasEntries, pickerCategory, pickerSubcategory, pickerSearch]);
 
   const visibleAliases = useMemo(
     () => filteredAliases.slice(0, visibleCount),
@@ -416,29 +347,33 @@ export default function PromptComposer({
   if (!open) return null;
 
   return (
-    <div className="composer-overlay" role="dialog" aria-modal="true">
-      <div className="composer-backdrop" onClick={handleCancel} />
-      <div className="composer-sheet">
-        {/* Header */}
-        <div className="composer-header">
-          <div className="composer-header-left">
-            <div className="composer-kicker">Prompt Composer</div>
-            <div className="composer-title">{fieldLabel}</div>
-          </div>
-          <button
-            type="button"
-            className="composer-close"
-            onClick={handleCancel}
-            aria-label="Close"
-          >
-            ×
+    <BottomSheet
+      open={open}
+      onClose={handleCancel}
+      title="Prompt composer"
+      variant="fullscreen"
+      footer={(
+        <div className="flex gap-2">
+          <button type="button" className="ui-button is-muted w-full" onClick={handleCancel}>
+            Cancel
+          </button>
+          <button type="button" className="ui-button is-primary w-full" onClick={handleSave}>
+            Apply
           </button>
         </div>
+      )}
+    >
+      <div className="composer-shell">
+        <div className="composer-subhead">
+          <div className="sheet-label">Editing</div>
+          <div className="composer-field">{fieldLabel}</div>
+        </div>
 
-        {/* Mobile tab switcher */}
-        <div className="composer-tabs">
+        <div className="composer-tabs" role="tablist" aria-label="Composer tabs">
           <button
             type="button"
+            role="tab"
+            aria-selected={activeTab === 'compose'}
             className={`composer-tab ${activeTab === 'compose' ? 'is-active' : ''}`}
             onClick={() => setActiveTab('compose')}
           >
@@ -446,6 +381,8 @@ export default function PromptComposer({
           </button>
           <button
             type="button"
+            role="tab"
+            aria-selected={activeTab === 'aliases'}
             className={`composer-tab ${activeTab === 'aliases' ? 'is-active' : ''}`}
             onClick={() => setActiveTab('aliases')}
           >
@@ -456,173 +393,141 @@ export default function PromptComposer({
           </button>
         </div>
 
-        {/* Main content area */}
-        <div className="composer-content">
-          {/* Compose panel */}
-          <div className={`composer-panel composer-panel-compose ${activeTab === 'compose' ? 'is-visible' : ''}`}>
-            <div className="composer-textarea-wrap">
-              <textarea
-                ref={textRef}
-                value={localValue}
-                onChange={handleTextChange}
-                placeholder="Write your prompt here... Use $alias$ tokens to insert dynamic content."
-                className="composer-textarea"
-                rows={6}
-              />
-            </div>
-
-            {/* Token pills - draggable */}
-            {tokens.length > 0 && (
-              <div className="composer-tokens">
-                <div className="composer-tokens-label">Active tokens: <span className="composer-tokens-hint">(drag to reorder)</span></div>
-                <div className="composer-tokens-list">
-                  {tokens.map((t, idx) => {
-                    const entry = withSubcategory.find(
-                      (e) => e.token?.toLowerCase() === t.token.toLowerCase()
-                    );
-                    const friendlyName = entry?.displayName || t.token;
-                    const isDragging = dragIndex === idx;
-                    const isDropTarget = dropIndex === idx && dragIndex !== null && dragIndex !== idx;
-
-                    return (
-                      <span
-                        key={`${t.token}-${t.index}`}
-                        className={`composer-token composer-token-draggable ${isDragging ? 'is-dragging' : ''} ${isDropTarget ? 'is-drop-target' : ''}`}
-                        title={`$${t.token}$`}
-                        draggable
-                        onDragStart={(e) => handleDragStart(e, idx)}
-                        onDragEnd={handleDragEnd}
-                        onDragOver={(e) => handleDragOver(e, idx)}
-                        onDragLeave={handleDragLeave}
-                        onTouchStart={(e) => handleTouchStart(e, idx)}
-                        onTouchMove={handleTouchMove}
-                        onTouchEnd={handleTouchEnd}
-                      >
-                        <span className="composer-token-drag-handle" aria-hidden="true">⋮⋮</span>
-                        <span className="composer-token-name">{friendlyName}</span>
-                        <button
-                          type="button"
-                          className="composer-token-remove"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            removeToken(t);
-                          }}
-                          aria-label={`Remove ${t.token}`}
-                        >
-                          ×
-                        </button>
-                      </span>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Preview section */}
-            <div className="composer-preview">
-              <div className="composer-preview-label">Preview (expanded):</div>
-              <div className="composer-preview-content">
-                {expandedPrompt || '—'}
-              </div>
-            </div>
-
-            {/* Action buttons - inline on mobile */}
-            <div className="composer-actions">
-              <button
-                type="button"
-                className="composer-btn composer-btn-secondary"
-                onClick={handleCancel}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="composer-btn composer-btn-primary"
-                onClick={handleSave}
-              >
-                Apply
-              </button>
-            </div>
+        <div className={`composer-panel composer-panel-compose ${activeTab === 'compose' ? 'is-visible' : ''}`}>
+          <div className="composer-textarea-wrap">
+            <textarea
+              ref={textRef}
+              value={localValue}
+              onChange={handleTextChange}
+              placeholder="Write your prompt here… Use $alias$ tokens to insert dynamic content."
+              className="composer-textarea"
+              rows={8}
+            />
           </div>
 
-          {/* Aliases panel */}
-          <div className={`composer-panel composer-panel-aliases ${activeTab === 'aliases' ? 'is-visible' : ''}`}>
-            {/* Category pills */}
-            <div className="composer-categories">
-              {categories.map((c) => (
-                <button
-                  key={`cat-${c}`}
-                  type="button"
-                  onClick={() => setPickerCategory(c)}
-                  className={`composer-category-pill ${pickerCategory === c ? 'is-active' : ''}`}
-                >
-                  {c === 'All' ? 'All' : c}
-                </button>
-              ))}
-            </div>
+          {tokens.length > 0 && (
+            <div className="composer-tokens">
+              <div className="composer-tokens-label">
+                Active tokens <span className="composer-tokens-hint">(drag to reorder)</span>
+              </div>
+              <div className="composer-tokens-list">
+                {tokens.map((t, idx) => {
+                  const entry = withSubcategory.find(
+                    (e) => e.token?.toLowerCase() === t.token.toLowerCase()
+                  );
+                  const friendlyName = entry?.displayName || t.token;
+                  const isDragging = dragIndex === idx;
+                  const isDropTarget = dropIndex === idx && dragIndex !== null && dragIndex !== idx;
 
-            {/* Search and subcategory */}
-            <div className="composer-filters">
-              <input
-                ref={searchInputRef}
-                type="text"
-                value={pickerSearch}
-                onChange={(e) => setPickerSearch(e.target.value)}
-                placeholder="Search aliases..."
-                className="composer-search"
-              />
-              {subcategories.length > 2 && (
-                <select
-                  value={pickerSubcategory}
-                  onChange={(e) => setPickerSubcategory(e.target.value)}
-                  className="composer-subcategory-select"
-                >
-                  {subcategories.map((c) => (
-                    <option key={c} value={c}>
-                      {c === 'All' ? 'All subcategories' : c}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </div>
-
-            {/* Alias list */}
-            <div className="composer-alias-list">
-              {filteredAliases.length === 0 ? (
-                <div className="composer-alias-empty">No aliases found.</div>
-              ) : (
-                <>
-                  {visibleAliases.map((entry) => (
-                    <button
-                      key={entry.key}
-                      type="button"
-                      onClick={() => handleInsertAlias(entry.token)}
-                      className="composer-alias-item"
+                  return (
+                    <span
+                      key={`${t.token}-${t.index}`}
+                      className={`composer-token composer-token-draggable ${isDragging ? 'is-dragging' : ''} ${isDropTarget ? 'is-drop-target' : ''}`}
+                      title={`$${t.token}$`}
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, idx)}
+                      onDragEnd={handleDragEnd}
+                      onDragOver={(e) => handleDragOver(e, idx)}
+                      onDragLeave={handleDragLeave}
+                      onTouchStart={(e) => handleTouchStart(e, idx)}
+                      onTouchMove={handleTouchMove}
+                      onTouchEnd={handleTouchEnd}
                     >
-                      <div className="composer-alias-header">
-                        <div className="composer-alias-name">
-                          {entry.displayName || entry.token}
-                        </div>
-                        {entry.category && (
-                          <span className="composer-alias-category">
-                            {entry.category}
-                          </span>
-                        )}
-                      </div>
-                      <div className="composer-alias-token">${entry.token}$</div>
-                      <div className="composer-alias-text">{entry.text}</div>
-                    </button>
-                  ))}
-                  {/* Sentinel for infinite scroll */}
-                  {visibleCount < filteredAliases.length && (
-                    <div ref={sentinelRef} className="composer-sentinel" />
-                  )}
-                </>
-              )}
+                      <span className="composer-token-drag-handle" aria-hidden="true"><IconGrip size={14} /></span>
+                      <span className="composer-token-name">{friendlyName}</span>
+                      <button
+                        type="button"
+                        className="composer-token-remove"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeToken(t);
+                        }}
+                        aria-label={`Remove ${t.token}`}
+                      >
+                        <IconX size={12} />
+                      </button>
+                    </span>
+                  );
+                })}
+              </div>
             </div>
+          )}
+
+          <div className="composer-preview">
+            <div className="composer-preview-label">Preview (expanded)</div>
+            <div className="composer-preview-content">{expandedPrompt || '—'}</div>
+          </div>
+        </div>
+
+        <div className={`composer-panel composer-panel-aliases ${activeTab === 'aliases' ? 'is-visible' : ''}`}>
+          <div className="composer-filters">
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={pickerSearch}
+              onChange={(e) => setPickerSearch(e.target.value)}
+              placeholder="Search aliases…"
+              className="composer-search"
+            />
+            <select
+              value={pickerCategory}
+              onChange={(e) => setPickerCategory(e.target.value)}
+              className="composer-subcategory-select"
+              aria-label="Filter by category"
+            >
+              {categories.map((c) => (
+                <option key={`cat-${c}`} value={c}>
+                  {c === 'All' ? 'Category: All' : formatCategoryLabel(c)}
+                </option>
+              ))}
+            </select>
+            {subcategories.length > 2 && (
+              <select
+                value={pickerSubcategory}
+                onChange={(e) => setPickerSubcategory(e.target.value)}
+                className="composer-subcategory-select"
+              >
+                {subcategories.map((c) => (
+                  <option key={c} value={c}>
+                    {c === 'All' ? 'All subcategories' : formatSubcategoryLabel(c)}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          <div className="composer-alias-list">
+            {filteredAliases.length === 0 ? (
+              <div className="composer-alias-empty">No aliases found.</div>
+            ) : (
+              <>
+                {visibleAliases.map((entry) => (
+                  <button
+                    key={entry.key}
+                    type="button"
+                    onClick={() => handleInsertAlias(entry.token)}
+                    className="composer-alias-item"
+                  >
+                    <div className="composer-alias-header">
+                      <div className="composer-alias-name">
+                        {entry.displayName || entry.token}
+                      </div>
+                      {entry.category ? (
+                        <span className="composer-alias-category">{formatCategoryLabel(entry.category)}</span>
+                      ) : null}
+                    </div>
+                    <div className="composer-alias-token">${entry.token}$</div>
+                    <div className="composer-alias-text">{entry.text}</div>
+                  </button>
+                ))}
+                {visibleCount < filteredAliases.length && (
+                  <div ref={sentinelRef} className="composer-sentinel" />
+                )}
+              </>
+            )}
           </div>
         </div>
       </div>
-    </div>
+    </BottomSheet>
   );
 }

@@ -7,10 +7,9 @@ CozyGen gives you a sleek, mobile-ready web UI and custom nodes to drive ComfyUI
 ## 🌟 What you get
 - 📱 Mobile-first React UI (Vite + Tailwind), touch-friendly.
 - 🧩 Dynamic forms from `CozyGenDynamicInput` (text/number/boolean/dropdown).
-- 🗂️ Workflow picker for shipped presets.
 - 🎞️ Image + video outputs (GIF/MP4/WebM) via CozyGen outputs.
 - 📸 Live previews & gallery (zoom/pan, pagination).
-- 🧙 Aliases & presets to reuse prompts and form state.
+- 🧙 Aliases to reuse prompt fragments with `$alias$` tokens.
 - 🎲 Randomize controls for seeds/numerics.
 
 ---

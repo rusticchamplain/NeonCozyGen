@@ -7,6 +7,7 @@ import DropdownInput from './inputs/DropdownInput';
 import LoraPairInput from './inputs/LoraPairInput';
 import FieldRow from './ui/FieldRow';
 import { LORA_PAIRS, matchLoraParam } from '../config/loraPairs';
+import { formatModelDisplayName } from '../utils/modelDisplay';
 
 function getParamType(input) {
   const raw = input?.inputs?.param_type || input?.inputs?.Param_type;
@@ -79,6 +80,7 @@ export default function DynamicForm({
   inputs = [],
   formData = {},
   onFormChange,
+  workflowName,
   onParamEdited,
   onSpotlight,
   compactControls = true,
@@ -100,7 +102,8 @@ export default function DynamicForm({
     if (value === null || value === undefined || value === '') return 'Empty';
     if (typeof value === 'string') {
       const trimmed = value.trim();
-      return trimmed ? trimmed : 'Empty';
+      if (!trimmed) return 'Empty';
+      return formatModelDisplayName(trimmed);
     }
     return String(value);
   }, []);
@@ -312,6 +315,7 @@ export default function DynamicForm({
               <DropdownInput
                 key={`field-${paramName}-dropdown-${spotlightRenderKey}`}
                 {...liveProps}
+                workflowName={workflowName}
                 onChange={(v) => handleValueChange(paramName, v)}
                 options={cfg.choices || []}
               />
@@ -526,6 +530,7 @@ export default function DynamicForm({
               <DropdownInput
                 key={`field-${paramName}-dropdown-${spotlightRenderKey}`}
                 {...liveProps}
+                workflowName={workflowName}
                 onChange={(v) => handleValueChange(paramName, v)}
                 options={cfg.choices || []}
               />

@@ -141,7 +141,7 @@ function GalleryItem({
       <button
         type="button"
         onClick={handleClick}
-        className="group flex flex-col items-start justify-between rounded-xl border border-[#2A2E4A] bg-[#050716] px-3 py-2 text-left hover:border-[#6B5BFF] hover:bg-[#0B0E27] transition-colors"
+        className="gallery-dir-tile"
         style={tileVisibilityStyles}
       >
         <div className="flex items-center gap-2">
@@ -168,11 +168,11 @@ function GalleryItem({
       containIntrinsicSize: '520px 720px',
     };
     return (
-      <div className="flex flex-col gap-2" style={feedVisibilityStyles}>
+      <div className="gallery-feed-item" style={feedVisibilityStyles}>
         <button
           type="button"
           onClick={handleClick}
-          className="group relative w-full overflow-hidden rounded-2xl bg-[#020312]"
+          className="gallery-feed-media"
         >
           <div className="relative w-full flex items-center justify-center bg-[#020312]">
             {isVideo ? (
@@ -201,13 +201,11 @@ function GalleryItem({
           )}
         </button>
 
-        <div className="flex items-center justify-between text-[11px] text-[#9DA3FFCC]">
+        <div className="gallery-feed-meta">
           <div className="flex-1 min-w-0">
-            <div className="truncate text-[#E5E7FF]">{displayName}</div>
+            <div className="gallery-feed-title">{displayName}</div>
             {subfolder && (
-              <div className="truncate text-[10px] text-[#6A6FA8]">
-                {subfolder}
-              </div>
+              <div className="gallery-feed-subfolder">{subfolder}</div>
             )}
           </div>
         </div>
@@ -220,37 +218,35 @@ function GalleryItem({
     <button
       type="button"
       onClick={handleClick}
-      className="group relative w-full overflow-hidden rounded-xl border border-[#2A2E4A] bg-[#050716] hover:border-[#6B5BFF] hover:bg-[#0B0E27] transition-colors"
+      className="gallery-tile"
       style={tileVisibilityStyles}
     >
-      <div className="relative w-full aspect-[4/5] bg-[#020312]">
+      <div className="gallery-tile-media">
         {thumbSrc ? (
           <img
             src={thumbSrc}
             alt={displayName}
-            className="w-full h-full object-cover"
+            className="gallery-tile-img"
             loading="lazy"
             decoding="async"
           />
         ) : (
-          <div className="flex items-center justify-center h-full text-[10px] text-[#9DA3FFCC] px-2 text-center">
+          <div className="gallery-tile-empty">
             No preview
           </div>
         )}
         {isVideo && (
-          <div className="pointer-events-none absolute left-2 top-2 rounded-full bg-[#050716E0] px-2 py-[2px] text-[10px] text-[#CFFAFE] border border-[#3EF0FF80]">
+          <div className="gallery-badge">
             Video
           </div>
         )}
       </div>
 
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-[#050716CC] via-[#05071699] to-transparent px-2 py-1.5">
+      <div className="gallery-tile-caption">
         <div className="flex items-center justify-between gap-2">
-          <div className="text-[10px] text-[#E5E7FF] truncate">
-            {displayName}
-          </div>
+          <div className="gallery-tile-title">{displayName}</div>
           {isVideo && (
-            <span className="text-[9px] uppercase tracking-[0.16em] text-[#CFFAFE]">
+            <span className="gallery-tile-flag">
               Vid
             </span>
           )}

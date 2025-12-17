@@ -5,8 +5,6 @@ import TopBar from './components/TopBar';
 import BottomNav from './components/BottomNav';
 import MainPage from './pages/MainPage';
 import Gallery from './pages/Gallery';
-import Presets from './pages/Presets';
-import LoraLibrary from './pages/LoraLibrary';
 import Aliases from './pages/Aliases';
 import Login from './pages/Login';
 import { AuthProvider, useAuth } from './hooks/useAuth';
@@ -89,22 +87,6 @@ function App() {
             element={
               <RequireAuth>
                 <Gallery />
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/presets"
-            element={
-              <RequireAuth>
-                <Presets />
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/lora-library"
-            element={
-              <RequireAuth>
-                <LoraLibrary />
               </RequireAuth>
             }
           />

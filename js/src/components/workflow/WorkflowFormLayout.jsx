@@ -1,6 +1,7 @@
 import AllParametersPanel from './panels/AllParametersPanel';
 
 export default function WorkflowFormLayout({
+  workflowName,
   dynamicInputs,
   formData,
   onFormChange,
@@ -17,6 +18,7 @@ export default function WorkflowFormLayout({
 }) {
   return (
     <AllParametersPanel
+      workflowName={workflowName}
       dynamicInputs={dynamicInputs}
       formData={formData}
       onFormChange={onFormChange}

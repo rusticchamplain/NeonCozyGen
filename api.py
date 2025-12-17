@@ -23,18 +23,15 @@ routes = web.RouteTableDef()
 
 EXT_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(EXT_DIR, "data")
-PRESETS_DIR = os.path.join(DATA_DIR, "presets")
 THUMBS_DIR = os.path.join(DATA_DIR, "thumbs")
 ALIASES_FILE = os.path.join(DATA_DIR, "aliases.json")
 WORKFLOW_TYPES_FILE = os.path.join(DATA_DIR, "workflow_types.json")
-LORA_LIBRARY_FILE = os.path.join(DATA_DIR, "lora_library.json")
 WORKFLOW_MODE_CHOICES = {
     "text-to-image",
     "text-to-video",
     "image-to-image",
     "image-to-video",
 }
-os.makedirs(PRESETS_DIR, exist_ok=True)
 os.makedirs(THUMBS_DIR, exist_ok=True)
 if not os.path.exists(ALIASES_FILE):
     with open(ALIASES_FILE, "w", encoding="utf-8") as f:
@@ -58,10 +55,6 @@ def _save(path, data):
         json.dump(data, f, indent=2)
 
 
-if not os.path.exists(LORA_LIBRARY_FILE):
-    _save(LORA_LIBRARY_FILE, {"version": 1, "cards": {}})
-
-
 def _load_workflow_types() -> dict:
     data = _load(WORKFLOW_TYPES_FILE, {"version": 1, "workflows": {}})
     workflows = data.get("workflows")
@@ -70,219 +63,6 @@ def _load_workflow_types() -> dict:
 
 def _save_workflow_types(workflows: dict):
     _save(WORKFLOW_TYPES_FILE, {"version": 1, "workflows": workflows})
-
-
-def _load_lora_cards() -> dict:
-    data = _load(LORA_LIBRARY_FILE, {"version": 1, "cards": {}})
-    cards = data.get("cards")
-    return cards if isinstance(cards, dict) else {}
-
-
-def _save_lora_cards(cards: dict):
-    _save(LORA_LIBRARY_FILE, {"version": 1, "cards": cards})
-
-
-_VARIANT_PATTERN = re.compile(r"(?i)[\s_\-]*(high|low)$")
-_NON_ALNUM = re.compile(r"[^a-z0-9]+")
-
-
-def _slugify(text: str) -> str:
-    text = (text or "").lower()
-    text = _NON_ALNUM.sub("-", text).strip("-")
-    return text
-
-
-def _normalize_variant(stem: str):
-    stem = stem or ""
-    match = _VARIANT_PATTERN.search(stem)
-    if match:
-        variant = match.group(1).lower()
-        base = stem[: match.start()].strip(" _-")
-        if not base:
-            base = stem
-        return base, variant
-    return stem, None
-
-
-def _dedupe_id(slug_src: str, slug_map: dict, used_ids: Set[str]) -> str:
-    if slug_src in slug_map:
-        return slug_map[slug_src]
-    base = _slugify(slug_src) or "lora"
-    candidate = base
-    index = 2
-    while candidate in used_ids:
-        candidate = f"{base}-{index}"
-        index += 1
-    slug_map[slug_src] = candidate
-    used_ids.add(candidate)
-    return candidate
-
-
-def _collect_detected_loras():
-    try:
-        names = folder_paths.get_filename_list("loras")
-    except Exception:
-        names = []
-    normalized = sorted({name.replace("\\", "/") for name in names})
-    slug_map = {}
-    used = set()
-    entries = {}
-    for rel in normalized:
-        rel_path = rel.strip("/")
-        folder = os.path.dirname(rel_path)
-        folder = folder.replace("\\", "/").strip("/")
-        stem = Path(rel_path).stem
-        base_name, variant = _normalize_variant(stem)
-        slug_src = f"{folder}/{base_name}" if folder else base_name
-        card_id = _dedupe_id(slug_src, slug_map, used)
-        entry = entries.get(card_id)
-        if not entry:
-            entry = {
-                "id": card_id,
-                "base_name": base_name or stem or card_id,
-                "model_name": base_name or stem or card_id,
-                "folder": folder,
-                "files": {"high": None, "low": None, "others": []},
-                "all_files": [],
-            }
-            entries[card_id] = entry
-        entry["all_files"].append(rel_path)
-        if variant in ("high", "low") and entry["files"][variant] is None:
-            entry["files"][variant] = rel_path
-        else:
-            entry["files"]["others"].append(rel_path)
-    for entry in entries.values():
-        files = entry["files"]
-        if files["high"] and files["low"]:
-            entry["pair_state"] = "paired"
-        elif files["high"] or files["low"]:
-            entry["pair_state"] = "partial"
-        else:
-            entry["pair_state"] = "single"
-    return entries
-
-
-def _clean_string(value):
-    return value.strip() if isinstance(value, str) else ""
-
-
-def _clean_string_list(values):
-    result = []
-    if isinstance(values, (list, tuple, set)):
-        source = values
-    elif isinstance(values, str):
-        source = [v.strip() for v in values.split(",")]
-    else:
-        source = []
-    for item in source:
-        item = _clean_string(item)
-        if item and item not in result:
-            result.append(item)
-    return result
-
-
-def _clean_prompt_examples(items):
-    cleaned = []
-    if not isinstance(items, list):
-        return cleaned
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        title = _clean_string(item.get("title"))
-        text = _clean_string(item.get("text"))
-        negative = _clean_string(item.get("negative"))
-        weight_tip = _clean_string(item.get("weightTip"))
-        if not (title or text or negative or weight_tip):
-            continue
-        cleaned.append(
-            {
-                "title": title,
-                "text": text,
-                "negative": negative,
-                "weightTip": weight_tip,
-            }
-        )
-    return cleaned
-
-
-def _clean_preview(obj):
-    if not isinstance(obj, dict):
-        return {}
-    src = _clean_string(obj.get("src"))
-    alt = _clean_string(obj.get("alt"))
-    if not src and not alt:
-        return {}
-    return {"src": src, "alt": alt}
-
-
-def _compose_lora_card(card_id: str, detected: dict, saved: dict, missing: bool = False):
-    saved = saved or {}
-    base_name = (
-        saved.get("base_name")
-        or saved.get("baseName")
-        or (detected.get("base_name") if detected else "")
-        or saved.get("model_name")
-        or card_id
-    )
-    name = saved.get("name") or base_name or card_id
-    model_name = saved.get("model_name") or saved.get("modelName") or base_name or card_id
-    keywords = saved.get("keywords")
-    prompt_examples = saved.get("promptExamples")
-    tags = saved.get("tags")
-    preview = saved.get("preview")
-    status = "configured"
-    if missing:
-        status = "missing"
-    elif not saved:
-        status = "detected"
-    files = None
-    pair_state = "unknown"
-    folder = ""
-    if detected:
-        files = detected.get("files")
-        pair_state = detected.get("pair_state", "unknown")
-        folder = detected.get("folder") or ""
-    elif saved:
-        files = saved.get("files") or {"others": []}
-        pair_state = saved.get("pair_state", "unknown")
-        folder = saved.get("folder") or ""
-    return {
-        "id": card_id,
-        "name": name,
-        "baseName": base_name,
-        "modelName": model_name,
-        "category": saved.get("category", ""),
-        "description": saved.get("description", ""),
-        "recommendedWeight": saved.get("recommendedWeight", ""),
-        "keywords": keywords if isinstance(keywords, list) else [],
-        "promptExamples": prompt_examples if isinstance(prompt_examples, list) else [],
-        "tags": tags if isinstance(tags, list) else [],
-        "sourceUrl": saved.get("sourceUrl", ""),
-        "sourceLabel": saved.get("sourceLabel", ""),
-        "preview": preview if isinstance(preview, dict) else {},
-        "status": status,
-        "files": files or {"others": []},
-        "pairState": pair_state,
-        "folder": folder,
-        "lastUpdated": saved.get("lastUpdated"),
-        "notes": saved.get("notes", ""),
-    }
-
-
-def _merge_lora_cards():
-    saved = _load_lora_cards()
-    detected = _collect_detected_loras()
-    merged = []
-    seen = set()
-    for card_id, det in detected.items():
-        merged.append(_compose_lora_card(card_id, det, saved.get(card_id)))
-        seen.add(card_id)
-    for card_id, saved_card in saved.items():
-        if card_id in seen:
-            continue
-        merged.append(_compose_lora_card(card_id, None, saved_card, missing=True))
-    merged.sort(key=lambda item: (item["status"], item["name"].lower()))
-    return merged
 
 
 # ---------------- Basic
@@ -794,70 +574,6 @@ async def input_file(request: web.Request):
     return web.FileResponse(path=str(p), headers={"Content-Type": mime})
 
 
-# ---------------- Presets
-def _presets_path(wf: str) -> str:
-    safe = "".join(c for c in (wf or "default") if c.isalnum() or c in ("-", "_", "."))
-    return os.path.join(PRESETS_DIR, f"{safe}.json")
-
-
-def _read_presets(wf: str) -> dict:
-    p = _presets_path(wf)
-    return _load(p, {"version": 1, "items": {}})
-
-
-def _write_presets(wf: str, data: dict) -> None:
-    _save(_presets_path(wf), data)
-
-
-def _ensure_entry(values, meta, existing):
-    """Pack preset values + meta, preserving legacy formats."""
-    if meta is not None:
-        out = {"values": values or {}, "meta": meta or {}}
-        return out
-    if isinstance(existing, dict) and "values" in existing:
-        out = {"values": values or {}}
-        if "meta" in existing:
-            out["meta"] = existing.get("meta")
-        return out
-    return values or {}
-
-
-@routes.get("/cozygen/api/presets")
-async def presets_list(request: web.Request):
-    wf = request.rel_url.query.get("workflow", "default")
-    return web.json_response(_read_presets(wf))
-
-
-@routes.post("/cozygen/api/presets")
-async def presets_save(request: web.Request):
-    wf = request.rel_url.query.get("workflow", "default")
-    body = await request.json()
-    name = (body.get("name") or "").strip()
-    if not name:
-        raise web.HTTPBadRequest(text="Missing name")
-    values = body.get("values") or {}
-    meta = body.get("meta") if "meta" in body else None
-    data = _read_presets(wf)
-    existing = data.get("items", {}).get(name)
-    entry = _ensure_entry(values, meta, existing)
-    data.setdefault("items", {})[name] = entry
-    if isinstance(entry, dict) and "values" in entry:
-        data["version"] = max(2, data.get("version", 1))
-    _write_presets(wf, data)
-    return web.json_response({"status": "ok"})
-
-
-@routes.delete("/cozygen/api/presets")
-async def presets_delete(request: web.Request):
-    wf = request.rel_url.query.get("workflow", "default")
-    name = (request.rel_url.query.get("name") or "").strip()
-    data = _read_presets(wf)
-    if name in data["items"]:
-        del data["items"][name]
-        _write_presets(wf, data)
-    return web.json_response({"status": "ok"})
-
-
 @routes.get("/cozygen/api/workflow_types")
 async def workflow_types_list(_request: web.Request):
     return web.json_response({"workflows": _load_workflow_types(), "choices": sorted(WORKFLOW_MODE_CHOICES)})
@@ -976,84 +692,6 @@ async def thumb(request: web.Request):
         except Exception:
             _make_video_thumb(src, dest, w)
     return web.FileResponse(dest, headers=_thumb_headers(etag))
-
-
-# ---------------- LoRA Library
-@routes.get("/cozygen/api/lora_library")
-async def lora_library_list(_request: web.Request):
-    items = _merge_lora_cards()
-    drafts = sum(1 for item in items if item["status"] == "detected")
-    missing = sum(1 for item in items if item["status"] == "missing")
-    return web.json_response(
-        {
-            "items": items,
-            "draftCount": drafts,
-            "missingCount": missing,
-            "timestamp": int(time.time()),
-        }
-    )
-
-
-@routes.post("/cozygen/api/lora_library")
-async def lora_library_save(request: web.Request):
-    body = await request.json()
-    card_id = _clean_string(body.get("id"))
-    if not card_id:
-        raise web.HTTPBadRequest(text="Missing card id")
-    payload = body.get("data") or {}
-    cards = _load_lora_cards()
-    existing = cards.get(card_id) or {}
-
-    name = _clean_string(payload.get("name")) or existing.get("name") or card_id
-    base_name = _clean_string(payload.get("baseName")) or existing.get("baseName") or existing.get("base_name") or name
-    model_name = (
-        _clean_string(payload.get("modelName"))
-        or existing.get("modelName")
-        or existing.get("model_name")
-        or base_name
-        or name
-    )
-    description = _clean_string(payload.get("description")) or ""
-    category = _clean_string(payload.get("category")) or ""
-    recommended_weight = _clean_string(payload.get("recommendedWeight")) or ""
-    source_url = _clean_string(payload.get("sourceUrl")) or ""
-    source_label = _clean_string(payload.get("sourceLabel")) or ""
-    notes = _clean_string(payload.get("notes")) or ""
-
-    card = {
-        "id": card_id,
-        "name": name,
-        "baseName": base_name,
-        "model_name": model_name,
-        "modelName": model_name,
-        "description": description,
-        "category": category,
-        "recommendedWeight": recommended_weight,
-        "sourceUrl": source_url,
-        "sourceLabel": source_label or ("View source" if source_url else ""),
-        "keywords": _clean_string_list(payload.get("keywords")),
-        "tags": _clean_string_list(payload.get("tags")),
-        "promptExamples": _clean_prompt_examples(payload.get("promptExamples")),
-        "preview": _clean_preview(payload.get("preview")),
-        "notes": notes,
-        "lastUpdated": int(time.time()),
-    }
-
-    cards[card_id] = card
-    _save_lora_cards(cards)
-    return web.json_response({"status": "ok", "card": card})
-
-
-@routes.delete("/cozygen/api/lora_library/{card_id}")
-async def lora_library_delete(request: web.Request):
-    card_id = _clean_string(request.match_info.get("card_id"))
-    if not card_id:
-        raise web.HTTPBadRequest(text="Missing card id")
-    cards = _load_lora_cards()
-    if card_id in cards:
-        del cards[card_id]
-        _save_lora_cards(cards)
-    return web.json_response({"status": "ok"})
 
 
 # ---------------- Auth

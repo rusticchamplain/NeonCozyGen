@@ -6,7 +6,7 @@ import { getWorkflows } from '../api';
 /**
  * Manages:
  * - Fetching the list of workflows
- * - Remembering the selected workflow in localStorage
+ * - Remembering the selected workflow for the current session
  *
  * Usage:
  *   const { workflows, selectedWorkflow, selectWorkflow, loading, error } = useWorkflows();
@@ -33,7 +33,15 @@ export function useWorkflows() {
 
         let stored = null;
         try {
-          stored = typeof window !== 'undefined' ? localStorage.getItem('selectedWorkflow') : null;
+          stored = typeof window !== 'undefined' ? sessionStorage.getItem('selectedWorkflow') : null;
+          // Session-only persistence: cleanup any legacy localStorage value.
+          if (typeof window !== 'undefined') {
+            try {
+              localStorage.removeItem('selectedWorkflow');
+            } catch {
+              // ignore
+            }
+          }
         } catch {
           stored = null;
         }
@@ -42,7 +50,7 @@ export function useWorkflows() {
         } else if (list.length > 0) {
           setSelectedWorkflow(list[0]);
           try {
-            if (typeof window !== 'undefined') localStorage.setItem('selectedWorkflow', list[0]);
+            if (typeof window !== 'undefined') sessionStorage.setItem('selectedWorkflow', list[0]);
           } catch {
             // ignore
           }
@@ -68,7 +76,15 @@ export function useWorkflows() {
   const selectWorkflow = useCallback((workflowName) => {
     setSelectedWorkflow(workflowName);
     try {
-      if (typeof window !== 'undefined') localStorage.setItem('selectedWorkflow', workflowName);
+      if (typeof window !== 'undefined') sessionStorage.setItem('selectedWorkflow', workflowName);
+      // Session-only persistence: cleanup any legacy localStorage value.
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.removeItem('selectedWorkflow');
+        } catch {
+          // ignore
+        }
+      }
     } catch {
       // ignore
     }

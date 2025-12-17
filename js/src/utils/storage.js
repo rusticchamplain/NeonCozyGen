@@ -1,12 +1,13 @@
 // js/src/utils/storage.js
 
 /**
- * Safe JSON parse from localStorage.
+ * Safe JSON parse from Storage.
  */
-function readJson(key) {
+function readJson(storage, key) {
   try {
     if (typeof window === 'undefined') return null;
-    const raw = localStorage.getItem(key);
+    if (!storage) return null;
+    const raw = storage.getItem(key);
     if (!raw) return null;
     return JSON.parse(raw);
   } catch {
@@ -15,14 +16,33 @@ function readJson(key) {
 }
 
 /**
- * Safe JSON stringify to localStorage.
+ * Safe JSON stringify to Storage.
  */
-function writeJson(key, value) {
+function writeJson(storage, key, value) {
   try {
     if (typeof window === 'undefined') return;
-    localStorage.setItem(key, JSON.stringify(value));
+    if (!storage) return;
+    storage.setItem(key, JSON.stringify(value));
   } catch {
     // ignore quota / privacy mode errors
+  }
+}
+
+function getSessionStorage() {
+  try {
+    if (typeof window === 'undefined') return null;
+    return window.sessionStorage || null;
+  } catch {
+    return null;
+  }
+}
+
+function getLocalStorage() {
+  try {
+    if (typeof window === 'undefined') return null;
+    return window.localStorage || null;
+  } catch {
+    return null;
   }
 }
 
@@ -41,7 +61,7 @@ function flushPending(key) {
     pendingTimers.delete(key);
   }
   if (pendingFormWrites.has(key)) {
-    writeJson(key, pendingFormWrites.get(key));
+    writeJson(getSessionStorage(), key, pendingFormWrites.get(key));
     pendingFormWrites.delete(key);
   }
 }
@@ -51,7 +71,7 @@ function scheduleWrite(key) {
   const timer = setTimeout(() => {
     pendingTimers.delete(key);
     if (!pendingFormWrites.has(key)) return;
-    writeJson(key, pendingFormWrites.get(key));
+    writeJson(getSessionStorage(), key, pendingFormWrites.get(key));
     pendingFormWrites.delete(key);
   }, WRITE_DELAY_MS);
   pendingTimers.set(key, timer);
@@ -61,7 +81,7 @@ function flushAllPending() {
   Array.from(pendingTimers.values()).forEach((t) => clearTimeout(t));
   pendingTimers.clear();
   Array.from(pendingFormWrites.entries()).forEach(([key, payload]) => {
-    writeJson(key, payload);
+    writeJson(getSessionStorage(), key, payload);
   });
   pendingFormWrites.clear();
 
@@ -69,7 +89,8 @@ function flushAllPending() {
   pendingKeyTimers.clear();
   Array.from(pendingKeyWrites.entries()).forEach(([key, value]) => {
     try {
-      if (typeof window !== 'undefined') localStorage.setItem(key, value);
+      const storage = getSessionStorage();
+      if (storage) storage.setItem(key, value);
     } catch {
       // ignore
     }
@@ -92,7 +113,17 @@ if (typeof window !== 'undefined' && !window.__cozygenFormStateFlush) {
 
 export function loadFormState(workflowName) {
   if (!workflowName) return {};
-  return readJson(`${workflowName}_formData`) || {};
+  const key = `${workflowName}_formData`;
+  const session = readJson(getSessionStorage(), key);
+  if (session && typeof session === 'object') return session;
+  // Session-only persistence: cleanup any legacy localStorage value.
+  try {
+    const local = getLocalStorage();
+    local?.removeItem?.(key);
+  } catch {
+    // ignore
+  }
+  return {};
 }
 
 export function saveFormState(workflowName, formData, options = {}) {
@@ -101,7 +132,13 @@ export function saveFormState(workflowName, formData, options = {}) {
   const key = `${workflowName}_formData`;
   if (immediate) {
     flushPending(key);
-    writeJson(key, formData || {});
+    writeJson(getSessionStorage(), key, formData || {});
+    try {
+      const local = getLocalStorage();
+      local?.removeItem?.(key);
+    } catch {
+      // ignore
+    }
     return;
   }
   pendingFormWrites.set(key, formData || {});
@@ -122,7 +159,8 @@ function queueKeyWrite(key, value, delay = WRITE_DELAY_MS) {
     const payload = pendingKeyWrites.get(key);
     pendingKeyWrites.delete(key);
     try {
-      if (typeof window !== 'undefined') localStorage.setItem(key, payload);
+      const storage = getSessionStorage();
+      if (storage) storage.setItem(key, payload);
     } catch {
       // ignore
     }
@@ -143,11 +181,61 @@ export function saveLastEditedParam(name, options = {}) {
     }
     pendingKeyWrites.delete(key);
     try {
-      if (typeof window !== 'undefined') localStorage.setItem(key, name || '');
+      const storage = getSessionStorage();
+      if (storage) storage.setItem(key, name || '');
+      const local = getLocalStorage();
+      local?.removeItem?.(key);
     } catch {
       // ignore
     }
     return;
   }
   queueKeyWrite(key, name || '');
+}
+
+export function loadLastEditedParam() {
+  const key = 'cozygen_last_param';
+  try {
+    const storage = getSessionStorage();
+    const val = storage?.getItem?.(key) || '';
+    if (val) return val;
+    // Cleanup legacy localStorage
+    const local = getLocalStorage();
+    local?.removeItem?.(key);
+  } catch {
+    // ignore
+  }
+  return '';
+}
+
+function getDropdownFolderKey(workflowName, paramName) {
+  const wf = workflowName ? String(workflowName) : 'global';
+  const pn = paramName ? String(paramName) : '';
+  return `cozygen_dropdown_folder:${wf}:${pn}`;
+}
+
+export function loadDropdownFolder(workflowName, paramName) {
+  const key = getDropdownFolderKey(workflowName, paramName);
+  try {
+    const storage = getSessionStorage();
+    const val = storage?.getItem?.(key) || '';
+    if (val) return val;
+    const local = getLocalStorage();
+    local?.removeItem?.(key);
+  } catch {
+    // ignore
+  }
+  return '';
+}
+
+export function saveDropdownFolder(workflowName, paramName, folder) {
+  const key = getDropdownFolderKey(workflowName, paramName);
+  try {
+    const storage = getSessionStorage();
+    if (storage) storage.setItem(key, String(folder || ''));
+    const local = getLocalStorage();
+    local?.removeItem?.(key);
+  } catch {
+    // ignore
+  }
 }

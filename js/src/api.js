@@ -36,16 +36,6 @@ const jpost = async (url, body, options = {}) => {
   });
   return handleResponse(url, res);
 };
-const jdel = async (url, options = {}) => {
-  const { signal } = options;
-  const res = await fetch(url, {
-    method: 'DELETE',
-    headers: { ...authHeaders() },
-    credentials: 'include',
-    signal,
-  });
-  return handleResponse(url, res);
-};
 
 export async function getWorkflows(options = {}) {
   return jget('/cozygen/workflows', options);
@@ -100,41 +90,6 @@ export async function getGallery(
   return jget(`/cozygen/api/gallery?${qs.toString()}`, options);
 }
 
-function emitPresetChange(workflow) {
-  if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') {
-    return;
-  }
-  try {
-    window.dispatchEvent(
-      new CustomEvent('cozygen:preset-changed', {
-        detail: { workflow: workflow || 'default' },
-      })
-    );
-  } catch (err) {
-    console.warn('Failed to emit preset change event', err);
-  }
-}
-
-/* ---- Presets API ---- */
-export async function listPresets(workflow, options = {}) {
-  return jget(`/cozygen/api/presets?workflow=${encodeURIComponent(workflow || 'default')}`, options);
-}
-export async function savePreset(workflow, name, values, meta) {
-  const body = { name, values };
-  if (typeof meta !== 'undefined') {
-    body.meta = meta;
-  }
-  const result = await jpost(`/cozygen/api/presets?workflow=${encodeURIComponent(workflow || 'default')}`, body);
-  emitPresetChange(workflow);
-  return result;
-}
-export async function deletePreset(workflow, name) {
-  const qs = new URLSearchParams({ workflow: workflow || 'default', name });
-  const result = await jdel(`/cozygen/api/presets?${qs.toString()}`);
-  emitPresetChange(workflow);
-  return result;
-}
-
 /* ---- Prompt aliases ---- */
 export async function getPromptAliases() {
   return jget('/cozygen/api/aliases');
@@ -151,19 +106,6 @@ export async function getWorkflowTypes() {
 
 export async function saveWorkflowType(workflow, mode) {
   return jpost('/cozygen/api/workflow_types', { workflow, mode });
-}
-
-/* ---- LoRA Library ---- */
-export async function listLoraLibrary() {
-  return jget('/cozygen/api/lora_library');
-}
-
-export async function saveLoraCard(id, data) {
-  return jpost('/cozygen/api/lora_library', { id, data });
-}
-
-export async function deleteLoraCard(id) {
-  return jdel(`/cozygen/api/lora_library/${encodeURIComponent(id)}`);
 }
 
 /* ---- Auth ---- */

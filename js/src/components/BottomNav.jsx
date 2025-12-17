@@ -3,13 +3,14 @@ import React from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import useGalleryPending from '../hooks/useGalleryPending';
 import { requeueLastRender, hasLastRenderPayload } from '../utils/globalRender';
+import { IconStudio, IconGallery, IconTag, IconEdit, IconRender } from './Icons';
 
 const links = [
-  { to: '/', label: 'Studio', icon: '🎨', end: true },
-  { to: '/gallery', label: 'Gallery', icon: '🖼️' },
-  { to: '/aliases', label: 'Aliases', icon: '🔖' },
-  { to: '#composer', label: 'Composer', icon: '✍️', isComposer: true },
-  { to: '#render', label: 'Render', icon: '⚡', isAction: true },
+  { to: '/', label: 'Studio', Icon: IconStudio, end: true },
+  { to: '/gallery', label: 'Gallery', Icon: IconGallery },
+  { to: '/aliases', label: 'Aliases', Icon: IconTag },
+  { to: '#composer', label: 'Composer', Icon: IconEdit, isComposer: true },
+  { to: '#render', label: 'Render', Icon: IconRender, isAction: true },
 ];
 
 const linkClass = ({ isActive }) =>
@@ -104,7 +105,7 @@ export default function BottomNav() {
             aria-label="Render"
           >
             <span className="bottom-nav-icon" aria-hidden="true">
-              ⚡
+              <IconRender size={20} />
             </span>
             <span className="bottom-nav-label">Render</span>
           </button>
@@ -117,14 +118,14 @@ export default function BottomNav() {
             aria-label="Prompt composer"
           >
             <span className="bottom-nav-icon" aria-hidden="true">
-              ✍️
+              <IconEdit size={20} />
             </span>
             <span className="bottom-nav-label">Composer</span>
           </button>
         ) : (
           <NavLink key={link.to} to={link.to} end={link.end} className={linkClass}>
             <span className="bottom-nav-icon" aria-hidden="true">
-              {link.icon}
+              <link.Icon size={20} />
             </span>
             <span className="bottom-nav-label">
               {link.label}

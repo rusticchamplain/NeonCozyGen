@@ -51,6 +51,12 @@ export async function requeueLastRender() {
 
     await queuePrompt({ prompt: payload.workflow });
 
+    // From non-Studio pages we may not have a websocket listener to know when the
+    // prompt actually finishes. Treat this event as "queued" feedback and reset.
+    window.dispatchEvent(
+      new CustomEvent('cozygen:render-state', { detail: { active: false } })
+    );
+
     return { success: true };
   } catch (err) {
     console.error('Failed to requeue prompt', err);

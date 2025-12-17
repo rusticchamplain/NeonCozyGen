@@ -6,6 +6,18 @@ import MediaViewerModal from '../components/MediaViewerModal';
 import BottomSheet from '../components/ui/BottomSheet';
 import { useGallery } from '../hooks/useGallery';
 import { useMediaViewer } from '../hooks/useMediaViewer';
+import {
+  IconEmpty,
+  IconFolderOpen,
+  IconFolder,
+  IconEye,
+  IconEyeOff,
+  IconPlay,
+  IconPause,
+  IconRefresh,
+  IconChevronLeft,
+  IconChevronRight,
+} from '../components/Icons';
 
 const VIEW_MODE_STORAGE_KEY = 'cozygen_gallery_view_mode';
 const FEED_AUTOPLAY_STORAGE_KEY = 'cozygen_gallery_feed_autoplay';
@@ -229,9 +241,9 @@ export default function Gallery() {
     useVirtualGrid(filtered, isGrid);
 
   return (
-    <div className="page-shell page-stack">
-      <div className="screen-sticky rounded-2xl">
-        <div className="px-3 pt-2 pb-3 space-y-3">
+    <div className="page-shell gallery-shell">
+      <div className="screen-sticky gallery-header">
+        <div className="gallery-header-inner space-y-3">
           <GalleryNav
             subfolder={path}
             crumbs={crumbs}
@@ -282,8 +294,12 @@ export default function Gallery() {
             </div>
           </div>
 
-          {/* Compact, anchored toolbar (no big page header) */}
-          <div className="gallery-toolbar hidden md:flex">
+          <div className="md:hidden gallery-mobile-meta">
+            {loading ? 'Loading…' : `${summaryMeta} • Page ${page} of ${totalPages}`}
+          </div>
+
+          {/* Desktop toolbar (kept out of mobile header to avoid redundancy) */}
+          <div className="gallery-toolbar">
             <div className="gallery-toolbar-left">
               <div className="gallery-pills" role="group" aria-label="Filter by type">
                 {[
@@ -341,7 +357,7 @@ export default function Gallery() {
                   onClick={() => setRecursive((prev) => !prev)}
                   title={recursive ? 'Showing subfolders' : 'This folder only'}
                 >
-                  {recursive ? '📂' : '📁'}
+                  {recursive ? <IconFolderOpen size={16} /> : <IconFolder size={16} />}
                 </button>
                 <button
                   type="button"
@@ -349,7 +365,7 @@ export default function Gallery() {
                   onClick={() => setShowHidden((prev) => !prev)}
                   title={showHidden ? 'Showing hidden' : 'Hiding hidden'}
                 >
-                  {showHidden ? '👁' : '👁‍🗨'}
+                  {showHidden ? <IconEye size={16} /> : <IconEyeOff size={16} />}
                 </button>
                 {viewMode === 'feed' && (
                   <button
@@ -358,7 +374,7 @@ export default function Gallery() {
                     onClick={() => setFeedAutoplay((prev) => !prev)}
                     title={feedAutoplay ? 'Autoplay on' : 'Autoplay off'}
                   >
-                    {feedAutoplay ? '▶️' : '⏸️'}
+                    {feedAutoplay ? <IconPlay size={16} /> : <IconPause size={16} />}
                   </button>
                 )}
                 <button
@@ -367,14 +383,14 @@ export default function Gallery() {
                   onClick={refresh}
                   title="Refresh"
                 >
-                  ⟳
+                  <IconRefresh size={16} />
                 </button>
               </div>
             </div>
           </div>
 
           {/* Compact pagination/status row (anchored) */}
-          <div className="gallery-pagination hidden md:flex">
+          <div className="gallery-pagination">
             <div className="gallery-pagination-info">
               {loading ? (
                 <span className="gallery-loading-text">Loading…</span>
@@ -390,7 +406,7 @@ export default function Gallery() {
                 disabled={page <= 1 || loading}
                 aria-label="Previous page"
               >
-                ‹
+                <IconChevronLeft size={16} />
               </button>
               <span className="gallery-page-indicator">
                 {page} / {totalPages}
@@ -402,7 +418,7 @@ export default function Gallery() {
                 disabled={page >= totalPages || loading}
                 aria-label="Next page"
               >
-                ›
+                <IconChevronRight size={16} />
               </button>
               <select
                 value={perPage}
@@ -432,7 +448,7 @@ export default function Gallery() {
         </div>
       ) : filtered.length === 0 && !loading ? (
         <div className="gallery-empty">
-          <div className="gallery-empty-icon">🖼️</div>
+          <div className="gallery-empty-icon"><IconEmpty size={48} /></div>
           <div className="gallery-empty-title">No media found</div>
           <div className="gallery-empty-desc">
             {kind !== 'all'
@@ -467,19 +483,17 @@ export default function Gallery() {
           </div>
         </div>
       ) : (
-        <div className="flex flex-col gap-4 items-center">
+        <div className="flex flex-col gap-6 items-center">
           {filtered
             .filter((item) => item.type !== 'directory')
             .map((item) => (
             <div key={itemKey(item)} className="w-full flex justify-center">
-              <div className="w-full max-w-[480px] sm:max-w-[640px] rounded-2xl border border-[#2A2E4A] bg-[#050716] px-3 py-3 shadow-[0_0_24px_rgba(5,7,22,0.9)]">
-                <GalleryItem
-                  item={item}
-                  onSelect={handleItemSelect}
-                  variant="feed"
-                  autoPlay={feedAutoplay}
-                />
-              </div>
+              <GalleryItem
+                item={item}
+                onSelect={handleItemSelect}
+                variant="feed"
+                autoPlay={feedAutoplay}
+              />
             </div>
           ))}
         </div>
@@ -533,14 +547,20 @@ export default function Gallery() {
                 className={`ui-button is-compact ${recursive ? 'is-primary' : 'is-muted'}`}
                 onClick={() => setRecursive((prev) => !prev)}
               >
-                {recursive ? '📂 Subfolders' : '📁 This folder'}
+                <span className="inline-flex items-center gap-1.5">
+                  {recursive ? <IconFolderOpen size={14} /> : <IconFolder size={14} />}
+                  <span>{recursive ? 'Subfolders' : 'This folder'}</span>
+                </span>
               </button>
               <button
                 type="button"
                 className={`ui-button is-compact ${showHidden ? 'is-primary' : 'is-muted'}`}
                 onClick={() => setShowHidden((prev) => !prev)}
               >
-                {showHidden ? '👁 Hidden on' : '👁‍🗨 Hidden off'}
+                <span className="inline-flex items-center gap-1.5">
+                  {showHidden ? <IconEye size={14} /> : <IconEyeOff size={14} />}
+                  <span>{showHidden ? 'Hidden on' : 'Hidden off'}</span>
+                </span>
               </button>
               {viewMode === 'feed' ? (
                 <button
@@ -548,7 +568,10 @@ export default function Gallery() {
                   className={`ui-button is-compact ${feedAutoplay ? 'is-primary' : 'is-muted'}`}
                   onClick={() => setFeedAutoplay((prev) => !prev)}
                 >
-                  {feedAutoplay ? '▶️ Autoplay' : '⏸️ No autoplay'}
+                  <span className="inline-flex items-center gap-1.5">
+                    {feedAutoplay ? <IconPlay size={14} /> : <IconPause size={14} />}
+                    <span>{feedAutoplay ? 'Autoplay' : 'No autoplay'}</span>
+                  </span>
                 </button>
               ) : null}
               <button
@@ -556,7 +579,10 @@ export default function Gallery() {
                 className="ui-button is-compact is-ghost"
                 onClick={refresh}
               >
-                ⟳ Refresh
+                <span className="inline-flex items-center gap-1.5">
+                  <IconRefresh size={14} />
+                  <span>Refresh</span>
+                </span>
               </button>
             </div>
           </div>

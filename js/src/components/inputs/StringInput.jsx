@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import BottomSheet from '../ui/BottomSheet';
 import TextAreaSheet from '../ui/TextAreaSheet';
+import { IconEdit, IconGrip, IconTag, IconX } from '../Icons';
+import { formatCategoryLabel, formatSubcategoryLabel, presentAliasEntry } from '../../utils/aliasPresentation';
 
 export default function StringInput({
   name,
@@ -16,7 +19,11 @@ export default function StringInput({
 }) {
   const textRef = useRef(null);
   const wrapperRef = useRef(null);
-  const scrollRestoreRef = useRef(null);
+  const caretRef = useRef({ start: null, end: null });
+  const dragNodeRef = useRef(null);
+  const touchStartRef = useRef(null);
+  const [dragIndex, setDragIndex] = useState(null);
+  const [dropIndex, setDropIndex] = useState(null);
   const [showPicker, setShowPicker] = useState(false);
   const [pickerSearch, setPickerSearch] = useState('');
   const [pickerCategory, setPickerCategory] = useState('All');
@@ -32,85 +39,16 @@ export default function StringInput({
   );
 
   const aliasEntries = useMemo(
-    () => (Array.isArray(aliasCatalog) ? aliasCatalog.filter((e) => e && e.name) : []),
+    () =>
+      (Array.isArray(aliasCatalog) ? aliasCatalog.filter((e) => e && e.name) : []).map((e) => ({
+        ...e,
+        ...presentAliasEntry(e),
+      })),
     [aliasCatalog]
   );
 
   const withSubcategory = useMemo(() => {
-    // Human-readable labels for technical subcategory prefixes
-    const subLabels = {
-      precip: 'Weather',
-      ambient: 'Atmosphere',
-      sky: 'Sky',
-      urbex: 'Urban Exploration',
-      scifi: 'Sci-Fi',
-      framing: 'Framing',
-      angle: 'Angle',
-      perspective: 'Perspective',
-      composition: 'Composition',
-      motion: 'Motion',
-    };
-
-    // Special full-name mappings for known problematic aliases
-    const specialNames = {
-      'sky_hour': 'Golden Hour',
-      'sky_blue': 'Clear Blue Sky',
-      'sky_clouds': 'Sunset Clouds',
-      'sky_lights': 'Aurora Borealis',
-      'sky_night': 'Starry Night',
-      'sky_rainbow': 'Rainbow',
-      'ambient_mist': 'Misty Fog',
-      'ambient_blossom': 'Cherry Blossoms',
-      'ambient_leaves': 'Autumn Leaves',
-      'ambient_storm': 'Sandstorm',
-      'ambient_heatwave': 'Heat Wave',
-      'precip_day': 'Rainy Day',
-      'precip_thunderstorm': 'Thunderstorm',
-      'precip_snowfall': 'Snowfall',
-      'precip_blizzard': 'Blizzard',
-      'painterly_painterly': 'Painterly',
-      'explorer_explorer': 'Explorer',
-      'painterly_e_print': 'Ukiyo-e Print',
-      'painterly_wash_monochrome': 'Ink Wash',
-    };
-
-    return aliasEntries.map((entry) => {
-      const name = entry.name || '';
-      const tokenPart = entry.token || name;
-      const base = tokenPart.includes(':') ? tokenPart.split(':')[1] : tokenPart;
-
-      // Check for special name mapping first
-      if (specialNames[base]) {
-        const parts = base.split('_').filter(Boolean);
-        const sub = parts.length > 0 ? parts[0] : 'other';
-        return { ...entry, subcategory: sub, displayName: specialNames[base] };
-      }
-
-      // Remove trailing numbers (e.g., "neon_1" -> "neon")
-      const cleanBase = base.replace(/_(\d+)$/, '');
-      const parts = cleanBase.split('_').filter(Boolean);
-      const sub = parts.length > 0 ? parts[0] : 'other';
-      const mainParts = parts.length > 1 ? parts.slice(1) : [];
-
-      // Capitalize each word
-      const capitalize = (w) => w.charAt(0).toUpperCase() + w.slice(1);
-
-      const friendlyMain = mainParts.map(capitalize).join(' ').trim();
-      const friendlyWhole = parts.map(capitalize).join(' ').trim();
-
-      // Get human-readable subcategory label
-      const subLabel = subLabels[sub.toLowerCase()] || capitalize(sub);
-
-      // Avoid redundant display like "Painterly - Painterly"
-      let displayName;
-      if (!friendlyMain || friendlyMain.toLowerCase() === subLabel.toLowerCase()) {
-        displayName = friendlyWhole || base || name;
-      } else {
-        displayName = `${subLabel} - ${friendlyMain}`;
-      }
-
-      return { ...entry, subcategory: sub, displayName };
-    });
+    return aliasEntries;
   }, [aliasEntries]);
 
   const handleChange = (e) => {
@@ -137,9 +75,6 @@ export default function StringInput({
       el.style.height = `${Math.min(el.scrollHeight, 320)}px`;
     };
     resize();
-    const observer = new MutationObserver(resize);
-    observer.observe(el, { characterData: true, subtree: true });
-    return () => observer.disconnect();
   }, [value, multiline]);
 
   const categories = useMemo(() => {
@@ -159,6 +94,10 @@ export default function StringInput({
     });
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [withSubcategory, pickerCategory]);
+
+  useEffect(() => {
+    setPickerSubcategory('All');
+  }, [pickerCategory]);
 
   const parseTokens = (text) => {
     if (typeof text !== 'string') {
@@ -184,29 +123,20 @@ export default function StringInput({
     }
   }, [showPicker]);
 
-  useEffect(() => {
-    const body = document.body;
-    if (showPicker && body) {
-      const y = window.scrollY || window.pageYOffset;
-      scrollRestoreRef.current = y;
-      body.style.position = 'fixed';
-      body.style.top = `-${y}px`;
-      body.style.left = '0';
-      body.style.right = '0';
-      body.style.width = '100%';
-    } else if (!showPicker && body && scrollRestoreRef.current !== null) {
-      const y = scrollRestoreRef.current;
-      body.style.position = '';
-      body.style.top = '';
-      body.style.left = '';
-      body.style.right = '';
-      body.style.width = '';
-      window.scrollTo({ top: y, behavior: 'auto' });
-      scrollRestoreRef.current = null;
-    }
-  }, [showPicker]);
-
   const openPicker = () => {
+    try {
+      const el = textRef.current;
+      if (el) {
+        caretRef.current = {
+          start: el.selectionStart ?? null,
+          end: el.selectionEnd ?? null,
+        };
+      } else {
+        caretRef.current = { start: null, end: null };
+      }
+    } catch {
+      caretRef.current = { start: null, end: null };
+    }
     if (wrapperRef.current) {
       wrapperRef.current.scrollIntoView({ block: 'center', behavior: 'smooth' });
     }
@@ -246,12 +176,14 @@ export default function StringInput({
     setPickerSubcategory('All');
   }, [pickerCategory]);
 
-  const handleInsertAlias = (token) => {
+  const handleInsertAlias = (token, { closeAfter = true } = {}) => {
     const el = textRef.current;
     const insertText = `$${token}$`;
     const current = value || '';
-    const start = el?.selectionStart ?? current.length;
-    const end = el?.selectionEnd ?? current.length;
+    const storedStart = caretRef.current?.start;
+    const storedEnd = caretRef.current?.end;
+    const start = el?.selectionStart ?? (typeof storedStart === 'number' ? storedStart : current.length);
+    const end = el?.selectionEnd ?? (typeof storedEnd === 'number' ? storedEnd : current.length);
 
     const before = current.slice(0, start);
     const after = current.slice(end);
@@ -263,13 +195,13 @@ export default function StringInput({
     const nextValue = before + needsLeading + insertText + needsTrailing + after;
     onChange?.(nextValue);
     const nextPos = (before + needsLeading + insertText + needsTrailing).length;
-    requestAnimationFrame(() => {
-      if (el) {
-        el.focus();
-        el.setSelectionRange(nextPos, nextPos);
-      }
-    });
-    setShowPicker(false);
+    caretRef.current = { start: nextPos, end: nextPos };
+    if (closeAfter) {
+      setShowPicker(false);
+      requestAnimationFrame(() => {
+        el?.blur?.();
+      });
+    }
   };
 
   const removeToken = (tokenObj) => {
@@ -283,6 +215,122 @@ export default function StringInput({
     onChange?.(next);
   };
 
+  const reorderTokens = useMemo(() => {
+    return (fromIdx, toIdx) => {
+      if (fromIdx === toIdx || fromIdx === null || toIdx === null) return;
+      if (!tokens?.length) return;
+
+      const current = value || '';
+      const firstToken = tokens[0];
+      const lastToken = tokens[tokens.length - 1];
+      const prefix = firstToken
+        ? current.slice(0, firstToken.index).replace(/[\s,]*$/, '')
+        : '';
+      const suffix = lastToken
+        ? current.slice(lastToken.index + lastToken.length).replace(/^[\s,]*/, '')
+        : '';
+
+      const reordered = [...tokens];
+      const [moved] = reordered.splice(fromIdx, 1);
+      reordered.splice(toIdx, 0, moved);
+
+      const tokenStrings = reordered.map((t) => `$${t.token}$`);
+      const joinedTokens = tokenStrings.join(', ');
+
+      let next = prefix ? `${prefix}, ${joinedTokens}` : joinedTokens;
+      if (suffix) next = `${next}, ${suffix}`;
+
+      onChange?.(next.trim());
+    };
+  }, [onChange, tokens, value]);
+
+  const handleDragStart = (e, idx) => {
+    setDragIndex(idx);
+    dragNodeRef.current = e.currentTarget;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(idx));
+    requestAnimationFrame(() => {
+      if (dragNodeRef.current) dragNodeRef.current.classList.add('is-dragging');
+    });
+  };
+
+  const handleDragOver = (e, idx) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (idx !== dropIndex) setDropIndex(idx);
+  };
+
+  const handleDragEnter = (idx) => {
+    if (idx !== dropIndex) setDropIndex(idx);
+  };
+
+  const finishDrag = (targetIdx) => {
+    if (dragIndex !== null && targetIdx !== null && dragIndex !== targetIdx) {
+      reorderTokens(dragIndex, targetIdx);
+    }
+    setDragIndex(null);
+    setDropIndex(null);
+    dragNodeRef.current = null;
+  };
+
+  const handleDragEnd = () => {
+    if (dragNodeRef.current) dragNodeRef.current.classList.remove('is-dragging');
+    finishDrag(dropIndex);
+  };
+
+  const handleDrop = (e, idx) => {
+    e.preventDefault();
+    finishDrag(idx);
+  };
+
+  const handleTouchStart = (e, idx) => {
+    e.preventDefault();
+    const touch = e.touches[0];
+    touchStartRef.current = {
+      idx,
+      startX: touch.clientX,
+      startY: touch.clientY,
+      moved: false,
+    };
+  };
+
+  const handleTouchMove = (e) => {
+    if (!touchStartRef.current) return;
+
+    const touch = e.touches[0];
+    const deltaX = Math.abs(touch.clientX - touchStartRef.current.startX);
+    const deltaY = Math.abs(touch.clientY - touchStartRef.current.startY);
+    if (deltaX <= 10 && deltaY <= 10) return;
+
+    touchStartRef.current.moved = true;
+    setDragIndex(touchStartRef.current.idx);
+    e.preventDefault();
+
+    const container = wrapperRef.current;
+    const tokenElements = container
+      ? container.querySelectorAll('.token-chip-draggable')
+      : document.querySelectorAll('.token-chip-draggable');
+    const touchX = touch.clientX;
+    const touchY = touch.clientY;
+
+    for (let i = 0; i < tokenElements.length; i++) {
+      const rect = tokenElements[i].getBoundingClientRect();
+      if (touchX >= rect.left && touchX <= rect.right && touchY >= rect.top && touchY <= rect.bottom) {
+        setDropIndex(i);
+        break;
+      }
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (touchStartRef.current?.moved && dragIndex !== null && dropIndex !== null && dragIndex !== dropIndex) {
+      reorderTokens(dragIndex, dropIndex);
+    }
+    touchStartRef.current = null;
+    setDragIndex(null);
+    setDropIndex(null);
+  };
+
   const commonProps = {
     id: name,
     name,
@@ -290,40 +338,167 @@ export default function StringInput({
     onChange: handleChange,
     disabled,
     className:
-      'w-full rounded-xl border border-[#2A2E4A] bg-[#050716] ' +
-      'px-3 py-2.5 pr-10 text-[13px] sm:text-sm text-[#E5E7FF] ' +
-      'placeholder-[#6A6FA8] focus:outline-none focus:ring-1 focus:ring-[#3EF0FF80] ' +
-      'transition-shadow shadow-[0_0_18px_rgba(5,7,22,0.7)]',
+      'w-full rounded-xl border border-[rgba(255,255,255,0.10)] bg-[rgba(255,255,255,0.03)] ' +
+      'px-3 py-2.5 pr-10 text-[13px] sm:text-sm text-[rgba(237,242,255,0.92)] ' +
+      'placeholder-[rgba(159,178,215,0.65)] focus:outline-none ' +
+      'focus:border-[rgba(68,225,197,0.60)] focus:shadow-[0_0_0_3px_rgba(68,225,197,0.16)] ' +
+      'transition',
     placeholder: '',
     'aria-label': label || name,
     'aria-describedby': description ? `${name}-description` : undefined,
   };
 
+  const closePicker = () => {
+    setShowPicker(false);
+    requestAnimationFrame(() => {
+      textRef.current?.blur?.();
+    });
+  };
+  const isPromptLike = (() => {
+    const key = String(name || '').toLowerCase();
+    const lbl = String(label || '').toLowerCase();
+    const combined = `${key} ${lbl}`.trim();
+    if (!combined.includes('prompt')) return false;
+    // Still treat negative prompt as prompt-like (same UX needs)
+    return true;
+  })();
+
+  const AliasPickerSheet = () => (
+    <BottomSheet
+      open={showPicker}
+      onClose={closePicker}
+      title={isPromptLike ? 'Insert alias' : 'Aliases'}
+      footer={(
+        <button type="button" className="ui-button is-primary w-full" onClick={closePicker}>
+          Done
+        </button>
+      )}
+    >
+      <div className="sheet-stack">
+        <div className="sheet-section">
+          <div className="sheet-label">Search</div>
+          <div className="composer-filters">
+            <input
+              ref={pickerSearchRef}
+              type="text"
+              value={pickerSearch}
+              onChange={(e) => setPickerSearch(e.target.value)}
+              placeholder="Search aliases…"
+              className="composer-search"
+            />
+            <select
+              value={pickerCategory}
+              onChange={(e) => setPickerCategory(e.target.value)}
+              className="composer-subcategory-select"
+              aria-label="Filter by category"
+            >
+              {['All', ...categories.filter((c) => c !== 'All')].map((c) => (
+                <option key={`cat-${c}`} value={c}>
+                  {c === 'All' ? 'Category: All' : formatCategoryLabel(c)}
+                </option>
+              ))}
+            </select>
+            {subcategories.length > 2 ? (
+              <select
+                value={pickerSubcategory}
+                onChange={(e) => setPickerSubcategory(e.target.value)}
+                className="composer-subcategory-select"
+              >
+                {subcategories.map((c) => (
+                  <option key={c} value={c}>
+                    {c === 'All' ? 'All subcategories' : formatSubcategoryLabel(c)}
+                  </option>
+                ))}
+              </select>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="sheet-section">
+          <div className="sheet-label">Results</div>
+          <div className="composer-alias-list">
+            {filteredAliases.length === 0 ? (
+              <div className="composer-alias-empty">No aliases found.</div>
+            ) : (
+              <>
+                {visibleAliases.map((entry) => (
+                  <button
+                    key={entry.key}
+                    type="button"
+                    onClick={() => handleInsertAlias(entry.token, { closeAfter: !isPromptLike })}
+                    className="composer-alias-item"
+                  >
+                    <div className="composer-alias-header">
+                      <div className="composer-alias-name">
+                        {entry.displayName || entry.token}
+                      </div>
+                      {entry.category ? (
+                        <span className="composer-alias-category">
+                          {formatCategoryLabel(entry.category)}
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="composer-alias-token">${entry.token}$</div>
+                    <div className="composer-alias-text">{entry.text}</div>
+                  </button>
+                ))}
+
+                {visibleCount < filteredAliases.length ? (
+                  <button
+                    type="button"
+                    onClick={() => setVisibleCount((c) => Math.min(c + 30, filteredAliases.length))}
+                    className="ui-button is-muted w-full"
+                  >
+                    Show more ({filteredAliases.length - visibleCount} left)
+                  </button>
+                ) : null}
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </BottomSheet>
+  );
+
+  useEffect(() => {
+    if (!showPicker) return;
+    const id = setTimeout(() => {
+      pickerSearchRef.current?.focus?.();
+      pickerSearchRef.current?.select?.();
+    }, 50);
+    return () => clearTimeout(id);
+  }, [showPicker]);
+
   if (multiline) {
     return (
       <div className="relative space-y-2" ref={wrapperRef}>
-        <div className="stringinput-actions">
-          <button
-            type="button"
-            className="stringinput-action"
-            onClick={() => setExpandedEditorOpen(true)}
-            aria-label={`Expand ${label || name}`}
-            title="Expand"
-          >
-            ⤢
-          </button>
-          {aliasEntries.length ? (
+        {onOpenComposer && !isPromptLike ? (
+          <div className="stringinput-toolbar">
             <button
               type="button"
-              className="stringinput-action"
-              onClick={() => (onOpenComposer ? onOpenComposer(name) : openPicker())}
-              aria-label={onOpenComposer ? 'Open prompt composer' : 'Insert alias'}
-              title={onOpenComposer ? 'Compose' : 'Insert alias'}
+              className="ui-button is-muted is-compact"
+              onClick={() => onOpenComposer(name)}
             >
-              {onOpenComposer ? '✏️' : '🔖'}
+              Prompt Studio
             </button>
-          ) : null}
-        </div>
+            {aliasEntries.length ? (
+              <button
+                type="button"
+                className="ui-button is-ghost is-compact"
+                onClick={openPicker}
+              >
+                Aliases
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="ui-button is-ghost is-compact"
+              onClick={() => setExpandedEditorOpen(true)}
+            >
+              Expand
+            </button>
+          </div>
+        ) : null}
         <textarea
           ref={textRef}
           {...commonProps}
@@ -336,6 +511,28 @@ export default function StringInput({
           }
           style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', overflowWrap: 'anywhere' }}
         />
+        {onOpenComposer && isPromptLike ? (
+          <div className="stringinput-underbar">
+            <div className="stringinput-underbar-actions">
+              <button
+                type="button"
+                className="stringinput-action-link"
+                onClick={() => onOpenComposer(name)}
+              >
+                Prompt Studio
+              </button>
+              {aliasEntries.length ? (
+                <button
+                  type="button"
+                  className="stringinput-action-link"
+                  onClick={openPicker}
+                >
+                  Insert alias
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
         <TextAreaSheet
           open={expandedEditorOpen}
           onClose={() => setExpandedEditorOpen(false)}
@@ -345,18 +542,36 @@ export default function StringInput({
           description={description}
         />
         {tokens.length ? (
-          <div className="flex flex-wrap gap-1">
-            {tokens.map((t) => {
+          <div className="stringinput-tokens">
+            <div className="stringinput-tokens-label">
+              Active aliases <span className="stringinput-tokens-hint">(drag to reorder)</span>
+            </div>
+            <div className="stringinput-tokens-list">
+            {tokens.map((t, idx) => {
               const entry = withSubcategory.find(
                 (e) => e.token?.toLowerCase() === t.token.toLowerCase()
               );
               const friendlyName = entry?.displayName || t.token;
+              const isDragging = dragIndex === idx;
+              const isDropTarget = dropIndex === idx && dragIndex !== null && dragIndex !== idx;
               return (
-                <span
+                <div
                   key={`${t.token}-${t.index}`}
-                  className="inline-flex items-center gap-1 rounded-md bg-[#0F1A2F] border border-[#2A2E4A] px-2 py-1 text-[11px] text-[#E5E7FF]"
+                  className={`token-chip token-chip-draggable ${isDragging ? 'is-dragging' : ''} ${isDropTarget ? 'is-drop-target' : ''}`}
                   title={`$${t.token}$`}
+                  role="button"
+                  tabIndex={0}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, idx)}
+                  onDragEnd={handleDragEnd}
+                  onDragEnter={() => handleDragEnter(idx)}
+                  onDragOver={(e) => handleDragOver(e, idx)}
+                  onDrop={(e) => handleDrop(e, idx)}
+                  onTouchStart={(e) => handleTouchStart(e, idx)}
+                  onTouchMove={handleTouchMove}
+                  onTouchEnd={handleTouchEnd}
                   onClick={() => {
+                    if (dragIndex !== null) return;
                     const start = t.index;
                     const end = t.index + t.length;
                     const el = textRef.current;
@@ -364,134 +579,42 @@ export default function StringInput({
                       el.focus();
                       el.setSelectionRange(start, end);
                     }
-                    openPicker();
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      const start = t.index;
+                      const end = t.index + t.length;
+                      const el = textRef.current;
+                      if (el) {
+                        el.focus();
+                        el.setSelectionRange(start, end);
+                      }
+                    }
                   }}
                 >
-                  {friendlyName}
+                  <span className="token-chip-drag-handle" aria-hidden="true">
+                    <IconGrip size={14} />
+                  </span>
+                  <span className="token-chip-label">{friendlyName}</span>
                   <button
                     type="button"
-                    className="text-[#FF8F70]"
+                    className="token-chip-remove"
                     onClick={(e) => {
                       e.stopPropagation();
                       removeToken(t);
                     }}
                     aria-label={`Remove ${t.token}`}
                   >
-                    ×
+                    <IconX size={12} />
                   </button>
-                </span>
+                </div>
               );
             })}
-          </div>
-        ) : null}
-        {showPicker ? (
-          <div className="fixed inset-0 z-50 sm:z-40 flex items-center justify-center">
-            <div
-              className="absolute inset-0 bg-black/60"
-              onClick={() => setShowPicker(false)}
-            />
-            <div className="relative w-full max-w-xl mx-3 sm:mx-0 bg-[#0B1226] border border-[#2A2E4A] rounded-2xl shadow-[0_20px_50px_rgba(4,7,16,0.45)] p-3 sm:p-4 space-y-3 h-[70vh] max-h-[80vh] flex flex-col min-h-0">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-[#E5E7FF]">Alias picker</h3>
-                <button
-                  type="button"
-                  className="text-xs text-[#E5E7FF] underline"
-                  onClick={() => setShowPicker(false)}
-                >
-                  Close
-                </button>
-              </div>
-              <div className="flex flex-col gap-3 flex-1 min-h-0">
-                <div className="flex items-center gap-2 overflow-x-auto pb-1">
-                  {['All', ...categories.filter((c) => c !== 'All')].map((c) => (
-                    <button
-                      key={`cat-${c}`}
-                      type="button"
-                      onClick={() => setPickerCategory(c)}
-                      className={`flex-shrink-0 rounded-full border px-3 py-1 text-[12px] ${
-                        pickerCategory === c
-                          ? 'border-[#5EF1D4] bg-[#0F1A2F]'
-                          : 'border-[#1D2440] bg-[#0A1022] hover:border-[#2A2E4A]'
-                      } text-[#E5E7FF] transition`}
-                    >
-                      {c === 'All' ? 'All Aliases' : c}
-                    </button>
-                  ))}
-                </div>
-                <div className="flex flex-col sm:flex-row sm:items-center gap-2 flex-wrap">
-                  <div className="flex-1 min-w-[160px] w-full">
-                    <input
-                      ref={pickerSearchRef}
-                      type="text"
-                      value={pickerSearch}
-                      onChange={(e) => setPickerSearch(e.target.value)}
-                      placeholder="Search aliases"
-                      className="w-full rounded-lg border border-[#2A2E4A] bg-[#050716] px-3 py-2 text-sm text-[#E5E7FF] placeholder-[#6A6FA8] focus:outline-none focus:ring-1 focus:ring-[#3EF0FF80]"
-                    />
-                  </div>
-                  <label className="flex sm:flex-row flex-col sm:items-center gap-1 text-[12px] text-[#7F91B6]">
-                    <span>Subcategory</span>
-                    <select
-                      value={pickerSubcategory}
-                      onChange={(e) => setPickerSubcategory(e.target.value)}
-                      className="h-9 rounded-lg border border-[#2A2E4A] bg-[#0C1222] px-2 text-sm text-[#E5E7FF] focus:outline-none"
-                    >
-                      {subcategories.map((c) => (
-                        <option key={c} value={c}>
-                          {c === 'All' ? 'All subcategories' : c}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-                <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain pr-1 space-y-1">
-                  {filteredAliases.length === 0 ? (
-                    <div className="text-[12px] text-[#A9B6D9]">No aliases found.</div>
-                  ) : (
-                    <>
-                      {visibleAliases.map((entry) => (
-                        <button
-                          key={entry.key}
-                          type="button"
-                          onClick={() => handleInsertAlias(entry.token)}
-                          className="w-full text-left rounded-lg border border-[#1D2440] bg-[#0C1222] px-3 py-2 hover:border-[#5EF1D4] transition-colors"
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="text-[13px] font-semibold text-[#E5E7FF] truncate">
-                              {entry.displayName || entry.token}
-                            </div>
-                            {entry.category ? (
-                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#0F1A2F] border border-[#2A2E4A] text-[#7F91B6]">
-                                {entry.category}
-                              </span>
-                            ) : null}
-                          </div>
-                          <div className="text-[11px] text-[#7F91B6] truncate">
-                            ${entry.token}$
-                          </div>
-                          <div className="text-[11px] text-[#A9B6D9] line-clamp-2">
-                            {entry.text}
-                          </div>
-                        </button>
-                      ))}
-                      {visibleCount < filteredAliases.length ? (
-                        <div className="flex justify-center py-2">
-                          <button
-                            type="button"
-                            onClick={() => setVisibleCount((c) => Math.min(c + 30, filteredAliases.length))}
-                            className="px-3 py-1 rounded-md border border-[#2A2E4A] bg-[#0F1A2F] text-[12px] text-[#E5E7FF] hover:border-[#5EF1D4] transition"
-                          >
-                            Show more ({filteredAliases.length - visibleCount} left)
-                          </button>
-                        </div>
-                      ) : null}
-                    </>
-                  )}
-                </div>
-              </div>
             </div>
           </div>
         ) : null}
+        {showPicker ? <AliasPickerSheet /> : null}
       </div>
     );
   }
@@ -511,18 +634,25 @@ export default function StringInput({
         ref={textRef}
       />
       {tokens.length ? (
-        <div className="flex flex-wrap gap-1">
-          {tokens.map((t) => {
+        <div className="stringinput-tokens">
+          <div className="stringinput-tokens-label">
+            Active aliases <span className="stringinput-tokens-hint">(drag to reorder)</span>
+          </div>
+          <div className="stringinput-tokens-list">
+          {tokens.map((t, idx) => {
             const entry = withSubcategory.find(
               (e) => e.token?.toLowerCase() === t.token.toLowerCase()
             );
             const friendlyName = entry?.displayName || t.token;
+            const isDragging = dragIndex === idx;
+            const isDropTarget = dropIndex === idx && dragIndex !== null && dragIndex !== idx;
             return (
-              <span
+              <div
                 key={`${t.token}-${t.index}`}
-                className="inline-flex items-center gap-1 rounded-md bg-[#0F1A2F] border border-[#2A2E4A] px-2 py-1 text-[11px] text-[#E5E7FF]"
+                className={`token-chip token-chip-draggable ${isDragging ? 'is-dragging' : ''} ${isDropTarget ? 'is-drop-target' : ''}`}
                 title={`$${t.token}$`}
                 onClick={() => {
+                  if (dragIndex !== null) return;
                   const start = t.index;
                   const end = t.index + t.length;
                   const el = textRef.current;
@@ -532,142 +662,63 @@ export default function StringInput({
                   }
                   openPicker();
                 }}
+                role="button"
+                tabIndex={0}
+                draggable
+                onDragStart={(e) => handleDragStart(e, idx)}
+                onDragEnd={handleDragEnd}
+                onDragEnter={() => handleDragEnter(idx)}
+                onDragOver={(e) => handleDragOver(e, idx)}
+                onDrop={(e) => handleDrop(e, idx)}
+                onTouchStart={(e) => handleTouchStart(e, idx)}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    const start = t.index;
+                    const end = t.index + t.length;
+                    const el = textRef.current;
+                    if (el) {
+                      el.focus();
+                      el.setSelectionRange(start, end);
+                    }
+                    openPicker();
+                  }
+                }}
               >
-                {friendlyName}
+                <span className="token-chip-drag-handle" aria-hidden="true">
+                  <IconGrip size={14} />
+                </span>
+                <span className="token-chip-label">{friendlyName}</span>
                 <button
                   type="button"
-                  className="text-[#FF8F70]"
+                  className="token-chip-remove"
                   onClick={(e) => {
                     e.stopPropagation();
                     removeToken(t);
                   }}
                   aria-label={`Remove ${t.token}`}
                 >
-                  ×
+                  <IconX size={12} />
                 </button>
-              </span>
+              </div>
             );
           })}
+          </div>
         </div>
       ) : null}
       {aliasEntries.length ? (
         <button
           type="button"
-          className="absolute right-2 top-1/2 -translate-y-1/2 h-8 w-8 rounded-lg border border-[#2A2E4A] bg-[#0F1A2F] text-sm text-[#E5E7FF] shadow-sm hover:border-[#5EF1D4] transition"
+          className="stringinput-trailing ui-button is-ghost is-compact"
           onClick={() => onOpenComposer ? onOpenComposer(name) : openPicker()}
           title={onOpenComposer ? "Open prompt composer" : "Insert alias"}
         >
-          {onOpenComposer ? '✏️' : '🔖'}
+          {onOpenComposer ? <IconEdit size={16} /> : <IconTag size={16} />}
         </button>
       ) : null}
-      {showPicker ? (
-        <div className="fixed inset-0 z-50 sm:z-40 flex items-center justify-center">
-          <div
-            className="absolute inset-0 bg-black/60"
-            onClick={() => setShowPicker(false)}
-          />
-          <div className="relative w-full max-w-xl mx-3 sm:mx-0 bg-[#0B1226] border border-[#2A2E4A] rounded-2xl shadow-[0_20px_50px_rgba(4,7,16,0.45)] p-3 sm:p-4 space-y-3 h-[70vh] max-h-[80vh] flex flex-col min-h-0">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-[#E5E7FF]">Alias picker</h3>
-              <button
-                type="button"
-                className="text-xs text-[#E5E7FF] underline"
-                onClick={() => setShowPicker(false)}
-              >
-                Close
-              </button>
-            </div>
-            <div className="flex flex-col gap-3 flex-1 min-h-0">
-              <div className="flex items-center gap-2 overflow-x-auto pb-1">
-                {['All', ...categories.filter((c) => c !== 'All')].map((c) => (
-                  <button
-                    key={`cat-${c}`}
-                    type="button"
-                    onClick={() => setPickerCategory(c)}
-                    className={`flex-shrink-0 rounded-full border px-3 py-1 text-[12px] ${
-                      pickerCategory === c
-                        ? 'border-[#5EF1D4] bg-[#0F1A2F]'
-                        : 'border-[#1D2440] bg-[#0A1022] hover:border-[#2A2E4A]'
-                    } text-[#E5E7FF] transition`}
-                  >
-                    {c === 'All' ? 'All Aliases' : c}
-                  </button>
-                ))}
-              </div>
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2 flex-wrap">
-                <div className="flex-1 min-w-[160px]">
-                  <input
-                    ref={pickerSearchRef}
-                    type="text"
-                    value={pickerSearch}
-                    onChange={(e) => setPickerSearch(e.target.value)}
-                    placeholder="Search aliases"
-                    className="w-full rounded-lg border border-[#2A2E4A] bg-[#050716] px-3 py-2 text-sm text-[#E5E7FF] placeholder-[#6A6FA8] focus:outline-none focus:ring-1 focus:ring-[#3EF0FF80]"
-                  />
-                </div>
-                <label className="flex sm:flex-row flex-col sm:items-center gap-1 text-[12px] text-[#7F91B6]">
-                  <span>Subcategory</span>
-                  <select
-                    value={pickerSubcategory}
-                    onChange={(e) => setPickerSubcategory(e.target.value)}
-                    className="h-9 rounded-lg border border-[#2A2E4A] bg-[#0C1222] px-2 text-sm text-[#E5E7FF] focus:outline-none"
-                  >
-                    {subcategories.map((c) => (
-                      <option key={c} value={c}>
-                        {c === 'All' ? 'All subcategories' : c}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-              <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain pr-1 space-y-1">
-                {filteredAliases.length === 0 ? (
-                  <div className="text-[12px] text-[#A9B6D9]">No aliases found.</div>
-                ) : (
-                  <>
-                    {visibleAliases.map((entry) => (
-                      <button
-                        key={entry.key}
-                        type="button"
-                        onClick={() => handleInsertAlias(entry.token)}
-                        className="w-full text-left rounded-lg border border-[#1D2440] bg-[#0C1222] px-3 py-2 hover:border-[#5EF1D4] transition-colors"
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="text-[13px] font-semibold text-[#E5E7FF] truncate">
-                            {entry.displayName || entry.token}
-                          </div>
-                          {entry.category ? (
-                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#0F1A2F] border border-[#2A2E4A] text-[#7F91B6]">
-                              {entry.category}
-                            </span>
-                          ) : null}
-                        </div>
-                        <div className="text-[11px] text-[#7F91B6] truncate">
-                          ${entry.token}$
-                        </div>
-                        <div className="text-[11px] text-[#A9B6D9] line-clamp-2">
-                          {entry.text}
-                        </div>
-                      </button>
-                    ))}
-                    {visibleCount < filteredAliases.length ? (
-                      <div className="flex justify-center py-2">
-                        <button
-                          type="button"
-                          onClick={() => setVisibleCount((c) => Math.min(c + 30, filteredAliases.length))}
-                          className="px-3 py-1 rounded-md border border-[#2A2E4A] bg-[#0F1A2F] text-[12px] text-[#E5E7FF] hover:border-[#5EF1D4] transition"
-                        >
-                          Show more ({filteredAliases.length - visibleCount} left)
-                        </button>
-                      </div>
-                    ) : null}
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <AliasPickerSheet />
     </div>
   );
 }

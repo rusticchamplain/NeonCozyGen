@@ -1,21 +1,27 @@
 // js/src/components/TopBar.jsx
 
-import { useState } from 'react';
-import { Link, NavLink } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, NavLink, useLocation } from 'react-router-dom';
 import '../styles/mobile-helpers.css';
 import useGalleryPending from '../hooks/useGalleryPending';
 import { useAuth } from '../hooks/useAuth';
-import LibrarySheet from './LibrarySheet';
+import { hasLastRenderPayload, requeueLastRender } from '../utils/globalRender';
+import {
+  LogoMark,
+  IconStudio,
+  IconGallery,
+  IconTag,
+  IconRender,
+  IconLogout,
+} from './Icons';
 
 const PRIMARY_LINKS = [
-  { to: '/', label: '🎨 Studio', end: true },
+  { to: '/', label: 'Studio', Icon: IconStudio, end: true },
 ];
 
 const SECONDARY_LINKS = [
-  { to: '/gallery', label: '🖼️ Gallery' },
-  { to: '/presets', label: '✨ Presets' },
-  { to: '/lora-library', label: '🧩 LoRA' },
-  { to: '/aliases', label: '🔖 Aliases' },
+  { to: '/gallery', label: 'Gallery', Icon: IconGallery },
+  { to: '/aliases', label: 'Aliases', Icon: IconTag },
 ];
 
 const navLinkClasses = ({ isActive }) =>
@@ -23,11 +29,48 @@ const navLinkClasses = ({ isActive }) =>
 
 export default function TopBar() {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [libraryOpen, setLibraryOpen] = useState(false);
+  const { pathname } = useLocation();
   const galleryPending = useGalleryPending();
   const { logout, user } = useAuth();
+  const [renderActive, setRenderActive] = useState(false);
   const toggleMenu = () => setMenuOpen((prev) => !prev);
   const closeMenu = () => setMenuOpen(false);
+  const isLogin = pathname === '/login';
+  const showRender = !isLogin;
+
+  useEffect(() => {
+    const handler = (evt) => {
+      const active = !!evt?.detail?.active;
+      setRenderActive(active);
+    };
+    window.addEventListener('cozygen:render-state', handler);
+    return () => window.removeEventListener('cozygen:render-state', handler);
+  }, []);
+
+  const requestRender = async () => {
+    if (renderActive) return;
+    const isStudio = pathname === '/' || pathname === '/studio';
+    if (isStudio) {
+      try {
+        window.dispatchEvent(new Event('cozygen:request-render'));
+      } catch {
+        // ignore
+      }
+      return;
+    }
+
+    if (!hasLastRenderPayload()) {
+      alert('No previous render found yet. Render once from Studio first.');
+      return;
+    }
+
+    setRenderActive(true);
+    const result = await requeueLastRender();
+    setRenderActive(false);
+    if (!result?.success) {
+      alert(result?.error || 'Failed to render.');
+    }
+  };
 
   const handleLogout = () => {
     try {
@@ -45,7 +88,7 @@ export default function TopBar() {
       <div className="top-bar-shell">
         <div className="brand-row">
           <Link to="/" className="brand-mark" onClick={closeMenu}>
-            <span className="brand-icon">CG</span>
+            <LogoMark size={28} className="brand-logo" />
             <span className="brand-text">CozyGen</span>
           </Link>
 
@@ -59,6 +102,7 @@ export default function TopBar() {
                 className={navLinkClasses}
               >
                 <span className="inline-flex items-center gap-1.5">
+                  <link.Icon size={16} />
                   <span>{link.label}</span>
                   {link.to === '/gallery' && galleryPending ? (
                     <span className="badge-dot" aria-hidden="true" />
@@ -70,13 +114,30 @@ export default function TopBar() {
 
           <div className="flex-1" />
 
+          {showRender ? (
+            <button
+              type="button"
+              className={`desktop-render-btn ${renderActive ? 'is-busy' : ''}`}
+              onClick={requestRender}
+              title={renderActive ? 'Rendering…' : 'Render'}
+              aria-busy={renderActive}
+              aria-disabled={renderActive}
+              disabled={renderActive}
+            >
+              <span className="render-icon">
+                {renderActive ? <span className="render-spinner" aria-hidden="true" /> : <IconRender size={16} />}
+              </span>
+              <span className="render-label">{renderActive ? 'Rendering…' : 'Render'}</span>
+            </button>
+          ) : null}
+
           <button
             type="button"
             className="desktop-logout-btn"
             onClick={handleLogout}
             title="Sign out"
           >
-            <span className="logout-icon">🚪</span>
+            <span className="logout-icon"><IconLogout size={16} /></span>
             <span className="logout-label">Logout</span>
             {user ? <span className="logout-user">@{user}</span> : null}
           </button>
@@ -111,7 +172,10 @@ export default function TopBar() {
               onClick={closeMenu}
               role="menuitem"
             >
-              {link.label}
+              <span className="inline-flex items-center gap-2">
+                <link.Icon size={16} />
+                <span>{link.label}</span>
+              </span>
             </NavLink>
           ))}
         </div>
@@ -122,22 +186,23 @@ export default function TopBar() {
             onClick={closeMenu}
             role="menuitem"
           >
-            <span className="inline-flex items-center gap-1.5">
-              <span>🖼️ Gallery</span>
+            <span className="inline-flex items-center gap-2">
+              <IconGallery size={16} />
+              <span>Gallery</span>
               {galleryPending ? <span className="badge-dot" aria-hidden="true" /> : null}
             </span>
           </NavLink>
-          <button
-            type="button"
-            className="slim-nav-link btn-touch text-left"
-            onClick={() => {
-              closeMenu();
-              setLibraryOpen(true);
-            }}
+          <NavLink
+            to="/aliases"
+            className={navLinkClasses}
+            onClick={closeMenu}
             role="menuitem"
           >
-            📚 Library
-          </button>
+            <span className="inline-flex items-center gap-2">
+              <IconTag size={16} />
+              <span>Aliases</span>
+            </span>
+          </NavLink>
           <button
             type="button"
             className="slim-nav-link btn-touch text-left"
@@ -148,14 +213,13 @@ export default function TopBar() {
             role="menuitem"
           >
             <span className="inline-flex items-center gap-2">
-              <span>🚪 Logout</span>
+              <IconLogout size={16} />
+              <span>Logout</span>
               {user ? <span className="text-slate-400 text-xs">@{user}</span> : null}
             </span>
           </button>
         </div>
       </div>
-
-      <LibrarySheet open={libraryOpen} onClose={() => setLibraryOpen(false)} />
     </header>
   );
 }

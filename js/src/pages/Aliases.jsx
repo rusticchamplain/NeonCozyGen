@@ -2,49 +2,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import usePromptAliases from '../hooks/usePromptAliases';
 import { normalizeAliasMap } from '../utils/promptAliases';
+import BottomSheet from '../components/ui/BottomSheet';
+import { IconTag, IconRefresh } from '../components/Icons';
+import {
+  deriveAliasSubcategory,
+  formatAliasFriendlyName,
+  formatCategoryLabel,
+  formatSubcategoryLabel,
+} from '../utils/aliasPresentation';
 
-const CATEGORY_KEY = 'cozygen_alias_categories';
-const CATEGORY_LIST_KEY = 'cozygen_alias_category_list';
 const DELIM = '::';
 
 function makeRowId() {
   return `alias-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
-}
-
-function loadAliasCategories() {
-  try {
-    const raw = window.localStorage.getItem(CATEGORY_KEY) || '{}';
-    const parsed = JSON.parse(raw);
-    return typeof parsed === 'object' && parsed ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-function saveAliasCategories(map) {
-  try {
-    window.localStorage.setItem(CATEGORY_KEY, JSON.stringify(map || {}));
-  } catch {
-    // ignore
-  }
-}
-
-function loadCategoryList() {
-  try {
-    const raw = window.localStorage.getItem(CATEGORY_LIST_KEY) || '[]';
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveCategoryList(list) {
-  try {
-    window.localStorage.setItem(CATEGORY_LIST_KEY, JSON.stringify(list || []));
-  } catch {
-    // ignore
-  }
 }
 
 function rowsFromAliases(aliases, categories = {}) {
@@ -103,26 +73,31 @@ export default function Aliases() {
     saving,
     error,
     persistAliases,
+    refreshAliases,
   } = usePromptAliases();
 
-  const [rows, setRows] = useState(() => rowsFromAliases(aliases));
-  const [categories, setCategories] = useState(() => loadAliasCategories());
-  const [categoryList, setCategoryList] = useState(() => loadCategoryList());
-  const [selectedId, setSelectedId] = useState('');
+  const [rows, setRows] = useState(() => rowsFromAliases(aliases, aliasCategories));
+  const [categoryList, setCategoryList] = useState(() => Array.isArray(persistedCategoryList) ? persistedCategoryList : []);
   const [categoryFilter, setCategoryFilter] = useState('All');
-  const [editMode, setEditMode] = useState(false);
+  const [subcategoryFilter, setSubcategoryFilter] = useState('All');
+  const [query, setQuery] = useState('');
+
+  const [selectedId, setSelectedId] = useState('');
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [categoriesOpen, setCategoriesOpen] = useState(false);
   const [status, setStatus] = useState('');
   const nameInputRef = useRef(null);
   const [dirty, setDirty] = useState(false);
-  const [showCategoryInput, setShowCategoryInput] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
-  const initialMobile = typeof window !== 'undefined' ? window.innerWidth < 768 : false;
-  const [isMobile, setIsMobile] = useState(initialMobile);
-  const lastIsMobile = useRef(initialMobile);
 
   useEffect(() => {
     if (dirty) return;
-    setCategories(aliasCategories || {});
+    const nextRows = rowsFromAliases(aliases, aliasCategories || {});
+    setRows(nextRows);
+    if (selectedId && !nextRows.some((r) => r.id === selectedId)) {
+      setSelectedId('');
+      setEditorOpen(false);
+    }
   }, [aliasCategories, dirty]);
 
   useEffect(() => {
@@ -134,12 +109,13 @@ export default function Aliases() {
 
   useEffect(() => {
     if (dirty) return;
-    const nextRows = rowsFromAliases(aliases, categories);
+    const nextRows = rowsFromAliases(aliases, aliasCategories || {});
     setRows(nextRows);
     if (selectedId && !nextRows.some((r) => r.id === selectedId)) {
       setSelectedId('');
+      setEditorOpen(false);
     }
-  }, [aliases, categories, selectedId, dirty]);
+  }, [aliases, aliasCategories, selectedId, dirty]);
 
   const draftAliases = useMemo(() => rowsToAliasMap(rows), [rows]);
 
@@ -147,13 +123,12 @@ export default function Aliases() {
     const newRow = { id: makeRowId(), name: '', text: '', category: '' };
     setRows((prev) => [...prev, newRow]);
     setSelectedId(newRow.id);
-    setEditMode(true);
-    setStatus('Editing new alias');
+    setStatus('');
     setDirty(true);
+    setEditorOpen(true);
   };
 
   const updateRow = (index, field, value) => {
-    if (!editMode && field !== 'category') return;
     setDirty(true);
     setRows((prev) =>
       prev.map((row, i) => (i === index ? { ...row, [field]: value } : row))
@@ -164,15 +139,12 @@ export default function Aliases() {
     setDirty(true);
     setRows((prev) => {
       const next = prev.filter((_, i) => i !== index);
-      const nextCategories = rowsToCategories(next);
-      setCategories(nextCategories);
-      saveAliasCategories(nextCategories);
       if (next.length === 0) {
         setSelectedId('');
-        setEditMode(false);
+        setEditorOpen(false);
       } else if (selectedId === prev[index]?.id) {
-        setSelectedId(next[0].id);
-        setEditMode(false);
+        setSelectedId('');
+        setEditorOpen(false);
       }
       return next;
     });
@@ -182,29 +154,38 @@ export default function Aliases() {
     setStatus('');
     try {
       const nextCats = rowsToCategories(rows);
-      await persistAliases({ items: draftAliases, categories: nextCats });
-      setCategories(nextCats);
-      saveAliasCategories(nextCats);
+      await persistAliases({ items: draftAliases, categories: nextCats, categoryList });
       setDirty(false);
-      setEditMode(false);
-      setStatus('Saved');
+      setStatus('Saved.');
     } catch {
       setStatus('Unable to save right now.');
     }
   };
 
   const filteredRows = useMemo(() => {
+    const q = query.trim().toLowerCase();
     const base = rows.filter((row) => {
-      if (categoryFilter !== 'All' && (row.category || '') !== categoryFilter) {
-        return false;
-      }
-      return true;
+      const cat = (row.category || '').trim();
+      if (categoryFilter === '' && cat) return false;
+      if (categoryFilter !== 'All' && categoryFilter !== '' && cat !== categoryFilter) return false;
+
+      const sub = deriveAliasSubcategory(row.name || '', row.category || '');
+      if (subcategoryFilter !== 'All' && sub !== subcategoryFilter) return false;
+
+      if (!q) return true;
+      const token = cat ? `${cat}:${row.name}` : row.name;
+      return (
+        (row.name || '').toLowerCase().includes(q) ||
+        (row.text || '').toLowerCase().includes(q) ||
+        (cat || '').toLowerCase().includes(q) ||
+        (token || '').toLowerCase().includes(q)
+      );
     });
 
     const order = [...base];
     order.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     return order;
-  }, [rows, categoryFilter]);
+  }, [rows, categoryFilter, subcategoryFilter, query]);
 
   const selectedRow =
     filteredRows.find((r) => r.id === selectedId) ||
@@ -219,429 +200,404 @@ export default function Aliases() {
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [rows, categoryList]);
 
-  // Autofocus when entering edit mode on a selection
+  const availableSubcategories = useMemo(() => {
+    const set = new Set();
+    rows.forEach((row) => {
+      const cat = (row.category || '').trim();
+      if (categoryFilter === '' && cat) return;
+      if (categoryFilter !== 'All' && categoryFilter !== '' && cat !== categoryFilter) return;
+      const sub = deriveAliasSubcategory(row.name || '', row.category || '');
+      if (sub) set.add(sub);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [rows, categoryFilter]);
+
   useEffect(() => {
-    if (editMode && nameInputRef.current) {
+    if (subcategoryFilter === 'All') return;
+    if (!availableSubcategories.includes(subcategoryFilter)) {
+      setSubcategoryFilter('All');
+    }
+  }, [availableSubcategories, subcategoryFilter]);
+
+  useEffect(() => {
+    if (editorOpen && nameInputRef.current) {
       nameInputRef.current.focus();
     }
-  }, [editMode, selectedId]);
+  }, [editorOpen, selectedId]);
 
-  useEffect(() => {
-    const syncSize = () => {
-      const mobile = window.innerWidth < 768;
-      setIsMobile(mobile);
-      lastIsMobile.current = mobile;
-    };
-    syncSize();
-    window.addEventListener('resize', syncSize);
-    return () => window.removeEventListener('resize', syncSize);
-  }, []);
-
-  const applyCategoryToSelected = async () => {
+  const addCategory = async () => {
     const name = newCategoryName.trim();
     if (!name) {
       setStatus('Enter a category name.');
       return;
     }
     const nextCategoryList = Array.from(new Set([...(categoryList || []), name]));
-    saveCategoryList(nextCategoryList);
     setCategoryList(nextCategoryList);
-    setShowCategoryInput(false);
     setNewCategoryName('');
-    setStatus('Saved category. Use the dropdown on a card to assign it.');
+    setStatus('Category added.');
 
-    // Persist the new category list alongside current aliases/categories
+    // Persist the category list alongside current aliases/categories
     const items = rowsToAliasMap(rows);
     const cats = rowsToCategories(rows);
     setDirty(true);
     try {
       await persistAliases({ items, categories: cats, categoryList: nextCategoryList });
       setDirty(false);
-      setStatus('Saved category. Use the dropdown on a card to assign it.');
+      setStatus('Category saved.');
     } catch {
       setStatus('Unable to save right now.');
     }
   };
 
+  const openEditorForRow = (row) => {
+    if (!row) return;
+    setSelectedId(row.id);
+    setEditorOpen(true);
+    setStatus('');
+  };
+
+  const closeEditor = () => {
+    setEditorOpen(false);
+    setStatus('');
+  };
+
+  const countsLabel = useMemo(() => {
+    const total = rows.length;
+    const shown = filteredRows.length;
+    if (loading) return 'Loading…';
+    if (total === shown) return `${total} aliases`;
+    return `${shown} of ${total} aliases`;
+  }, [rows.length, filteredRows.length, loading]);
+
   return (
     <>
       <div className="page-shell page-stack">
-        <div className="neon-card p-4 sm:p-6 space-y-4">
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-semibold">Alias library</h2>
+        <div className="screen-sticky">
+          <div className="space-y-3 py-3">
+            <header className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="ui-kicker">Library</div>
+                <h2 className="text-xl font-semibold flex items-center gap-2">
+                  <IconTag size={18} />
+                  <span className="truncate">Aliases</span>
+                </h2>
+                <div className="text-[11px] text-[#9DA3FFCC] mt-1">{countsLabel}</div>
               </div>
-            </div>
 
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center gap-2 flex-wrap">
-              <button
-                type="button"
-                onClick={addRow}
-                className="btn-touch h-9 px-3 rounded-lg border border-[#2A2E4A] bg-[#0C1222] text-sm font-semibold text-[#E5E7FF]"
-              >
-                + Add alias
-              </button>
-              <div className="flex items-center gap-2 h-9 bg-[#0C1222] border border-[#2A2E4A] rounded-lg px-2 text-xs text-[#7F91B6] flex-wrap w-full sm:w-auto">
-                <span>Category</span>
-                <select
-                  value={categoryFilter}
-                  onChange={(e) => setCategoryFilter(e.target.value)}
-                  className="bg-transparent text-sm text-[#E5E7FF] focus:outline-none h-7"
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className="ui-button is-tiny is-muted"
+                  onClick={() => setCategoriesOpen(true)}
                 >
-                  <option value="All">All</option>
-                  <option value="">Uncategorized</option>
-                  {availableCategories.map((cat) => (
-                    <option key={cat || 'uncat'} value={cat}>
-                      {cat || 'Uncategorized'}
-                    </option>
-                  ))}
-                </select>
-                {showCategoryInput ? (
-                  <div className="flex items-center gap-1 w-full sm:w-auto">
-                    <input
-                      type="text"
-                      value={newCategoryName}
-                      onChange={(e) => setNewCategoryName(e.target.value)}
-                      placeholder="New category"
-                      className="flex-1 min-w-[140px] rounded-md border border-[#2A2E4A] bg-[#050716] px-2 py-1 text-xs text-[#E5E7FF] placeholder-[#6A6FA8] focus:outline-none focus:ring-1 focus:ring-[#3EF0FF80]"
-                    />
-                    <button
-                      type="button"
-                      onClick={applyCategoryToSelected}
-                      className="h-8 px-2 rounded-md bg-[#0F1A2F] border border-[#2A2E4A] text-[11px] font-semibold text-[#E5E7FF]"
-                    >
-                      Save
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowCategoryInput(false);
-                        setNewCategoryName('');
-                      }}
-                      className="h-8 px-2 rounded-md text-[11px] font-semibold text-[#7F91B6] hover:text-[#E5E7FF]"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    className="px-2 py-1 rounded bg-[#0F1A2F] border border-[#2A2E4A] text-[#E5E7FF] text-[11px] font-semibold"
-                    onClick={() => {
-                      setShowCategoryInput(true);
-                      setNewCategoryName('');
-                    }}
-                  >
-                    + Add
-                  </button>
-                )}
+                  Categories
+                </button>
+                <button
+                  type="button"
+                  className="ui-button is-tiny is-ghost"
+                  onClick={refreshAliases}
+                  disabled={loading}
+                  title="Refresh"
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <IconRefresh size={14} />
+                    Refresh
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="ui-button is-tiny is-primary"
+                  onClick={addRow}
+                >
+                  Add
+                </button>
               </div>
+            </header>
+
+            <div className="composer-filters">
+              <input
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                className="composer-search"
+                placeholder="Search aliases"
+                aria-label="Search aliases"
+              />
+              <select
+                className="composer-subcategory-select"
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                aria-label="Filter by category"
+              >
+                <option value="All">Category: All</option>
+                <option value="">Uncategorized</option>
+                {availableCategories.map((cat) => (
+                  <option key={cat || 'uncat'} value={cat}>
+                    {cat ? formatCategoryLabel(cat) : 'Uncategorized'}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="composer-subcategory-select"
+                value={subcategoryFilter}
+                onChange={(e) => setSubcategoryFilter(e.target.value)}
+                aria-label="Filter by subcategory"
+              >
+                <option value="All">Subcategory: All</option>
+                {availableSubcategories.map((sub) => (
+                  <option key={sub} value={sub}>
+                    {formatSubcategoryLabel(sub)}
+                  </option>
+                ))}
+              </select>
+              {dirty ? (
+                <button
+                  type="button"
+                  className="ui-button is-compact is-primary"
+                  onClick={handleSave}
+                  disabled={saving}
+                >
+                  {saving ? 'Saving…' : 'Save changes'}
+                </button>
+              ) : null}
             </div>
-            {status && !selectedRow ? (
-              <p className="text-[11px] text-[#A9B6D9]">{status}</p>
-            ) : null}
-            {selectedRow ? (
-              <div className={`rounded-xl border border-[#2A2E4A] bg-[#0B1226] p-3 sm:p-4 shadow-[0_10px_30px_rgba(4,7,16,0.35)] space-y-3 ${isMobile ? 'hidden sm:block' : ''}`}>
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                  <div>
-                    <h3 className="text-lg font-semibold text-[#E5E7FF] leading-tight">
-                      {selectedRow.name || 'Untitled alias'}
-                    </h3>
-                    {selectedRow.category ? (
-                      <p className="text-[11px] text-[#7F91B6]">
-                        Category: {selectedRow.category}
-                      </p>
-                    ) : null}
-                  </div>
-                </div>
 
-                <div className="flex items-center gap-3 text-xs text-[#7F91B6]">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (editMode) {
-                        handleSave();
-                      } else {
-                        setEditMode(true);
-                        setStatus('Editing');
-                      }
-                    }}
-                    className="underline hover:text-[#5EF1D4] transition-colors"
-                  >
-                    {editMode ? (saving ? 'Saving…' : 'Save') : 'Edit'}
-                  </button>
-                  <span className="text-[#2A2E4A]">|</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const idx = rows.findIndex((r) => r.id === selectedRow.id);
-                      if (idx !== -1) removeRow(idx);
-                    }}
-                    className="underline hover:text-[#FF8F70] transition-colors"
-                  >
-                    Remove
-                  </button>
-                  <span className="text-[#2A2E4A]">|</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedId('');
-                      setEditMode(false);
-                      setStatus('');
-                    }}
-                    className="underline hover:text-[#E5E7FF] transition-colors"
-                  >
-                    Hide
-                  </button>
-                  {status ? <span className="text-[11px] text-[#A9B6D9]">{status}</span> : null}
-                </div>
-
-                <div className="grid grid-cols-1 gap-3">
-                  <div>
-                    <label className="text-xs uppercase tracking-wide text-[#7F91B6] block mb-1">
-                      Alias name
-                    </label>
-                    <input
-                      ref={nameInputRef}
-                      type="text"
-                      value={selectedRow.name || ''}
-                      onChange={(e) => {
-                        const idx = rows.findIndex((r) => r.id === selectedRow.id);
-                        if (idx !== -1) updateRow(idx, 'name', e.target.value);
-                      }}
-                      placeholder="e.g. cherry_fruit"
-                      disabled={!editMode}
-                      className="w-full rounded-lg border border-[#2A2E4A] bg-[#050716] px-3 py-2 text-sm text-[#E5E7FF] placeholder-[#6A6FA8] focus:outline-none focus:ring-1 focus:ring-[#3EF0FF80]"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs uppercase tracking-wide text-[#7F91B6] block mb-1">
-                      Category (optional)
-                    </label>
-                    <select
-                      value={selectedRow.category || ''}
-                      onChange={(e) => {
-                        const idx = rows.findIndex((r) => r.id === selectedRow.id);
-                        if (idx !== -1) updateRow(idx, 'category', e.target.value);
-                      }}
-                      className="w-full rounded-lg border border-[#2A2E4A] bg-[#050716] px-3 py-2 text-sm text-[#E5E7FF] focus:outline-none focus:ring-1 focus:ring-[#3EF0FF80]"
-                    >
-                      <option value="">Uncategorized</option>
-                      {availableCategories.map((cat) => (
-                        <option key={cat || 'uncat'} value={cat}>
-                          {cat || 'Uncategorized'}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-xs uppercase tracking-wide text-[#7F91B6] block mb-1">
-                      Expands to
-                    </label>
-                    <textarea
-                      value={selectedRow.text}
-                      onChange={(e) => {
-                        const idx = rows.findIndex((r) => r.id === selectedRow.id);
-                        if (idx !== -1) updateRow(idx, 'text', e.target.value);
-                      }}
-                      placeholder="Prompt text for this alias"
-                      rows={2}
-                      disabled={!editMode}
-                      className="w-full rounded-lg border border-[#2A2E4A] bg-[#050716] px-3 py-2 text-sm text-[#E5E7FF] placeholder-[#6A6FA8] focus:outline-none focus:ring-1 focus:ring-[#3EF0FF80] resize-y min-h-[72px]"
-                    />
-                  </div>
-                  <div className="text-[11px] text-[#7F91B6]">
-                    Invoke with:{' '}
-                    <code className="text-[#E5E7FF] bg-[#0F1A2F] px-1 py-0.5 rounded">
-                      {selectedRow.category ? `${selectedRow.category}:${selectedRow.name}` : selectedRow.name || 'alias'}
-                    </code>
-                  </div>
-                </div>
+            {error ? (
+              <div className="text-xs text-[#FF8F70]">
+                Could not load aliases. Try again later.
               </div>
             ) : null}
-            {rows.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-[#2A2E4A] px-4 py-6 text-center text-sm text-[#A9B6D9]">
-                No aliases yet. Add your first one.
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-                {filteredRows.map((row) => {
-                  const isActive = row.id === selectedId;
-                  const aliasToken = row.category ? `${row.category}:${row.name}` : row.name;
-                  const short = (row.text || '').slice(0, 96) + ((row.text || '').length > 96 ? '…' : '');
-                  return (
-                    <button
-                      key={row.id}
-                      type="button"
-                      onClick={() => setSelectedId((prev) => (prev === row.id ? '' : row.id))}
-                      className={`text-left rounded-xl border px-3 py-3 transition-all btn-touch ${
-                        isActive
-                          ? 'border-[#5EF1D4] bg-[#0F1A2F] shadow-[0_12px_34px_rgba(5,7,22,0.35)]'
-                          : 'border-[#27304A] bg-[#0C1222]'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-2 mb-2">
-                        <div className="text-sm font-semibold text-[#E5E7FF] truncate">
-                          {row.name || 'Untitled'}
-                        </div>
-                        {isActive ? <span className="text-xs text-[#5EF1D4]">•</span> : null}
-                      </div>
-                      <div className="text-xs text-[#A9B6D9] line-clamp-2">
-                        {short || '—'}
-                      </div>
-                      <div className="mt-2 text-[11px] text-[#7F91B6] font-mono">
-                        ${aliasToken || 'alias'}$
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+            {status ? (
+              <div className="text-xs text-[#9DA3FFCC]">{status}</div>
+            ) : null}
           </div>
         </div>
 
-        {error ? (
-          <p className="text-xs text-[#FF8F70]">
-            Could not load aliases. Try again later.
-          </p>
-        ) : null}
-        {loading ? (
-          <p className="text-xs text-[#A9B6D9]">Loading aliases…</p>
-        ) : null}
+        {rows.length === 0 && !loading ? (
+          <section className="ui-panel text-center py-16">
+            <p className="text-base text-slate-200/80">
+              No aliases yet. Add your first one.
+            </p>
+          </section>
+        ) : (
+          <div className="composer-alias-list" role="list">
+            {filteredRows.length === 0 ? (
+              <div className="composer-alias-empty">
+                No aliases match your filters.
+              </div>
+            ) : null}
+            {filteredRows.map((row) => {
+              const cat = (row.category || '').trim();
+              const aliasToken = cat ? `${cat}:${row.name}` : row.name;
+              const short = (row.text || '').slice(0, 140) + ((row.text || '').length > 140 ? '…' : '');
+              return (
+                <button
+                  key={row.id}
+                  type="button"
+                  role="listitem"
+                  className="composer-alias-item"
+                  onClick={() => openEditorForRow(row)}
+                >
+                  <div className="composer-alias-header">
+                    <div className="composer-alias-name">
+                      {formatAliasFriendlyName({ name: row.name }) || row.name || 'Untitled'}
+                    </div>
+                    {cat ? <span className="composer-alias-category">{cat}</span> : null}
+                  </div>
+                  <div className="composer-alias-token">${aliasToken || 'alias'}$</div>
+                  <div className="composer-alias-text">{short || '—'}</div>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
-      {selectedRow && isMobile ? (
-        <div className="fixed inset-0 z-40 sm:hidden">
-          <div
-            className="absolute inset-0 bg-black/60"
-            onClick={() => {
-              setSelectedId('');
-              setEditMode(false);
-              setStatus('');
-            }}
-          />
-          <div
-            className="absolute left-2 right-2 bg-[#0B1226] border border-[#2A2E4A] rounded-2xl shadow-[0_-10px_30px_rgba(4,7,16,0.35)] p-3 space-y-3 pb-3 overflow-y-auto"
-            style={{ maxHeight: '80vh', bottom: '72px' }}
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-semibold text-[#E5E7FF] leading-tight">
-                  {selectedRow.name || 'Untitled alias'}
-                </h3>
-                {selectedRow.category ? (
-                  <p className="text-[11px] text-[#7F91B6]">Category: {selectedRow.category}</p>
-                ) : null}
+      <BottomSheet
+        open={editorOpen && !!selectedRow}
+        onClose={closeEditor}
+        title="Alias"
+        variant="fullscreen"
+        footer={(
+          <div className="flex gap-2">
+            <button
+              type="button"
+              className="ui-button is-muted w-full"
+              onClick={closeEditor}
+            >
+              Close
+            </button>
+            <button
+              type="button"
+              className="ui-button is-primary w-full"
+              onClick={handleSave}
+              disabled={saving || !dirty}
+            >
+              {saving ? 'Saving…' : dirty ? 'Save' : 'Saved'}
+            </button>
+          </div>
+        )}
+      >
+        {selectedRow ? (
+          <div className="sheet-stack">
+            <div className="sheet-section">
+              <div className="sheet-label">Token</div>
+              <div className="composer-token">
+                ${selectedRow.category ? `${selectedRow.category}:${selectedRow.name}` : selectedRow.name || 'alias'}$
               </div>
+              {deriveAliasSubcategory(selectedRow.name || '', selectedRow.category || '') ? (
+                <div className="sheet-hint">
+                  Subcategory: {formatSubcategoryLabel(deriveAliasSubcategory(selectedRow.name || '', selectedRow.category || ''))}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="sheet-section">
+              <div className="sheet-label">Friendly name</div>
+              <div className="composer-field">
+                {formatAliasFriendlyName({ name: selectedRow.name }) || selectedRow.name || 'Alias'}
+              </div>
+            </div>
+
+            <div className="sheet-section">
+              <div className="sheet-label">Alias name</div>
+              <input
+                ref={nameInputRef}
+                type="text"
+                value={selectedRow.name || ''}
+                onChange={(e) => {
+                  const idx = rows.findIndex((r) => r.id === selectedRow.id);
+                  if (idx !== -1) updateRow(idx, 'name', e.target.value);
+                }}
+                placeholder="e.g. cherry_fruit"
+                className="sheet-input"
+              />
+            </div>
+
+            <div className="sheet-section">
+              <div className="sheet-label">Category</div>
+              <select
+                value={selectedRow.category || ''}
+                onChange={(e) => {
+                  const idx = rows.findIndex((r) => r.id === selectedRow.id);
+                  if (idx !== -1) updateRow(idx, 'category', e.target.value);
+                }}
+                className="sheet-select"
+              >
+                <option value="">Uncategorized</option>
+                {availableCategories.map((cat) => (
+                  <option key={cat || 'uncat'} value={cat}>
+                    {cat ? formatCategoryLabel(cat) : 'Uncategorized'}
+                  </option>
+                ))}
+              </select>
               <button
                 type="button"
-                onClick={() => {
-                  setSelectedId('');
-                  setEditMode(false);
-                  setStatus('');
-                }}
-                className="text-sm text-[#E5E7FF] underline"
+                className="ui-button is-tiny is-muted"
+                onClick={() => setCategoriesOpen(true)}
               >
-                Close
+                Manage categories
               </button>
             </div>
 
-            <div className="flex items-center gap-3 text-xs text-[#7F91B6]">
-              <button
-                type="button"
-                onClick={() => {
-                  if (editMode) {
-                    handleSave();
-                  } else {
-                    setEditMode(true);
-                    setStatus('Editing');
-                  }
+            <div className="sheet-section">
+              <div className="sheet-label">Expands to</div>
+              <textarea
+                value={selectedRow.text}
+                onChange={(e) => {
+                  const idx = rows.findIndex((r) => r.id === selectedRow.id);
+                  if (idx !== -1) updateRow(idx, 'text', e.target.value);
                 }}
-                className="underline hover:text-[#5EF1D4] transition-colors"
-              >
-                {editMode ? (saving ? 'Saving…' : 'Save') : 'Edit'}
-              </button>
-              <span className="text-[#2A2E4A]">|</span>
+                placeholder="Prompt text for this alias"
+                className="sheet-textarea is-compact"
+                rows={6}
+              />
+            </div>
+
+            <div className="sheet-section">
               <button
                 type="button"
+                className="ui-button is-danger"
                 onClick={() => {
                   const idx = rows.findIndex((r) => r.id === selectedRow.id);
-                  if (idx !== -1) removeRow(idx);
+                  if (idx !== -1) {
+                    removeRow(idx);
+                    setEditorOpen(false);
+                  }
                 }}
-                className="underline hover:text-[#FF8F70] transition-colors"
               >
-                Remove
+                Delete alias
               </button>
-              {status ? <span className="text-[11px] text-[#A9B6D9]">{status}</span> : null}
-            </div>
-
-            <div className="grid grid-cols-1 gap-3">
-              <div>
-                <label className="text-xs uppercase tracking-wide text-[#7F91B6] block mb-1">
-                  Alias name
-                </label>
-                <input
-                  ref={nameInputRef}
-                  type="text"
-                  value={selectedRow.name || ''}
-                  onChange={(e) => {
-                    const idx = rows.findIndex((r) => r.id === selectedRow.id);
-                    if (idx !== -1) updateRow(idx, 'name', e.target.value);
-                  }}
-                  placeholder="e.g. cherry_fruit"
-                  disabled={!editMode}
-                  className="w-full rounded-lg border border-[#2A2E4A] bg-[#050716] px-3 py-2 text-sm text-[#E5E7FF] placeholder-[#6A6FA8] focus:outline-none focus:ring-1 focus:ring-[#3EF0FF80]"
-                />
-              </div>
-              <div>
-                <label className="text-xs uppercase tracking-wide text-[#7F91B6] block mb-1">
-                  Category (optional)
-                </label>
-                <select
-                  value={selectedRow.category || ''}
-                  onChange={(e) => {
-                    const idx = rows.findIndex((r) => r.id === selectedRow.id);
-                    if (idx !== -1) updateRow(idx, 'category', e.target.value);
-                  }}
-                  className="w-full rounded-lg border border-[#2A2E4A] bg-[#050716] px-3 py-2 text-sm text-[#E5E7FF] focus:outline-none focus:ring-1 focus:ring-[#3EF0FF80]"
-                >
-                  <option value="">Uncategorized</option>
-                  {availableCategories.map((cat) => (
-                    <option key={cat || 'uncat'} value={cat}>
-                      {cat || 'Uncategorized'}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs uppercase tracking-wide text-[#7F91B6] block mb-1">
-                  Expands to
-                </label>
-                <textarea
-                  value={selectedRow.text}
-                  onChange={(e) => {
-                    const idx = rows.findIndex((r) => r.id === selectedRow.id);
-                    if (idx !== -1) updateRow(idx, 'text', e.target.value);
-                  }}
-                  placeholder="Prompt text for this alias"
-                  rows={2}
-                  disabled={!editMode}
-                  className="w-full rounded-lg border border-[#2A2E4A] bg-[#050716] px-3 py-2 text-sm text-[#E5E7FF] placeholder-[#6A6FA8] focus:outline-none focus:ring-1 focus:ring-[#3EF0FF80] resize-y min-h-[72px]"
-                />
-              </div>
-              <div className="text-[11px] text-[#7F91B6]">
-                Invoke with:{' '}
-                <code className="text-[#E5E7FF] bg-[#0F1A2F] px-1 py-0.5 rounded">
-                  {selectedRow.category ? `${selectedRow.category}:${selectedRow.name}` : selectedRow.name || 'alias'}
-                </code>
+              <div className="sheet-hint">
+                Deleting removes it from your library. Use Save changes to persist.
               </div>
             </div>
           </div>
+        ) : null}
+      </BottomSheet>
+
+      <BottomSheet
+        open={categoriesOpen}
+        onClose={() => {
+          setCategoriesOpen(false);
+          setNewCategoryName('');
+          setStatus('');
+        }}
+        title="Categories"
+        variant="sheet"
+        footer={(
+          <div className="sheet-hint">
+            Categories help you organize aliases and improve the Insert alias picker.
+          </div>
+        )}
+      >
+        <div className="sheet-stack">
+          <div className="sheet-section">
+            <div className="sheet-label">Add category</div>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={newCategoryName}
+                onChange={(e) => setNewCategoryName(e.target.value)}
+                placeholder="e.g. styles"
+                className="sheet-input"
+              />
+              <button
+                type="button"
+                className="ui-button is-primary is-compact"
+                onClick={addCategory}
+              >
+                Add
+              </button>
+            </div>
+          </div>
+
+          <div className="sheet-section">
+            <div className="sheet-label">Existing</div>
+            {availableCategories.length === 0 ? (
+              <div className="sheet-hint">No categories yet.</div>
+            ) : (
+              <select
+                className="sheet-select"
+                defaultValue=""
+                onChange={(e) => {
+                  const next = e.target.value;
+                  if (!next) return;
+                  setCategoryFilter(next);
+                  setCategoriesOpen(false);
+                }}
+              >
+                <option value="">Select a category…</option>
+                {availableCategories.map((cat) => (
+                  <option key={cat} value={cat}>
+                    {formatCategoryLabel(cat)}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
         </div>
-      ) : null}
+      </BottomSheet>
     </>
   );
 }

@@ -31,6 +31,7 @@ function normalizeInputs(inputs) {
 }
 
 export default function AllParametersPanel({
+  workflowName,
   dynamicInputs,
   formData,
   onFormChange,
@@ -57,6 +58,7 @@ export default function AllParametersPanel({
   return (
     <section className="settings-surface scroll-mt-24" ref={sectionRef}>
       <DynamicForm
+        workflowName={workflowName}
         inputs={allInputs}
         formData={formData}
         onFormChange={onFormChange}

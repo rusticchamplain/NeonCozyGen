@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import GalleryNav from '../components/GalleryNav';
 import GalleryItem from '../components/GalleryItem';
 import MediaViewerModal from '../components/MediaViewerModal';
+import BottomSheet from '../components/ui/BottomSheet';
 import { useGallery } from '../hooks/useGallery';
 import { useMediaViewer } from '../hooks/useMediaViewer';
 
@@ -207,6 +208,7 @@ export default function Gallery() {
   }, [openMedia, selectDir]);
 
   const isGrid = viewMode === 'grid';
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const itemKey = (item) =>
     item.type === 'directory'
@@ -240,8 +242,48 @@ export default function Gallery() {
             onSelectDir={(subfolder) => selectDir(subfolder)}
           />
 
+          {/* Mobile: keep header compact and move filters into a sheet */}
+          <div className="md:hidden flex items-center justify-between gap-2">
+            <button
+              type="button"
+              className="ui-button is-muted is-compact"
+              onClick={() => setFiltersOpen(true)}
+            >
+              Filters
+            </button>
+
+            <div className="gallery-view-toggle" role="group" aria-label="View mode">
+              <button
+                type="button"
+                className={viewMode === 'grid' ? 'is-active' : ''}
+                onClick={() => setViewMode('grid')}
+                aria-pressed={viewMode === 'grid'}
+                title="Grid view"
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                  <rect x="1" y="1" width="6" height="6" rx="1" />
+                  <rect x="9" y="1" width="6" height="6" rx="1" />
+                  <rect x="1" y="9" width="6" height="6" rx="1" />
+                  <rect x="9" y="9" width="6" height="6" rx="1" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                className={viewMode === 'feed' ? 'is-active' : ''}
+                onClick={() => setViewMode('feed')}
+                aria-pressed={viewMode === 'feed'}
+                title="Feed view"
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                  <rect x="2" y="1" width="12" height="5" rx="1" />
+                  <rect x="2" y="8" width="12" height="5" rx="1" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
           {/* Compact, anchored toolbar (no big page header) */}
-          <div className="gallery-toolbar">
+          <div className="gallery-toolbar hidden md:flex">
             <div className="gallery-toolbar-left">
               <div className="gallery-pills" role="group" aria-label="Filter by type">
                 {[
@@ -332,7 +374,7 @@ export default function Gallery() {
           </div>
 
           {/* Compact pagination/status row (anchored) */}
-          <div className="gallery-pagination">
+          <div className="gallery-pagination hidden md:flex">
             <div className="gallery-pagination-info">
               {loading ? (
                 <span className="gallery-loading-text">Loading…</span>
@@ -450,6 +492,112 @@ export default function Gallery() {
         onPrev={handlePrev}
         onNext={handleNext}
       />
+
+      <BottomSheet
+        open={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        title="Gallery filters"
+        footer={(
+          <button type="button" className="ui-button is-primary w-full" onClick={() => setFiltersOpen(false)}>
+            Done
+          </button>
+        )}
+      >
+        <div className="sheet-stack">
+          <div className="sheet-section">
+            <div className="sheet-label">Type</div>
+            <div className="gallery-pills" role="group" aria-label="Filter by type">
+              {[
+                { key: 'all', label: 'All' },
+                { key: 'image', label: 'Images' },
+                { key: 'video', label: 'Videos' },
+              ].map((opt) => (
+                <button
+                  key={opt.key}
+                  type="button"
+                  className={`gallery-pill ${kind === opt.key ? 'is-active' : ''}`}
+                  onClick={() => setKind(opt.key)}
+                  aria-pressed={kind === opt.key}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="sheet-section">
+            <div className="sheet-label">Options</div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                className={`ui-button is-compact ${recursive ? 'is-primary' : 'is-muted'}`}
+                onClick={() => setRecursive((prev) => !prev)}
+              >
+                {recursive ? '📂 Subfolders' : '📁 This folder'}
+              </button>
+              <button
+                type="button"
+                className={`ui-button is-compact ${showHidden ? 'is-primary' : 'is-muted'}`}
+                onClick={() => setShowHidden((prev) => !prev)}
+              >
+                {showHidden ? '👁 Hidden on' : '👁‍🗨 Hidden off'}
+              </button>
+              {viewMode === 'feed' ? (
+                <button
+                  type="button"
+                  className={`ui-button is-compact ${feedAutoplay ? 'is-primary' : 'is-muted'}`}
+                  onClick={() => setFeedAutoplay((prev) => !prev)}
+                >
+                  {feedAutoplay ? '▶️ Autoplay' : '⏸️ No autoplay'}
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="ui-button is-compact is-ghost"
+                onClick={refresh}
+              >
+                ⟳ Refresh
+              </button>
+            </div>
+          </div>
+
+          <div className="sheet-section">
+            <div className="sheet-label">Page size</div>
+            <select
+              value={perPage}
+              onChange={(e) => setPerPage(parseInt(e.target.value, 10) || 30)}
+              className="sheet-select"
+              aria-label="Items per page"
+            >
+              <option value={15}>15</option>
+              <option value={30}>30</option>
+              <option value={60}>60</option>
+              <option value={120}>120</option>
+            </select>
+            <div className="sheet-hint">
+              {loading ? 'Loading…' : `${summaryMeta} • Page ${page} of ${totalPages}`}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="ui-button is-muted w-full"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1 || loading}
+              >
+                Prev
+              </button>
+              <button
+                type="button"
+                className="ui-button is-muted w-full"
+                onClick={() => setPage((p) => (p < totalPages ? p + 1 : p))}
+                disabled={page >= totalPages || loading}
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        </div>
+      </BottomSheet>
     </div>
   );
 }

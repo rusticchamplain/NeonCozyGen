@@ -5,6 +5,7 @@ import NumberInput from './inputs/NumberInput';
 import BooleanInput from './inputs/BooleanInput';
 import DropdownInput from './inputs/DropdownInput';
 import LoraPairInput from './inputs/LoraPairInput';
+import FieldRow from './ui/FieldRow';
 import { LORA_PAIRS, matchLoraParam } from '../config/loraPairs';
 
 function getParamType(input) {
@@ -356,7 +357,7 @@ export default function DynamicForm({
   }, [visibleEntries]);
 
   useEffect(() => {
-    onVisibleParamsChange?.(visibleEntries);
+    onVisibleParamsChange?.(visibleEntries.map((e) => e.name));
   }, [visibleEntries, onVisibleParamsChange]);
 
   const openSpotlightFor = useCallback(
@@ -384,7 +385,7 @@ export default function DynamicForm({
   );
 
   return (
-    <div className="space-y-3 sm:space-y-3.5">
+    <div className="settings-list">
       {visibleInputs.map((input) => {
         const cfg = resolveConfig(input);
         const paramName = cfg.paramName;
@@ -417,7 +418,6 @@ export default function DynamicForm({
           const cardCollapsed = compactControls
             ? collapsedCards[paramName] ?? true
             : !!collapsedCards[paramName];
-          const isExpanded = !cardCollapsed;
           const pairedPreview = formatPreview(cfg, [formData[highParam], formData[lowParam]].filter(Boolean).join(' • '));
 
           const renderLoraPairField = (currentForm = formData) => {
@@ -462,39 +462,18 @@ export default function DynamicForm({
               data-param-name={paramName}
               data-param-label={label || cfg.label}
               data-param-type="lora_pair"
-              className="control-card is-minimal"
+              className="settings-row"
             >
-              <div
-              className="control-card-head control-card-toggle"
-              role="button"
-              tabIndex={0}
-              onClick={() => {
-                toggleCollapsed(paramName);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  toggleCollapsed(paramName);
-                }
-                }}
-                aria-expanded={!cardCollapsed}
+              <FieldRow
+                id={paramName}
+                label={label || cfg.label}
+                description={cfg.description}
+                preview={pairedPreview}
+                expanded={!cardCollapsed}
+                onToggle={() => toggleCollapsed(paramName)}
               >
-                <div className="control-card-summary">
-                  <div className="control-card-title">{label || cfg.label}</div>
-                  <div className="control-card-value-preview">{pairedPreview}</div>
-                </div>
-              </div>
-
-              {isExpanded && (
-                <div className="control-card-body">
-                  <div className="control-card-spotlight">{renderLoraPairField()}</div>
-              </div>
-            )}
-              {!compactControls && (
-                <div className="control-card-foot">
-                  <span className="control-param-id">{paramName}</span>
-                </div>
-              )}
+                {renderLoraPairField()}
+              </FieldRow>
             </div>
           );
         }
@@ -524,6 +503,7 @@ export default function DynamicForm({
               <NumberInput
                 key={`field-${paramName}-number-${spotlightRenderKey}`}
                 {...liveProps}
+                inputId={paramName}
                 onChange={(v) => handleValueChange(paramName, v)}
                 min={cfg.min}
                 max={cfg.max}
@@ -575,7 +555,26 @@ export default function DynamicForm({
         const cardCollapsed = compactControls
           ? collapsedCards[paramName] ?? true
           : !!collapsedCards[paramName];
-        const isExpanded = !cardCollapsed;
+
+        if (cfg.paramType === 'BOOLEAN') {
+          return (
+            <div
+              key={paramName}
+              id={anchorId}
+              data-param-name={paramName}
+              data-param-label={cfg.label}
+              data-param-type="single"
+              className="settings-row"
+            >
+              <FieldRow
+                id={paramName}
+                label={cfg.label}
+                description={cfg.description}
+                trailing={renderField(formData, true)}
+              />
+            </div>
+          );
+        }
 
         return (
           <div
@@ -584,41 +583,18 @@ export default function DynamicForm({
             data-param-name={paramName}
             data-param-label={cfg.label}
             data-param-type="single"
-            className="control-card is-minimal"
+            className="settings-row"
           >
-            <div
-              className="control-card-head control-card-toggle"
-              role="button"
-              tabIndex={0}
-              onClick={() => {
-                const nextCollapsed = !cardCollapsed;
-                toggleCollapsed(paramName);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  toggleCollapsed(paramName);
-                }
-              }}
-              aria-expanded={!cardCollapsed}
+            <FieldRow
+              id={paramName}
+              label={cfg.label}
+              description={cfg.description}
+              preview={previewValue}
+              expanded={!cardCollapsed}
+              onToggle={() => toggleCollapsed(paramName)}
             >
-              <div className="control-card-summary">
-                <div className="control-card-title">{cfg.label}</div>
-                <div className="control-card-value-preview">{previewValue}</div>
-              </div>
-            </div>
-            {!cardCollapsed && (
-              <div className="control-card-body">
-                {isExpanded ? (
-                  <div className="control-card-spotlight">{renderField(formData, isExpanded)}</div>
-                ) : null}
-              </div>
-            )}
-            {!compactControls && (
-              <div className="control-card-foot">
-                <span className="control-param-id">{paramName}</span>
-              </div>
-            )}
+              {renderField(formData, !cardCollapsed)}
+            </FieldRow>
           </div>
         );
       })}

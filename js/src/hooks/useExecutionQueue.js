@@ -39,6 +39,9 @@ export function useExecutionQueue({
   const [statusText, setStatusText] = useState('Idle');
   const [statusPhase, setStatusPhase] = useState('idle'); // 'idle' | 'queued' | 'running' | 'finished' | 'error'
 
+  const [logEntries, setLogEntries] = useState([]);
+  const lastProgressLogRef = useRef({ ts: 0, value: 0, max: 0 });
+
   const websocketRef = useRef(null);
   const workflowDataRef = useRef(workflowData);
   const formDataRef = useRef(formData);
@@ -90,6 +93,21 @@ export function useExecutionQueue({
     }
   };
 
+  const appendLog = useCallback((level, message, extra = null) => {
+    const entry = {
+      ts: Date.now(),
+      level: level || 'info',
+      message: String(message || ''),
+      extra: extra || null,
+    };
+    setLogEntries((prev) => {
+      const next = [...(prev || []), entry];
+      return next.length > 250 ? next.slice(next.length - 250) : next;
+    });
+  }, []);
+
+  const clearLogs = useCallback(() => setLogEntries([]), []);
+
   const emitFinished = () => {
     if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return;
     try {
@@ -120,10 +138,11 @@ export function useExecutionQueue({
     setProgressMax(0);
     setStatusText('Finished');
     setStatusPhase('finished');
+    appendLog('success', 'Finished');
     scheduleIdleReset();
     emitFinished();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [appendLog]);
 
   const markError = useCallback((msg = 'Error') => {
     clearFinishTimer();
@@ -131,9 +150,10 @@ export function useExecutionQueue({
     setHasActiveJob(false);
     setStatusText(msg);
     setStatusPhase('error');
+    appendLog('error', msg || 'Error');
     scheduleIdleReset();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [appendLog]);
 
   // Heuristic: if progress reaches 100% and nothing says "error", mark finished
   useEffect(() => {
@@ -207,6 +227,7 @@ export function useExecutionQueue({
         }
 
         if (type === 'execution_error' || type === 'execution_interrupted') {
+          appendLog('error', 'Execution error');
           markError('Execution error');
           return;
         }
@@ -246,8 +267,10 @@ export function useExecutionQueue({
           if (nodeId && wf && wf[nodeId]) {
             const node = wf[nodeId];
             const nodeName = node.title || node.class_type || 'Node';
+            appendLog('info', `Executing: ${nodeName}`, { nodeId });
             setStatusText(`Executing: ${nodeName}`);
           } else {
+            appendLog('info', 'Executing…');
             setStatusText('Executing…');
           }
           return;
@@ -255,8 +278,22 @@ export function useExecutionQueue({
 
         if (type === 'progress') {
           // Standard ComfyUI progress event
-          setProgressValue(msg.data?.value ?? 0);
-          setProgressMax(msg.data?.max ?? 0);
+          const v = msg.data?.value ?? 0;
+          const max = msg.data?.max ?? 0;
+          setProgressValue(v);
+          setProgressMax(max);
+
+          // Throttle progress logging to avoid excessive renders.
+          const now = Date.now();
+          const last = lastProgressLogRef.current;
+          const shouldLog =
+            now - last.ts > 2500 &&
+            (v !== last.value || max !== last.max) &&
+            max > 0;
+          if (shouldLog) {
+            lastProgressLogRef.current = { ts: now, value: v, max };
+            appendLog('info', `Progress: ${v}/${max}`);
+          }
           return;
         }
 
@@ -279,7 +316,7 @@ export function useExecutionQueue({
         websocketRef.current.close();
       }
     };
-  }, [markError, markFinished]);
+  }, [appendLog, markError, markFinished]);
 
   const handleGenerate = useCallback(async (options = {}) => {
     if (!workflowData) return;
@@ -297,6 +334,7 @@ export function useExecutionQueue({
     setStatusPhase('queued');
     setProgressValue(0);
     setProgressMax(0);
+    appendLog('info', 'Queuing prompt…', { workflow: selectedWorkflow || '' });
 
     // Prepare workflow outside try block so it's accessible in catch for debugging
     const baseForm = formDataRef.current || {};
@@ -379,13 +417,16 @@ export function useExecutionQueue({
       });
 
       await queuePrompt({ prompt: expandedWorkflow });
+      appendLog('info', 'Prompt queued');
       // From here on, WebSocket + heuristic drive progress/status
     } catch (err) {
       console.error('Failed to queue prompt', err);
       if (err?.unauthorized) {
+        appendLog('error', 'Session expired. Please sign in again.');
         markError('Session expired. Please sign in again.');
         window.location.hash = '#/login';
       } else {
+        appendLog('error', 'Error queuing prompt');
         markError('Error queuing prompt');
       }
     }
@@ -397,6 +438,7 @@ export function useExecutionQueue({
     selectedWorkflow,
     setFormData,
     markError,
+    appendLog,
   ]);
 
   return {
@@ -406,5 +448,7 @@ export function useExecutionQueue({
     statusText,
     statusPhase,
     handleGenerate,
+    logEntries,
+    clearLogs,
   };
 }

@@ -55,24 +55,22 @@ export default function AllParametersPanel({
     [dynamicInputs]
   );
   return (
-    <section className="control-arena scroll-mt-24" ref={sectionRef}>
-      <div className="control-stack">
-        <DynamicForm
-          inputs={allInputs}
-          formData={formData}
-          onFormChange={onFormChange}
-          compactControls={compactControls}
-          collapseAllKey={collapseAllState?.key ?? 0}
-          collapseAllCollapsed={collapseAllState?.collapsed ?? true}
-          onSpotlight={onSpotlight}
-          spotlightName={spotlightName}
-          onCloseSpotlight={onCloseSpotlight}
-          onVisibleParamsChange={onVisibleParamsChange}
-          aliasOptions={aliasOptions}
-          aliasCatalog={aliasCatalog}
-          onOpenComposer={onOpenComposer}
-        />
-      </div>
+    <section className="settings-surface scroll-mt-24" ref={sectionRef}>
+      <DynamicForm
+        inputs={allInputs}
+        formData={formData}
+        onFormChange={onFormChange}
+        compactControls={compactControls}
+        collapseAllKey={collapseAllState?.key ?? 0}
+        collapseAllCollapsed={collapseAllState?.collapsed ?? true}
+        onSpotlight={onSpotlight}
+        spotlightName={spotlightName}
+        onCloseSpotlight={onCloseSpotlight}
+        onVisibleParamsChange={onVisibleParamsChange}
+        aliasOptions={aliasOptions}
+        aliasCatalog={aliasCatalog}
+        onOpenComposer={onOpenComposer}
+      />
     </section>
   );
 }

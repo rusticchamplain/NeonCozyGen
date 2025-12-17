@@ -6,6 +6,7 @@ import FieldSpotlight from '../components/FieldSpotlight';
 import PromptComposer from '../components/PromptComposer';
 import WorkflowFormLayout from '../components/workflow/WorkflowFormLayout';
 import CollapsibleSection from '../components/CollapsibleSection';
+import RunLogsSheet from '../components/RunLogsSheet';
 
 import { useWorkflows } from '../hooks/useWorkflows';
 import { useWorkflowForm } from '../hooks/useWorkflowForm';
@@ -115,6 +116,8 @@ function MainPage() {
     statusText,
     statusPhase,
     handleGenerate,
+    logEntries,
+    clearLogs,
   } = useExecutionQueue({
     selectedWorkflow,
     workflowData,
@@ -146,6 +149,7 @@ function MainPage() {
   const handleCloseSpotlight = useCallback(() => setSpotlight(null), []);
   const [composerOpen, setComposerOpen] = useState(false);
   const [composerField, setComposerField] = useState('prompt');
+  const [logsOpen, setLogsOpen] = useState(false);
   const [visibleParams, setVisibleParams] = useState([]);
   const spotlightCacheRef = useRef(new Map());
   const deferredFormData = useDeferredValue(formData);
@@ -257,6 +261,10 @@ function MainPage() {
     );
     return firstString?.[0] || 'prompt';
   }, [formData]);
+
+  const openDefaultComposer = useCallback(() => {
+    openComposer(promptFieldName || 'prompt');
+  }, [openComposer, promptFieldName]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -416,6 +424,19 @@ function MainPage() {
   }, [handleGenerate, hasWorkflowLoaded, isLoading]);
 
   useEffect(() => {
+    const handler = (evt) => {
+      const fieldName = evt?.detail?.fieldName;
+      if (typeof fieldName === 'string' && fieldName.trim()) {
+        openComposer(fieldName.trim());
+        return;
+      }
+      openDefaultComposer();
+    };
+    window.addEventListener('cozygen:open-composer', handler);
+    return () => window.removeEventListener('cozygen:open-composer', handler);
+  }, [openComposer, openDefaultComposer]);
+
+  useEffect(() => {
     const active =
       statusPhase === 'queued' ||
       statusPhase === 'running' ||
@@ -451,6 +472,7 @@ function MainPage() {
         meta={controlMeta}
         bodyClassName="control-shell"
         defaultOpen
+        variant="bare"
       >
         <WorkflowSelectorBar
           workflows={workflows}
@@ -462,6 +484,38 @@ function MainPage() {
           onInlinePresetSelect={handleInlinePresetSelect}
           inlinePresetStatus={inlinePresetStatus}
         />
+
+        <div className="run-status-strip">
+          <div className="run-status-left">
+            <div className={`run-status-dot is-${statusPhase || 'idle'}`} aria-hidden="true" />
+            <div className="run-status-text">
+              <div className="run-status-phase">{statusPhase || 'idle'}</div>
+              <div className="run-status-msg">{statusText || 'Idle'}</div>
+            </div>
+          </div>
+          <div className="run-status-actions">
+            {isLoading && progressMax > 0 ? (
+              <div className="run-status-meter" aria-label="Progress">
+                <div
+                  className="run-status-meter-fill"
+                  style={{
+                    width: `${Math.max(
+                      0,
+                      Math.min(100, Math.round(((progressValue || 0) / progressMax) * 100))
+                    )}%`,
+                  }}
+                />
+              </div>
+            ) : null}
+            <button
+              type="button"
+              className="ui-button is-muted is-compact"
+              onClick={() => setLogsOpen(true)}
+            >
+              View logs
+            </button>
+          </div>
+        </div>
 
         {workflowData ? (
           <WorkflowFormLayout
@@ -504,6 +558,7 @@ function MainPage() {
           title="📸 Images"
           meta={imageMeta}
           defaultOpen={false}
+          variant="bare"
         >
           {workflowData ? (
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -557,6 +612,13 @@ function MainPage() {
         aliasCatalog={aliasCatalog}
         aliasLookup={aliasLookup}
         fieldLabel={composerField}
+      />
+
+      <RunLogsSheet
+        open={logsOpen}
+        onClose={() => setLogsOpen(false)}
+        logs={logEntries}
+        onClear={clearLogs}
       />
     </div>
   );

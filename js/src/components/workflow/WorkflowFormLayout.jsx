@@ -16,22 +16,20 @@ export default function WorkflowFormLayout({
   onOpenComposer,
 }) {
   return (
-    <div className="space-y-4">
-      <AllParametersPanel
-        dynamicInputs={dynamicInputs}
-        formData={formData}
-        onFormChange={onFormChange}
-        sectionRef={parameterSectionRef}
-        compactControls={compactControls}
-        collapseAllState={collapseAllState}
-        onSpotlight={onSpotlight}
-        spotlightName={spotlightName}
-        onCloseSpotlight={onCloseSpotlight}
-        onVisibleParamsChange={onVisibleParamsChange}
-        aliasOptions={aliasOptions}
-        aliasCatalog={aliasCatalog}
-        onOpenComposer={onOpenComposer}
-      />
-    </div>
+    <AllParametersPanel
+      dynamicInputs={dynamicInputs}
+      formData={formData}
+      onFormChange={onFormChange}
+      sectionRef={parameterSectionRef}
+      compactControls={compactControls}
+      collapseAllState={collapseAllState}
+      onSpotlight={onSpotlight}
+      spotlightName={spotlightName}
+      onCloseSpotlight={onCloseSpotlight}
+      onVisibleParamsChange={onVisibleParamsChange}
+      aliasOptions={aliasOptions}
+      aliasCatalog={aliasCatalog}
+      onOpenComposer={onOpenComposer}
+    />
   );
 }

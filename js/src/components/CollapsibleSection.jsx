@@ -6,19 +6,28 @@ const CollapsibleSection = forwardRef(function CollapsibleSection(
     kicker,
     meta,
     defaultOpen = true,
+    variant = 'card',
     className = '',
     bodyClassName,
     children,
   },
   ref
 ) {
-  const detailClasses = ['ui-panel', 'collapsible-card', 'sectioned-card', className]
+  const isBare = variant === 'bare';
+
+  const detailClasses = (
+    isBare
+      ? ['collapsible-section', 'collapsible-section--bare', className]
+      : ['ui-panel', 'collapsible-card', 'sectioned-card', className]
+  )
     .filter(Boolean)
     .join(' ');
-  const bodyClasses = [
-    'collapsible-card-body',
-    bodyClassName ? bodyClassName : 'space-y-4',
-  ]
+
+  const bodyClasses = (
+    isBare
+      ? ['collapsible-section-body', bodyClassName ? bodyClassName : 'space-y-4']
+      : ['collapsible-card-body', bodyClassName ? bodyClassName : 'space-y-4']
+  )
     .filter(Boolean)
     .join(' ');
 
@@ -31,12 +40,17 @@ const CollapsibleSection = forwardRef(function CollapsibleSection(
 
   return (
     <details ref={ref} className={detailClasses} open={defaultOpen}>
-      <summary className="collapsible-card-summary">
+      <summary className={isBare ? 'collapsible-section-summary' : 'collapsible-card-summary'}>
         <div className="flex flex-col gap-1">
           {kicker ? <span className="ui-kicker">{kicker}</span> : null}
           <span className="text-sm font-semibold tracking-wide">{title}</span>
         </div>
         {metaContent}
+        {isBare ? (
+          <span className="collapsible-section-chevron" aria-hidden="true">
+            ›
+          </span>
+        ) : null}
       </summary>
       <div className={bodyClasses}>{children}</div>
     </details>

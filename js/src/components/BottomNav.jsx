@@ -1,14 +1,14 @@
 // js/src/components/BottomNav.jsx
 import React from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import useGalleryPending from '../hooks/useGalleryPending';
 import { requeueLastRender, hasLastRenderPayload } from '../utils/globalRender';
 
 const links = [
   { to: '/', label: 'Studio', icon: '🎨', end: true },
   { to: '/gallery', label: 'Gallery', icon: '🖼️' },
-  { to: '/presets', label: 'Presets', icon: '✨' },
   { to: '/aliases', label: 'Aliases', icon: '🔖' },
+  { to: '#composer', label: 'Composer', icon: '✍️', isComposer: true },
   { to: '#render', label: 'Render', icon: '⚡', isAction: true },
 ];
 
@@ -22,12 +22,36 @@ const linkClass = ({ isActive }) =>
 
 export default function BottomNav() {
   const location = useLocation();
+  const navigate = useNavigate();
   const galleryPending = useGalleryPending();
   const [flash, setFlash] = React.useState(false);
   const [isRendering, setIsRendering] = React.useState(false);
 
   // Check if we're on the Studio page
   const isOnStudio = location.pathname === '/' || location.pathname === '';
+
+  const requestComposer = async () => {
+    if (typeof window === 'undefined') return;
+    if (!isOnStudio) {
+      navigate('/studio');
+      // Let the route settle before dispatching the open event.
+      setTimeout(() => {
+        try {
+          window.dispatchEvent(
+            new CustomEvent('cozygen:open-composer', { detail: {} })
+          );
+        } catch {
+          // ignore
+        }
+      }, 0);
+      return;
+    }
+    try {
+      window.dispatchEvent(new CustomEvent('cozygen:open-composer', { detail: {} }));
+    } catch {
+      // ignore
+    }
+  };
 
   const requestRender = async () => {
     if (typeof window === 'undefined') return;
@@ -83,6 +107,19 @@ export default function BottomNav() {
               ⚡
             </span>
             <span className="bottom-nav-label">Render</span>
+          </button>
+        ) : link.isComposer ? (
+          <button
+            key="composer"
+            type="button"
+            className="bottom-nav-link"
+            onClick={requestComposer}
+            aria-label="Prompt composer"
+          >
+            <span className="bottom-nav-icon" aria-hidden="true">
+              ✍️
+            </span>
+            <span className="bottom-nav-label">Composer</span>
           </button>
         ) : (
           <NavLink key={link.to} to={link.to} end={link.end} className={linkClass}>

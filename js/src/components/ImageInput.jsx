@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useImagePicker } from '../hooks/useImagePicker';
 import ImagePickerSheet from './ImagePickerSheet';
+import UrlViewerSheet from './ui/UrlViewerSheet';
 
 export default function ImageInput({ input, value, onFormChange }) {
   const {
@@ -41,6 +42,7 @@ export default function ImageInput({ input, value, onFormChange }) {
   const fileRef = useRef(null);
   const dropRef = useRef(null);
   const [fileKey, setFileKey] = useState(0);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   // drag & drop upload
   useEffect(() => {
@@ -102,14 +104,22 @@ export default function ImageInput({ input, value, onFormChange }) {
         className="mb-3 rounded-xl border border-dashed border-[#3D4270] bg-[#0b1226] flex items-center justify-center min-h-[140px] sm:min-h-[180px] overflow-hidden"
       >
         {previewUrl ? (
-          <img
-            src={previewUrl}
-            alt={displayName}
-            className={`max-h-64 max-w-full object-contain transition-opacity ${
-              imgReady ? 'opacity-100' : 'opacity-0'
-            }`}
-            onLoad={() => setImgReady(true)}
-          />
+          <button
+            type="button"
+            className="asset-preview-btn"
+            onClick={() => setPreviewOpen(true)}
+            aria-label={`Preview ${displayName}`}
+            title="Open preview"
+          >
+            <img
+              src={previewUrl}
+              alt={displayName}
+              className={`max-h-64 max-w-full object-contain transition-opacity ${
+                imgReady ? 'opacity-100' : 'opacity-0'
+              }`}
+              onLoad={() => setImgReady(true)}
+            />
+          </button>
         ) : (
           <div className="text-[11px] text-[#9DA3FFCC] text-center px-6">
             Drop an image here, upload from your device, or choose one from
@@ -174,6 +184,14 @@ export default function ImageInput({ input, value, onFormChange }) {
         setPickerSource={setPickerSource}
         onSelect={selectServer}
         onClose={closeServer}
+      />
+
+      <UrlViewerSheet
+        open={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        title={displayName || 'Preview'}
+        url={previewUrl}
+        kind="image"
       />
     </div>
   );

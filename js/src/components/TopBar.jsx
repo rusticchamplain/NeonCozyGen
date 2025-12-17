@@ -5,6 +5,7 @@ import { Link, NavLink } from 'react-router-dom';
 import '../styles/mobile-helpers.css';
 import useGalleryPending from '../hooks/useGalleryPending';
 import { useAuth } from '../hooks/useAuth';
+import LibrarySheet from './LibrarySheet';
 
 const PRIMARY_LINKS = [
   { to: '/', label: '🎨 Studio', end: true },
@@ -22,6 +23,7 @@ const navLinkClasses = ({ isActive }) =>
 
 export default function TopBar() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [libraryOpen, setLibraryOpen] = useState(false);
   const galleryPending = useGalleryPending();
   const { logout, user } = useAuth();
   const toggleMenu = () => setMenuOpen((prev) => !prev);
@@ -114,23 +116,28 @@ export default function TopBar() {
           ))}
         </div>
         <div className="mobile-nav-section secondary">
-          {SECONDARY_LINKS.map((link) => (
-            <NavLink
-              key={link.to}
-              to={link.to}
-              end={link.end}
-              className={navLinkClasses}
-              onClick={closeMenu}
-              role="menuitem"
-            >
-              <span className="inline-flex items-center gap-1.5">
-                <span>{link.label}</span>
-                {link.to === '/gallery' && galleryPending ? (
-                  <span className="badge-dot" aria-hidden="true" />
-                ) : null}
-              </span>
-            </NavLink>
-          ))}
+          <NavLink
+            to="/gallery"
+            className={navLinkClasses}
+            onClick={closeMenu}
+            role="menuitem"
+          >
+            <span className="inline-flex items-center gap-1.5">
+              <span>🖼️ Gallery</span>
+              {galleryPending ? <span className="badge-dot" aria-hidden="true" /> : null}
+            </span>
+          </NavLink>
+          <button
+            type="button"
+            className="slim-nav-link btn-touch text-left"
+            onClick={() => {
+              closeMenu();
+              setLibraryOpen(true);
+            }}
+            role="menuitem"
+          >
+            📚 Library
+          </button>
           <button
             type="button"
             className="slim-nav-link btn-touch text-left"
@@ -147,6 +154,8 @@ export default function TopBar() {
           </button>
         </div>
       </div>
+
+      <LibrarySheet open={libraryOpen} onClose={() => setLibraryOpen(false)} />
     </header>
   );
 }

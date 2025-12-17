@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import TextAreaSheet from '../ui/TextAreaSheet';
 
 export default function StringInput({
   name,
@@ -23,6 +24,7 @@ export default function StringInput({
   const [recent] = useState([]);
   const [tokens, setTokens] = useState([]);
   const pickerSearchRef = useRef(null);
+  const [expandedEditorOpen, setExpandedEditorOpen] = useState(false);
 
   const aliasList = useMemo(
     () => (Array.isArray(aliasOptions) ? aliasOptions.filter(Boolean) : []),
@@ -300,6 +302,28 @@ export default function StringInput({
   if (multiline) {
     return (
       <div className="relative space-y-2" ref={wrapperRef}>
+        <div className="stringinput-actions">
+          <button
+            type="button"
+            className="stringinput-action"
+            onClick={() => setExpandedEditorOpen(true)}
+            aria-label={`Expand ${label || name}`}
+            title="Expand"
+          >
+            ⤢
+          </button>
+          {aliasEntries.length ? (
+            <button
+              type="button"
+              className="stringinput-action"
+              onClick={() => (onOpenComposer ? onOpenComposer(name) : openPicker())}
+              aria-label={onOpenComposer ? 'Open prompt composer' : 'Insert alias'}
+              title={onOpenComposer ? 'Compose' : 'Insert alias'}
+            >
+              {onOpenComposer ? '✏️' : '🔖'}
+            </button>
+          ) : null}
+        </div>
         <textarea
           ref={textRef}
           {...commonProps}
@@ -308,9 +332,17 @@ export default function StringInput({
           onKeyDown={handleKeyDown}
           className={
             commonProps.className +
-            ' resize-y min-h-[88px] max-h-[320px] leading-relaxed overflow-y-auto overflow-x-hidden break-words whitespace-pre-wrap'
+            ' resize-none min-h-[88px] max-h-[160px] leading-relaxed overflow-y-auto overflow-x-hidden break-words whitespace-pre-wrap'
           }
           style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', overflowWrap: 'anywhere' }}
+        />
+        <TextAreaSheet
+          open={expandedEditorOpen}
+          onClose={() => setExpandedEditorOpen(false)}
+          title={label || name}
+          value={value ?? ''}
+          onChange={onChange}
+          description={description}
         />
         {tokens.length ? (
           <div className="flex flex-wrap gap-1">
@@ -351,16 +383,6 @@ export default function StringInput({
               );
             })}
           </div>
-        ) : null}
-        {aliasEntries.length ? (
-          <button
-            type="button"
-            className="absolute right-2 top-1/2 -translate-y-1/2 h-8 w-8 rounded-lg border border-[#2A2E4A] bg-[#0F1A2F] text-sm text-[#E5E7FF] shadow-sm hover:border-[#5EF1D4] transition"
-            onClick={() => onOpenComposer ? onOpenComposer(name) : openPicker()}
-            title={onOpenComposer ? "Open prompt composer" : "Insert alias"}
-          >
-            {onOpenComposer ? '✏️' : '🔖'}
-          </button>
         ) : null}
         {showPicker ? (
           <div className="fixed inset-0 z-50 sm:z-40 flex items-center justify-center">

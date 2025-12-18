@@ -212,12 +212,12 @@ export default function TopBar() {
             }}
             role="menuitem"
           >
-            <span className="inline-flex items-center gap-2">
-              <IconLogout size={16} />
-              <span>Logout</span>
-              {user ? <span className="text-slate-400 text-xs">@{user}</span> : null}
-            </span>
-          </button>
+              <span className="inline-flex items-center gap-2">
+                <IconLogout size={16} />
+                <span>Logout</span>
+              {user ? <span className="text-[rgba(159,178,215,0.75)] text-xs">@{user}</span> : null}
+              </span>
+            </button>
         </div>
       </div>
     </header>

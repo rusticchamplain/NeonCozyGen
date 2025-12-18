@@ -1,13 +1,22 @@
 // js/src/App.jsx
-import { useEffect, useRef } from 'react';
+import { Suspense, lazy, useEffect, useRef } from 'react';
 import { HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import TopBar from './components/TopBar';
 import BottomNav from './components/BottomNav';
-import MainPage from './pages/MainPage';
-import Gallery from './pages/Gallery';
-import Aliases from './pages/Aliases';
-import Login from './pages/Login';
 import { AuthProvider, useAuth } from './hooks/useAuth';
+
+const MainPage = lazy(() => import('./pages/MainPage'));
+const Gallery = lazy(() => import('./pages/Gallery'));
+const Aliases = lazy(() => import('./pages/Aliases'));
+const Login = lazy(() => import('./pages/Login'));
+
+function PageLoading() {
+  return (
+    <div className="min-h-[50vh] flex items-center justify-center text-slate-200">
+      Loading…
+    </div>
+  );
+}
 
 /* Scroll to top on route change */
 function ScrollToTop({ containerRef }) {
@@ -63,44 +72,46 @@ function App() {
         ref={contentRef}
         className={isLogin ? 'app-content is-login' : 'app-content'}
       >
-        <Routes>
-          <Route path="/login" element={<Login />} />
+        <Suspense fallback={<PageLoading />}>
+          <Routes>
+            <Route path="/login" element={<Login />} />
 
-          <Route
-            path="/"
-            element={
-              <RequireAuth>
-                <MainPage />
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/studio"
-            element={
-              <RequireAuth>
-                <MainPage />
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/gallery"
-            element={
-              <RequireAuth>
-                <Gallery />
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/aliases"
-            element={
-              <RequireAuth>
-                <Aliases />
-              </RequireAuth>
-            }
-          />
-          {/* Fallback */}
-          <Route path="*" element={<Navigate to="/studio" replace />} />
-        </Routes>
+            <Route
+              path="/"
+              element={
+                <RequireAuth>
+                  <MainPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/studio"
+              element={
+                <RequireAuth>
+                  <MainPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/gallery"
+              element={
+                <RequireAuth>
+                  <Gallery />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/aliases"
+              element={
+                <RequireAuth>
+                  <Aliases />
+                </RequireAuth>
+              }
+            />
+            {/* Fallback */}
+            <Route path="*" element={<Navigate to="/studio" replace />} />
+          </Routes>
+        </Suspense>
       </main>
       {!isLogin && <BottomNav />}
     </div>

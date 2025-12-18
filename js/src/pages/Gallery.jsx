@@ -592,7 +592,7 @@ export default function Gallery() {
             <select
               value={perPage}
               onChange={(e) => setPerPage(parseInt(e.target.value, 10) || 30)}
-              className="sheet-select"
+              className="sheet-select ui-control ui-select"
               aria-label="Items per page"
             >
               <option value={15}>15</option>

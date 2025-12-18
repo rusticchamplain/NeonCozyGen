@@ -101,7 +101,7 @@ export default function ImageInput({ input, value, onFormChange }) {
       {/* preview / drop zone */}
       <div
         ref={dropRef}
-        className="mb-3 rounded-xl border border-dashed border-[#3D4270] bg-[#0b1226] flex items-center justify-center min-h-[140px] sm:min-h-[180px] overflow-hidden"
+        className="mb-3 rounded-xl border border-dashed border-[rgba(255,255,255,0.14)] bg-[rgba(255,255,255,0.02)] flex items-center justify-center min-h-[140px] sm:min-h-[180px] overflow-hidden"
       >
         {previewUrl ? (
           <button

@@ -29,7 +29,7 @@ export default function TextAreaSheet({
       )}
     >
       {description ? (
-        <div className="text-[12px] text-[#9DA3FFCC] mb-3">
+        <div className="text-[12px] text-[rgba(159,178,215,0.75)] mb-3">
           {description}
         </div>
       ) : null}
@@ -38,11 +38,9 @@ export default function TextAreaSheet({
         value={value ?? ''}
         onChange={(e) => onChange?.(e.target.value)}
         placeholder={placeholder}
-        className="sheet-textarea"
+        className="sheet-textarea ui-control ui-textarea"
         rows={12}
-        autoFocus
       />
     </BottomSheet>
   );
 }
-

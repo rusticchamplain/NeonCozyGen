@@ -1,5 +1,5 @@
 // js/src/components/DynamicForm.jsx
-import { useCallback, useMemo, useState, useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import StringInput from './inputs/StringInput';
 import NumberInput from './inputs/NumberInput';
 import BooleanInput from './inputs/BooleanInput';
@@ -96,6 +96,10 @@ export default function DynamicForm({
 }) {
   const [collapsedCards, setCollapsedCards] = useState({});
   const [spotlightRenderKey, setSpotlightRenderKey] = useState(0);
+  const formDataRef = useRef(formData);
+  useEffect(() => {
+    formDataRef.current = formData;
+  }, [formData]);
 
   const formatPreview = useCallback((cfg, value) => {
     if (cfg?.paramType === 'BOOLEAN') return value ? 'On' : 'Off';
@@ -103,20 +107,35 @@ export default function DynamicForm({
     if (typeof value === 'string') {
       const trimmed = value.trim();
       if (!trimmed) return 'Empty';
-      return formatModelDisplayName(trimmed);
+      // Avoid rendering massive previews (e.g. long prompts) and keep updates cheap.
+      // Only normalize whitespace on a small prefix to prevent O(n) work while typing.
+      const MAX_SCAN = 240;
+      const MAX_PREVIEW = 140;
+      const snippet = trimmed.length > MAX_SCAN ? trimmed.slice(0, MAX_SCAN) : trimmed;
+      const needsNormalize = /[\r\n\t]/.test(snippet) || /\s{2,}/u.test(snippet);
+      const normalized = needsNormalize ? snippet.replace(/\s+/gu, ' ').trim() : snippet;
+
+      if (normalized.length > MAX_PREVIEW) {
+        return `${normalized.slice(0, MAX_PREVIEW)}…`;
+      }
+      const label = formatModelDisplayName(normalized);
+      return trimmed.length > MAX_SCAN ? `${label}…` : label;
     }
     return String(value);
   }, []);
 
-  const handleValueChange = (paramName, value) => {
-    if (!onFormChange) return;
+  const handleValueChange = useCallback((paramName, value) => {
+    if (!onFormChange || !paramName) return;
     onFormChange(paramName, value);
     onParamEdited?.(paramName);
-    setCollapsedCards((prev) => ({
-      ...prev,
-      [paramName]: false,
-    }));
-  };
+    setCollapsedCards((prev) => {
+      if (prev?.[paramName] === false) return prev;
+      return {
+        ...prev,
+        [paramName]: false,
+      };
+    });
+  }, [onFormChange, onParamEdited]);
 
   const toggleCollapsed = useCallback((cardId) => {
     if (!cardId) return;
@@ -127,6 +146,42 @@ export default function DynamicForm({
   }, []);
 
   const visibleInputs = useMemo(() => inputs || [], [inputs]);
+
+  const changeHandlers = useMemo(() => {
+    const map = new Map();
+    (visibleInputs || []).forEach((inp) => {
+      const name = resolveParamName(inp);
+      if (!name) return;
+      map.set(name, (val) => handleValueChange(name, val));
+    });
+    return map;
+  }, [handleValueChange, visibleInputs]);
+
+  const enterHandlers = useMemo(() => {
+    const map = new Map();
+    (visibleInputs || []).forEach((inp) => {
+      const name = resolveParamName(inp);
+      if (!name) return;
+      map.set(name, (val, e) => {
+        handleValueChange(name, val);
+        e?.target?.blur?.();
+        if (spotlightName === name) {
+          onCloseSpotlight?.();
+        }
+      });
+    });
+    return map;
+  }, [handleValueChange, onCloseSpotlight, spotlightName, visibleInputs]);
+
+  const toggleHandlers = useMemo(() => {
+    const map = new Map();
+    (visibleInputs || []).forEach((inp) => {
+      const name = resolveParamName(inp);
+      if (!name) return;
+      map.set(name, () => toggleCollapsed(name));
+    });
+    return map;
+  }, [toggleCollapsed, visibleInputs]);
 
   // Collapse/expand all when parent changes the key
   useEffect(() => {
@@ -230,7 +285,7 @@ export default function DynamicForm({
           label: loraPair.label || cfg.label,
           description: cfg.description,
           render: (currentForm) => {
-            const form = currentForm || formData || {};
+            const form = currentForm || formDataRef.current || {};
             const highStrengthValue = loraPair.highStrengthParam
               ? form[loraPair.highStrengthParam]
               : undefined;
@@ -256,12 +311,12 @@ export default function DynamicForm({
                 lowStrengthValue={lowStrengthValue}
                 onChangeHighStrength={
                   loraPair.highStrengthParam
-                    ? (val) => handleValueChange(loraPair.highStrengthParam, val)
+                    ? changeHandlers.get(loraPair.highStrengthParam)
                     : undefined
                 }
                 onChangeLowStrength={
                   loraPair.lowStrengthParam
-                    ? (val) => handleValueChange(loraPair.lowStrengthParam, val)
+                    ? changeHandlers.get(loraPair.lowStrengthParam)
                     : undefined
                 }
                 disabled={false}
@@ -279,7 +334,7 @@ export default function DynamicForm({
         label: cfg.label,
         description: cfg.description,
         render: (currentForm) => {
-          const form = currentForm || formData || {};
+          const form = currentForm || formDataRef.current || {};
           const liveProps = {
             name: paramName,
             label: cfg.label,
@@ -293,7 +348,7 @@ export default function DynamicForm({
               <NumberInput
                 key={`field-${paramName}-number-${spotlightRenderKey}`}
                 {...liveProps}
-                onChange={(v) => handleValueChange(paramName, v)}
+                onChange={changeHandlers.get(paramName)}
                 min={cfg.min}
                 max={cfg.max}
                 step={cfg.step}
@@ -306,7 +361,7 @@ export default function DynamicForm({
               <BooleanInput
                 key={`field-${paramName}-bool-${spotlightRenderKey}`}
                 {...liveProps}
-                onChange={(v) => handleValueChange(paramName, v)}
+                onChange={changeHandlers.get(paramName)}
               />
             );
           }
@@ -316,7 +371,7 @@ export default function DynamicForm({
                 key={`field-${paramName}-dropdown-${spotlightRenderKey}`}
                 {...liveProps}
                 workflowName={workflowName}
-                onChange={(v) => handleValueChange(paramName, v)}
+                onChange={changeHandlers.get(paramName)}
                 options={cfg.choices || []}
               />
             );
@@ -328,14 +383,8 @@ export default function DynamicForm({
               aliasOptions={aliasOptions}
               aliasCatalog={aliasCatalog}
               onOpenComposer={onOpenComposer}
-              onChange={(v) => handleValueChange(paramName, v)}
-              onEnter={(v, e) => {
-                handleValueChange(paramName, v);
-                e?.target?.blur?.();
-                if (spotlightName === paramName) {
-                  onCloseSpotlight?.();
-                }
-              }}
+              onChange={changeHandlers.get(paramName)}
+              onEnter={enterHandlers.get(paramName)}
               multiline={cfg.multiline}
             />
           );
@@ -343,13 +392,18 @@ export default function DynamicForm({
       });
     });
     return entries;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     visibleInputs,
     loraPairByHighParam,
     consumedParams,
-    formData,
     spotlightRenderKey,
+    workflowName,
+    aliasOptions,
+    aliasCatalog,
+    onOpenComposer,
+    handleValueChange,
+    changeHandlers,
+    enterHandlers,
     spotlightName,
     onCloseSpotlight,
   ]);
@@ -377,7 +431,7 @@ export default function DynamicForm({
         name: targetName,
         label: entry.label,
         description: entry.description,
-        render: (latestForm) => entry.render(latestForm || formData),
+        render: (latestForm) => entry.render(latestForm || formDataRef.current),
         order,
         index: idx >= 0 ? idx : 0,
         total: order.length,
@@ -385,7 +439,7 @@ export default function DynamicForm({
         onNext: nextName ? () => openSpotlightFor(nextName) : null,
       });
     },
-    [entryMap, formData, onSpotlight, visibleEntries]
+    [entryMap, onSpotlight, visibleEntries]
   );
 
   return (
@@ -422,7 +476,9 @@ export default function DynamicForm({
           const cardCollapsed = compactControls
             ? collapsedCards[paramName] ?? true
             : !!collapsedCards[paramName];
-          const pairedPreview = formatPreview(cfg, [formData[highParam], formData[lowParam]].filter(Boolean).join(' • '));
+          const pairedPreview = cardCollapsed
+            ? formatPreview(cfg, [formData[highParam], formData[lowParam]].filter(Boolean).join(' • '))
+            : null;
 
           const renderLoraPairField = (currentForm = formData) => {
             const liveHighStrength = highStrengthParam ? currentForm?.[highStrengthParam] : undefined;
@@ -446,12 +502,12 @@ export default function DynamicForm({
                 lowStrengthValue={liveLowStrength}
                 onChangeHighStrength={
                   highStrengthParam
-                    ? (val) => handleValueChange(highStrengthParam, val)
+                    ? changeHandlers.get(highStrengthParam)
                     : undefined
                 }
                 onChangeLowStrength={
                   lowStrengthParam
-                    ? (val) => handleValueChange(lowStrengthParam, val)
+                    ? changeHandlers.get(lowStrengthParam)
                     : undefined
                 }
                 disabled={false}
@@ -474,9 +530,9 @@ export default function DynamicForm({
                 description={cfg.description}
                 preview={pairedPreview}
                 expanded={!cardCollapsed}
-                onToggle={() => toggleCollapsed(paramName)}
+                onToggle={toggleHandlers.get(paramName)}
               >
-                {renderLoraPairField()}
+                {!cardCollapsed ? renderLoraPairField(formData) : null}
               </FieldRow>
             </div>
           );
@@ -489,7 +545,6 @@ export default function DynamicForm({
 
         const value = formData[paramName];
         const disabled = false;
-        const previewValue = formatPreview(cfg, value);
 
         const commonFieldProps = {
           name: paramName,
@@ -508,7 +563,7 @@ export default function DynamicForm({
                 key={`field-${paramName}-number-${spotlightRenderKey}`}
                 {...liveProps}
                 inputId={paramName}
-                onChange={(v) => handleValueChange(paramName, v)}
+                onChange={changeHandlers.get(paramName)}
                 min={cfg.min}
                 max={cfg.max}
                 step={cfg.step}
@@ -521,7 +576,7 @@ export default function DynamicForm({
               <BooleanInput
                 key={`field-${paramName}-bool-${spotlightRenderKey}`}
                 {...liveProps}
-                onChange={(v) => handleValueChange(paramName, v)}
+                onChange={changeHandlers.get(paramName)}
               />
             );
           }
@@ -531,7 +586,7 @@ export default function DynamicForm({
                 key={`field-${paramName}-dropdown-${spotlightRenderKey}`}
                 {...liveProps}
                 workflowName={workflowName}
-                onChange={(v) => handleValueChange(paramName, v)}
+                onChange={changeHandlers.get(paramName)}
                 options={cfg.choices || []}
               />
             );
@@ -543,14 +598,8 @@ export default function DynamicForm({
               aliasOptions={aliasOptions}
               aliasCatalog={aliasCatalog}
               onOpenComposer={onOpenComposer}
-              onChange={(v) => handleValueChange(paramName, v)}
-              onEnter={(v, e) => {
-                handleValueChange(paramName, v);
-                e?.target?.blur?.();
-                if (spotlightName === paramName) {
-                  onCloseSpotlight?.();
-                }
-              }}
+              onChange={changeHandlers.get(paramName)}
+              onEnter={enterHandlers.get(paramName)}
               multiline={cfg.multiline || spotlightName === paramName || expanded}
             />
           );
@@ -581,6 +630,8 @@ export default function DynamicForm({
           );
         }
 
+        const previewValue = cardCollapsed ? formatPreview(cfg, value) : null;
+
         return (
           <div
             key={paramName}
@@ -596,9 +647,9 @@ export default function DynamicForm({
               description={cfg.description}
               preview={previewValue}
               expanded={!cardCollapsed}
-              onToggle={() => toggleCollapsed(paramName)}
+              onToggle={toggleHandlers.get(paramName)}
             >
-              {renderField(formData, !cardCollapsed)}
+              {!cardCollapsed ? renderField(formData, true) : null}
             </FieldRow>
           </div>
         );

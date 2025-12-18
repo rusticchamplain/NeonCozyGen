@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import json
+import logging
 import mimetypes
 import os
 import re
@@ -20,6 +21,7 @@ from PIL import Image, ImageDraw, ImageOps
 from ComfyUI_CozyGen import auth
 
 routes = web.RouteTableDef()
+logger = logging.getLogger(__name__)
 
 EXT_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(EXT_DIR, "data")
@@ -39,6 +41,171 @@ if not os.path.exists(ALIASES_FILE):
 if not os.path.exists(WORKFLOW_TYPES_FILE):
     with open(WORKFLOW_TYPES_FILE, "w", encoding="utf-8") as f:
         json.dump({"version": 1, "workflows": {}}, f)
+
+# Danbooru tag reference (used for in-app tag browsing + alias validation)
+DANBOORU_TAGS_FILE = os.path.join(DATA_DIR, "danbooru_tags.md")
+
+_DANBOORU_TAGS_CACHE = None
+_DANBOORU_TAGS_MTIME = None
+_DANBOORU_TAGS_LOCK = asyncio.Lock()
+
+_RE_DANBOORU_CATEGORY = re.compile(r"^##\s+(.+?)(?:\s+\((\d+)\))?\s*$")
+_RE_DANBOORU_TAG = re.compile(r"^-\s+`([^`]+)`\s+—\s+(\d+)\s*$")
+_RE_DANBOORU_TIME_TAG = re.compile(r"^(?:\d{1,2}:\d{2}(?:am|pm)?|\d+:)$", re.I)
+
+_DANBOORU_CATEGORY_MAP = {
+    "anatomy_body": "body",
+    "camera_composition": "camera",
+    "clothing_accessories": "clothing",
+    "color": "color",
+    "expression_emotion": "expression",
+    "lighting": "lighting",
+    "location_scene": "scene",
+    "meta_quality": "quality",
+    "name_title_misc": "general",
+    "other": "general",
+    "pose_action": "pose",
+    "style_medium": "style",
+    "text_symbols": "text",
+    "subject_count": "meta",
+    "weapons_tools": "props",
+    "violence_gore": "violence",
+    "nsfw_suggestive": "nsfw",
+    "nsfw_nudity": "nsfw",
+    "nsfw_explicit": "nsfw",
+}
+
+
+def _normalize_danbooru_ui_category(raw_category: str, tag: str) -> str:
+    raw = (raw_category or "").strip().lower()
+    tl = (tag or "").strip().lower()
+
+    if not raw:
+        return "general"
+
+    if raw.startswith("namespace"):
+        # The source file explodes any "namespaced" tag (contains ':') into a unique category,
+        # which clutters the UI. Collapse them into a small set of common-sense buckets.
+        if tl.startswith(("<", ">", ":")):
+            return "expression"
+        if _RE_DANBOORU_TIME_TAG.match(tl):
+            return "general"
+        return "fandom"
+
+    mapped = _DANBOORU_CATEGORY_MAP.get(raw)
+    if mapped:
+        return mapped
+
+    # Fallback: keep unknown categories (should be rare) but normalize to lowercase.
+    return raw
+
+
+def _parse_danbooru_tags_md(path: str) -> dict:
+    if not os.path.exists(path):
+        raise FileNotFoundError(path)
+
+    categories = {}
+    all_items = []
+    tag_set_lower = set()
+
+    current_category_raw = ""
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.rstrip("\n")
+                m_cat = _RE_DANBOORU_CATEGORY.match(line.strip())
+                if m_cat:
+                    current_category_raw = (m_cat.group(1) or "").strip()
+                    continue
+
+                m_tag = _RE_DANBOORU_TAG.match(line.strip())
+                if not m_tag:
+                    continue
+                tag = (m_tag.group(1) or "").strip()
+                if not tag:
+                    continue
+                try:
+                    count = int(m_tag.group(2) or "0")
+                except Exception:
+                    count = 0
+
+                category = _normalize_danbooru_ui_category(current_category_raw, tag)
+                entry = {
+                    "tag": tag,
+                    "tag_lower": tag.lower(),
+                    "count": count,
+                    "category": category,
+                    "category_raw": current_category_raw or "",
+                }
+                all_items.append(entry)
+                tag_set_lower.add(entry["tag_lower"])
+                if category:
+                    if category not in categories:
+                        categories[category] = {
+                            "key": category,
+                            "declared_count": None,
+                            "items": [],
+                        }
+                    categories[category]["items"].append(entry)
+    except Exception:
+        raise
+
+    # Sort categories by declared count (fallback to actual count)
+    category_keys = list(categories.keys())
+    category_keys.sort(
+        key=lambda k: (
+            -(categories[k].get("declared_count") or len(categories[k].get("items") or [])),
+            k.lower(),
+        )
+    )
+
+    # Sort items globally by popularity
+    items_sorted = sorted(all_items, key=lambda e: (-int(e.get("count") or 0), e.get("tag_lower") or ""))
+
+    # Pre-sort each category for popularity browsing
+    for k in category_keys:
+        categories[k]["items"] = sorted(
+            categories[k].get("items") or [],
+            key=lambda e: (-int(e.get("count") or 0), e.get("tag_lower") or ""),
+        )
+
+    tag_count_map = {e["tag_lower"]: int(e.get("count") or 0) for e in all_items}
+
+    return {
+        "categories": categories,
+        "category_keys": category_keys,
+        "items": all_items,
+        "items_sorted": items_sorted,
+        "tag_set_lower": tag_set_lower,
+        "tag_count_map": tag_count_map,
+    }
+
+
+async def _get_danbooru_tags_index() -> dict:
+    global _DANBOORU_TAGS_CACHE, _DANBOORU_TAGS_MTIME
+    try:
+        mtime = os.path.getmtime(DANBOORU_TAGS_FILE)
+    except Exception:
+        mtime = None
+    async with _DANBOORU_TAGS_LOCK:
+        if _DANBOORU_TAGS_CACHE is not None and _DANBOORU_TAGS_MTIME == mtime:
+            return _DANBOORU_TAGS_CACHE
+        try:
+            data = await asyncio.to_thread(_parse_danbooru_tags_md, DANBOORU_TAGS_FILE)
+        except Exception as e:
+            logger.error("Failed to load danbooru_tags.md: %s", e)
+            data = {
+                "categories": {},
+                "category_keys": [],
+                "items": [],
+                "items_sorted": [],
+                "tag_set_lower": set(),
+                "tag_count_map": {},
+                "_error": str(e),
+            }
+        _DANBOORU_TAGS_CACHE = data
+        _DANBOORU_TAGS_MTIME = mtime
+        return data
 
 
 def _load(path, dflt):
@@ -480,6 +647,177 @@ async def get_aliases(_):
 async def post_aliases(request):
     _save(ALIASES_FILE, await request.json())
     return web.json_response({"status": "ok"})
+
+
+# ---------------- Danbooru tags (browse + validate)
+def _suggest_danbooru_tags(term: str, index: dict, limit: int = 8):
+    if not term:
+        return []
+    q = term.strip().lower()
+    if not q:
+        return []
+
+    tag_set = index.get("tag_set_lower") or set()
+    items_sorted = index.get("items_sorted") or []
+
+    # Common delimiter variants
+    candidates = []
+    for variant in (
+        q.replace("_", "-"),
+        q.replace("-", "_"),
+        q.replace(" ", "_"),
+        q.replace(" ", "-"),
+    ):
+        if variant != q and variant in tag_set:
+            candidates.append(variant)
+
+    # Substring search through popularity list (fast enough for a few invalid tags)
+    parts = [p for p in re.split(r"[_\-\s]+", q) if p]
+    for entry in items_sorted:
+        tl = entry.get("tag_lower") or ""
+        if not tl:
+            continue
+        if parts and not all(p in tl for p in parts):
+            continue
+        if q in tl or (parts and all(p in tl for p in parts)):
+            candidates.append(entry.get("tag") or tl)
+        if len(candidates) >= (limit * 4):
+            break
+
+    # Deduplicate while preserving popularity order
+    seen = set()
+    unique = []
+    for c in candidates:
+        cl = str(c).strip().lower()
+        if not cl or cl in seen:
+            continue
+        seen.add(cl)
+        unique.append(c)
+        if len(unique) >= limit:
+            break
+    return unique
+
+
+@routes.get("/cozygen/api/tags/categories")
+async def get_tag_categories(_):
+    index = await _get_danbooru_tags_index()
+    if index.get("_error"):
+        return web.json_response({"error": "danbooru tag reference unavailable"}, status=500)
+    cats = []
+    for key in index.get("category_keys") or []:
+        info = (index.get("categories") or {}).get(key) or {}
+        declared = info.get("declared_count")
+        actual = len(info.get("items") or [])
+        cats.append(
+            {
+                "key": key,
+                "count": int(declared) if isinstance(declared, int) else int(actual),
+                "actual": int(actual),
+            }
+        )
+    return web.json_response({"categories": cats, "total": len(index.get("items") or [])})
+
+
+@routes.get("/cozygen/api/tags/search")
+async def search_tags(request: web.Request):
+    index = await _get_danbooru_tags_index()
+    if index.get("_error"):
+        return web.json_response({"error": "danbooru tag reference unavailable"}, status=500)
+    q = (request.rel_url.query.get("q", "") or "").strip().lower()
+    category = (request.rel_url.query.get("category", "") or "").strip()
+    sort = (request.rel_url.query.get("sort", "count") or "count").strip().lower()
+    try:
+        limit = max(1, min(200, int(request.rel_url.query.get("limit", "80"))))
+    except Exception:
+        limit = 80
+    try:
+        offset = max(0, int(request.rel_url.query.get("offset", "0")))
+    except Exception:
+        offset = 0
+
+    # Select base list
+    base = None
+    if category:
+        base = ((index.get("categories") or {}).get(category) or {}).get("items")
+    if base is None:
+        base = index.get("items_sorted") if sort != "alpha" else index.get("items")
+    base = base or []
+
+    # Filter
+    if q:
+        parts = [p for p in re.split(r"[_\-\s]+", q) if p]
+        filtered = []
+        for entry in base:
+            tl = entry.get("tag_lower") or ""
+            if not tl:
+                continue
+            if q in tl or (parts and all(p in tl for p in parts)):
+                filtered.append(entry)
+        base = filtered
+
+    # Sort
+    if sort == "alpha":
+        base = sorted(base, key=lambda e: e.get("tag_lower") or "")
+    else:
+        # Default: already popularity-sorted for the common case
+        if q:
+            base = sorted(base, key=lambda e: (-int(e.get("count") or 0), e.get("tag_lower") or ""))
+
+    total = len(base)
+    slice_ = base[offset : offset + limit]
+
+    items = [
+        {
+            "tag": e.get("tag") or "",
+            "count": int(e.get("count") or 0),
+            "category": e.get("category") or "",
+        }
+        for e in slice_
+    ]
+    return web.json_response(
+        {
+            "items": items,
+            "total": int(total),
+            "limit": int(limit),
+            "offset": int(offset),
+            "q": q,
+            "category": category or "",
+            "sort": sort,
+        }
+    )
+
+
+@routes.post("/cozygen/api/tags/validate")
+async def validate_tags(request: web.Request):
+    payload = await request.json()
+    tags = payload.get("tags") or []
+    if not isinstance(tags, list):
+        return web.json_response({"error": "tags must be a list"}, status=400)
+
+    index = await _get_danbooru_tags_index()
+    if index.get("_error"):
+        return web.json_response({"error": "danbooru tag reference unavailable"}, status=500)
+    tag_set = index.get("tag_set_lower") or set()
+
+    invalid = []
+    suggestions = {}
+    seen = set()
+    for raw in tags:
+        if not isinstance(raw, str):
+            continue
+        tag = raw.strip()
+        if not tag:
+            continue
+        tl = tag.lower()
+        if tl in seen:
+            continue
+        seen.add(tl)
+        if tl in tag_set:
+            continue
+        invalid.append(tag)
+        suggestions[tag] = _suggest_danbooru_tags(tag, index, limit=8)
+
+    return web.json_response({"invalid": invalid, "suggestions": suggestions})
 
 
 # ---------------- Input browser

@@ -1,5 +1,5 @@
 // js/src/pages/MainPage.jsx
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import BottomBar from '../components/BottomBar';
 import ImageInput from '../components/ImageInput';
 import FieldSpotlight from '../components/FieldSpotlight';
@@ -60,7 +60,7 @@ const PromptPreviewCard = memo(function PromptPreviewCard({
           onClick={() => onOpenComposer(promptFieldName)}
           className="ui-button is-muted is-compact"
         >
-          <span>Compose</span>
+          <span>Open composer</span>
         </button>
       </div>
       <div className="studio-preview-body">
@@ -108,7 +108,7 @@ function MainPage() {
 
   const parameterSectionRef = useRef(null);
   const imageSectionRef = useRef(null);
-  const [collapseAllState] = useState({ key: 0, collapsed: true });
+  const [collapseAllState, setCollapseAllState] = useState({ key: 0, collapsed: true });
   const [lastEditedParam, setLastEditedParam] = useState(() => {
     return loadLastEditedParam();
   });
@@ -237,19 +237,32 @@ function MainPage() {
     return firstString?.[0] || '';
   }, [previewFormData, promptFieldName]);
 
-  const expandedPrompt = useMemo(() => {
+  const previewPromptText = useMemo(() => {
     if (!previewField) return '';
     const promptText = previewFormData?.[previewField] || '';
-    if (!promptText || !aliasLookup) return promptText;
+    return typeof promptText === 'string' ? promptText : String(promptText ?? '');
+  }, [previewField, previewFormData]);
+
+  const deferredPreviewPromptText = useDeferredValue(previewPromptText);
+
+  const expandedPrompt = useMemo(() => {
+    const MAX_PREVIEW_CHARS = 2600;
+    const truncate = (s) => (s && s.length > MAX_PREVIEW_CHARS ? `${s.slice(0, MAX_PREVIEW_CHARS)}…` : s);
+    const text = deferredPreviewPromptText || '';
+
+    if (!text) return '';
+    if (!aliasLookup || !text.includes('$')) return truncate(text);
+
     try {
-      return promptText.replace(/\$([a-z0-9_:-]+)\$/gi, (match, key) => {
+      const expanded = text.replace(/\$([a-z0-9_:-]+)\$/gi, (match, key) => {
         const val = aliasLookup.get(key.toLowerCase());
         return typeof val === 'string' ? val : match;
       });
+      return truncate(expanded);
     } catch {
-      return promptText;
+      return truncate(text);
     }
-  }, [previewFormData, aliasLookup, previewField]);
+  }, [aliasLookup, deferredPreviewPromptText]);
 
   const handleWorkflowSelect = useCallback((name) => {
     if (!name || name === selectedWorkflow) return;
@@ -421,6 +434,43 @@ function MainPage() {
           onWorkflowChange={handleWorkflowSelect}
           workflowData={workflowData}
         />
+
+        {workflowData ? (
+          <div className="controls-toolbar">
+            <div className="controls-toolbar-row">
+              <button
+                type="button"
+                className="ui-button is-muted is-compact"
+                onClick={() => setCollapseAllState((prev) => ({ key: prev.key + 1, collapsed: true }))}
+              >
+                Collapse all
+              </button>
+              <button
+                type="button"
+                className="ui-button is-muted is-compact"
+                onClick={() => setCollapseAllState((prev) => ({ key: prev.key + 1, collapsed: false }))}
+              >
+                Expand all
+              </button>
+            </div>
+            <div className="controls-toolbar-row">
+              <button
+                type="button"
+                className="ui-button is-ghost is-compact"
+                onClick={() => openComposer(promptFieldName)}
+              >
+                Open composer
+              </button>
+              <button
+                type="button"
+                className="ui-button is-ghost is-compact"
+                onClick={() => parameterSectionRef.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' })}
+              >
+                Jump to top
+              </button>
+            </div>
+          </div>
+        ) : null}
 
         {workflowData ? (
           <WorkflowFormLayout

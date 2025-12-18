@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import { formatModelDisplayName, isModelFileLike, splitModelDisplayName } from '../../utils/modelDisplay';
 import { loadDropdownFolder, saveDropdownFolder } from '../../utils/storage';
 
-export default function DropdownInput({
+function DropdownInput({
   workflowName,
   name,
   label,        // DynamicForm renders label
@@ -105,10 +105,7 @@ export default function DropdownInput({
           onChange={(e) => setSelectedFolder(e.target.value)}
           disabled={disabled}
           className={
-            'w-full rounded-lg border border-[#2A2E4A] bg-[#050716] ' +
-            'px-3 py-2 pr-8 text-[13px] sm:text-sm text-[#E5E7FF] ' +
-            'focus:outline-none focus:ring-1 focus:ring-[#3EF0FF80] ' +
-            'appearance-none transition-shadow shadow-[0_0_12px_rgba(5,7,22,0.6)]'
+            'ui-control ui-select is-compact'
           }
           aria-label={`Choose folder for ${label || name}`}
         >
@@ -118,9 +115,6 @@ export default function DropdownInput({
             </option>
           ))}
         </select>
-        <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center">
-          <span className="inline-block h-[6px] w-[10px] border-x-[5px] border-t-[6px] border-x-transparent border-t-[#9CF7FF]" />
-        </div>
       </div>
 
       <div className="relative w-full">
@@ -134,10 +128,7 @@ export default function DropdownInput({
           aria-label={label || name}
           aria-describedby={description ? `${name}-description` : undefined}
           className={
-            'w-full rounded-xl border border-[#2A2E4A] bg-[#050716] ' +
-            'px-3 py-2.5 pr-8 text-[13px] sm:text-sm text-[#E5E7FF] ' +
-            'focus:outline-none focus:ring-1 focus:ring-[#3EF0FF80] ' +
-            'appearance-none transition-shadow shadow-[0_0_18px_rgba(5,7,22,0.7)]'
+            'ui-control ui-select'
           }
         >
           {!hasValueInFiltered && valueStr !== '' && (
@@ -153,10 +144,9 @@ export default function DropdownInput({
           ))}
           {filteredOptions.length === 0 && <option value="">No matches</option>}
         </select>
-        <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center">
-          <span className="inline-block h-[6px] w-[10px] border-x-[5px] border-t-[6px] border-x-transparent border-t-[#9CF7FF]" />
-        </div>
       </div>
     </div>
   );
 }
+
+export default memo(DropdownInput);

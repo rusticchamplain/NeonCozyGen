@@ -21,11 +21,13 @@ export default function BottomBar({
 }) {
   const pct = getPercent(progressValue, progressMax);
 
-  let phaseDotClass = 'bg-[#3D4270]';
-  if (statusPhase === 'queued') phaseDotClass = 'bg-[#FF60D0]';
-  else if (statusPhase === 'running') phaseDotClass = 'bg-[#3EF0FF]';
-  else if (statusPhase === 'finished') phaseDotClass = 'bg-[#5CFF9A]';
-  else if (statusPhase === 'error') phaseDotClass = 'bg-[#FF4F88]';
+  const phaseDotColor = (() => {
+    if (statusPhase === 'queued') return 'rgba(255, 143, 112, 0.95)';
+    if (statusPhase === 'running') return 'rgba(68, 225, 197, 0.95)';
+    if (statusPhase === 'finished') return 'rgba(92, 255, 154, 0.95)';
+    if (statusPhase === 'error') return 'rgba(255, 143, 112, 0.95)';
+    return 'rgba(159, 178, 215, 0.55)';
+  })();
 
   const phaseLabelMap = {
     idle: 'Idle',
@@ -36,8 +38,6 @@ export default function BottomBar({
   };
   const phaseLabel = phaseLabelMap[statusPhase] || 'Status';
 
-  const dotExtraClass =
-    statusPhase === 'running' ? 'animate-pulse' : '';
   const isDisabled = busy || primaryDisabled;
 
   return (
@@ -47,38 +47,27 @@ export default function BottomBar({
         type="button"
         onClick={onPrimary}
         disabled={isDisabled}
-        className={`w-full rounded-full px-6 py-3 text-sm sm:text-base font-semibold tracking-[0.25em] uppercase
-          bg-[linear-gradient(90deg,#FF60D0,#3EF0FF)]
-          text-[#050716]
-          shadow-[0_0_35px_rgba(255,96,208,0.45)]
-          transition-transform
-          disabled:opacity-60 disabled:cursor-not-allowed
-          active:translate-y-[1px]`}
+        className="dock-primary-btn"
       >
         {busy ? 'Rendering…' : primaryLabel}
       </button>
 
       {/* status row */}
-      <div className="mt-2 flex items-center justify-between text-[10px] sm:text-[11px] text-[#9DA3FFCC]">
-        <span className="flex items-center gap-2">
-          <span
-            className={`h-2 w-2 rounded-full shadow-[0_0_8px_rgba(255,255,255,0.35)] ${phaseDotClass} ${dotExtraClass}`}
-          />
-          <span className="tracking-[0.25em] uppercase">{phaseLabel}</span>
+      <div className="dock-status-row">
+        <span className="dock-status-left">
+          <span className="dock-status-dot" style={{ background: phaseDotColor }} />
+          <span className="dock-status-label">{phaseLabel}</span>
         </span>
-        <span className="flex items-center gap-2">
-          {pct != null && busy && (
-            <span className="inline-flex items-center gap-1">
-              <span className="h-1.5 w-10 rounded-full bg-[#1B1F3A] overflow-hidden">
-                <span
-                  className="block h-full bg-[#3EF0FF]"
-                  style={{ width: `${pct}%` }}
-                />
+        <span className="dock-status-right">
+          {pct != null && busy ? (
+            <span className="dock-progress">
+              <span className="dock-progress-bar" aria-hidden="true">
+                <span className="dock-progress-fill" style={{ width: `${pct}%` }} />
               </span>
               <span>{pct}%</span>
             </span>
-          )}
-          <span className="truncate max-w-[9rem] text-right">
+          ) : null}
+          <span className="dock-status-text">
             {statusText || (busy ? 'Working…' : 'Idle')}
           </span>
         </span>

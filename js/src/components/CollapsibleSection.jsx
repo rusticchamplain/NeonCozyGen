@@ -1,4 +1,5 @@
 import { forwardRef } from 'react';
+import { IconChevronRight } from './Icons';
 
 const CollapsibleSection = forwardRef(function CollapsibleSection(
   {
@@ -48,7 +49,7 @@ const CollapsibleSection = forwardRef(function CollapsibleSection(
         {metaContent}
         {isBare ? (
           <span className="collapsible-section-chevron" aria-hidden="true">
-            ›
+            <IconChevronRight size={16} />
           </span>
         ) : null}
       </summary>

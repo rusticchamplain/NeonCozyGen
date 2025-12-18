@@ -1,5 +1,5 @@
 // js/src/components/inputs/LoraPairInput.jsx
-import { useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import DropdownInput from './DropdownInput';
 import NumberInput from './NumberInput';
 
@@ -56,7 +56,7 @@ const toDomId = (...parts) => {
   return normalized.join('-') || 'field';
 };
 
-export default function LoraPairInput({
+function LoraPairInput({
   name,
   label,
   description,
@@ -368,3 +368,33 @@ export default function LoraPairInput({
     </div>
   );
 }
+
+function areEqual(prev, next) {
+  // Ignore formData identity; compare only the bits we actually use.
+  if (prev.disabled !== next.disabled) return false;
+  if (prev.name !== next.name) return false;
+  if (prev.label !== next.label) return false;
+  if (prev.description !== next.description) return false;
+  if (prev.highParam !== next.highParam) return false;
+  if (prev.lowParam !== next.lowParam) return false;
+  if (prev.highStrengthParam !== next.highStrengthParam) return false;
+  if (prev.lowStrengthParam !== next.lowStrengthParam) return false;
+  if (prev.strengthValue !== next.strengthValue) return false;
+  if (prev.highStrengthValue !== next.highStrengthValue) return false;
+  if (prev.lowStrengthValue !== next.lowStrengthValue) return false;
+  if (prev.highChoices !== next.highChoices) return false;
+  if (prev.lowChoices !== next.lowChoices) return false;
+  if (prev.onChangeParam !== next.onChangeParam) return false;
+  if (prev.onChangeStrength !== next.onChangeStrength) return false;
+  if (prev.onChangeHighStrength !== next.onChangeHighStrength) return false;
+  if (prev.onChangeLowStrength !== next.onChangeLowStrength) return false;
+
+  const prevForm = prev.formData || {};
+  const nextForm = next.formData || {};
+  if (prevForm[prev.highParam] !== nextForm[next.highParam]) return false;
+  if (prevForm[prev.lowParam] !== nextForm[next.lowParam]) return false;
+
+  return true;
+}
+
+export default memo(LoraPairInput, areEqual);

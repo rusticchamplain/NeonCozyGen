@@ -49,16 +49,26 @@ function getLocalStorage() {
 /**
  * Debounced form state writes to avoid blocking keystrokes.
  */
-const WRITE_DELAY_MS = 260;
+const WRITE_DELAY_MS = 750;
 const pendingFormWrites = new Map();
 const pendingTimers = new Map();
+const pendingIdle = new Map();
 const pendingKeyWrites = new Map();
 const pendingKeyTimers = new Map();
+const pendingKeyIdle = new Map();
 
 function flushPending(key) {
   if (pendingTimers.has(key)) {
     clearTimeout(pendingTimers.get(key));
     pendingTimers.delete(key);
+  }
+  if (pendingIdle.has(key)) {
+    try {
+      window.cancelIdleCallback?.(pendingIdle.get(key));
+    } catch {
+      // ignore
+    }
+    pendingIdle.delete(key);
   }
   if (pendingFormWrites.has(key)) {
     writeJson(getSessionStorage(), key, pendingFormWrites.get(key));
@@ -67,12 +77,43 @@ function flushPending(key) {
 }
 
 function scheduleWrite(key) {
-  if (pendingTimers.has(key)) return;
-  const timer = setTimeout(() => {
+  if (pendingTimers.has(key)) {
+    clearTimeout(pendingTimers.get(key));
     pendingTimers.delete(key);
+  }
+  if (pendingIdle.has(key)) {
+    try {
+      window.cancelIdleCallback?.(pendingIdle.get(key));
+    } catch {
+      // ignore
+    }
+    pendingIdle.delete(key);
+  }
+
+  const commit = () => {
     if (!pendingFormWrites.has(key)) return;
     writeJson(getSessionStorage(), key, pendingFormWrites.get(key));
     pendingFormWrites.delete(key);
+  };
+
+  const timer = setTimeout(() => {
+    pendingTimers.delete(key);
+    try {
+      if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
+        const id = window.requestIdleCallback(
+          () => {
+            pendingIdle.delete(key);
+            commit();
+          },
+          { timeout: 2500 }
+        );
+        pendingIdle.set(key, id);
+        return;
+      }
+    } catch {
+      // ignore; fall back to sync commit
+    }
+    commit();
   }, WRITE_DELAY_MS);
   pendingTimers.set(key, timer);
 }
@@ -80,6 +121,14 @@ function scheduleWrite(key) {
 function flushAllPending() {
   Array.from(pendingTimers.values()).forEach((t) => clearTimeout(t));
   pendingTimers.clear();
+  Array.from(pendingIdle.values()).forEach((id) => {
+    try {
+      window.cancelIdleCallback?.(id);
+    } catch {
+      // ignore
+    }
+  });
+  pendingIdle.clear();
   Array.from(pendingFormWrites.entries()).forEach(([key, payload]) => {
     writeJson(getSessionStorage(), key, payload);
   });
@@ -87,6 +136,14 @@ function flushAllPending() {
 
   Array.from(pendingKeyTimers.values()).forEach((t) => clearTimeout(t));
   pendingKeyTimers.clear();
+  Array.from(pendingKeyIdle.values()).forEach((id) => {
+    try {
+      window.cancelIdleCallback?.(id);
+    } catch {
+      // ignore
+    }
+  });
+  pendingKeyIdle.clear();
   Array.from(pendingKeyWrites.entries()).forEach(([key, value]) => {
     try {
       const storage = getSessionStorage();
@@ -153,9 +210,20 @@ export function flushFormState(workflowName) {
 function queueKeyWrite(key, value, delay = WRITE_DELAY_MS) {
   if (!key) return;
   pendingKeyWrites.set(key, value);
-  if (pendingKeyTimers.has(key)) return;
-  const timer = setTimeout(() => {
+  if (pendingKeyTimers.has(key)) {
+    clearTimeout(pendingKeyTimers.get(key));
     pendingKeyTimers.delete(key);
+  }
+  if (pendingKeyIdle.has(key)) {
+    try {
+      window.cancelIdleCallback?.(pendingKeyIdle.get(key));
+    } catch {
+      // ignore
+    }
+    pendingKeyIdle.delete(key);
+  }
+
+  const commit = () => {
     const payload = pendingKeyWrites.get(key);
     pendingKeyWrites.delete(key);
     try {
@@ -164,6 +232,26 @@ function queueKeyWrite(key, value, delay = WRITE_DELAY_MS) {
     } catch {
       // ignore
     }
+  };
+
+  const timer = setTimeout(() => {
+    pendingKeyTimers.delete(key);
+    try {
+      if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
+        const id = window.requestIdleCallback(
+          () => {
+            pendingKeyIdle.delete(key);
+            commit();
+          },
+          { timeout: 2000 }
+        );
+        pendingKeyIdle.set(key, id);
+        return;
+      }
+    } catch {
+      // ignore; fall back to sync commit
+    }
+    commit();
   }, delay);
   pendingKeyTimers.set(key, timer);
 }
@@ -178,6 +266,14 @@ export function saveLastEditedParam(name, options = {}) {
     if (pendingKeyTimers.has(key)) {
       clearTimeout(pendingKeyTimers.get(key));
       pendingKeyTimers.delete(key);
+    }
+    if (pendingKeyIdle.has(key)) {
+      try {
+        window.cancelIdleCallback?.(pendingKeyIdle.get(key));
+      } catch {
+        // ignore
+      }
+      pendingKeyIdle.delete(key);
     }
     pendingKeyWrites.delete(key);
     try {

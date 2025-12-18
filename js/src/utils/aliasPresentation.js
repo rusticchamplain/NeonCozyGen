@@ -19,6 +19,8 @@ function titleWord(word) {
     gif: 'GIF',
     webp: 'WebP',
     api: 'API',
+    nsfw: 'NSFW',
+    sfw: 'SFW',
     sfx: 'SFX',
     fx: 'FX',
     lora: 'LoRA',
@@ -125,6 +127,22 @@ function deriveOutfitSubcategory(name = '') {
   return prefix || 'everyday';
 }
 
+function deriveLightingSubcategory(name = '') {
+  const raw = String(name || '').trim().toLowerCase();
+  if (!raw) return '';
+  const prefix = raw.split('_')[0] || '';
+
+  // Group lighting into a small set of predictable buckets.
+  if (['fire', 'candlelight', 'embers'].includes(prefix)) return 'fire';
+  if (['moonlight'].includes(prefix)) return 'night';
+  if (['neon'].includes(prefix)) return 'neon';
+  if (['studio', 'stage', 'sidelighting', 'dim'].includes(prefix)) return 'studio';
+  if (['golden', 'sunbeam', 'dappled'].includes(prefix)) return 'natural';
+  if (['lens', 'light'].includes(prefix)) return 'effects';
+
+  return prefix || 'other';
+}
+
 export function deriveAliasSubcategory(name = '', category = '') {
   const trimmed = String(name || '').trim();
   const cat = String(category || '').trim().toLowerCase();
@@ -136,6 +154,10 @@ export function deriveAliasSubcategory(name = '', category = '') {
 
   if (cat === 'pose') {
     return derivePoseSubcategory(trimmed) || 'everyday';
+  }
+
+  if (cat === 'lighting') {
+    return deriveLightingSubcategory(trimmed) || 'effects';
   }
 
   const idx = trimmed.indexOf('_');
@@ -217,11 +239,14 @@ export function formatCategoryLabel(category = '') {
   if (!raw) return '';
   if (raw === 'All') return 'All';
   const mapping = {
+    action: 'Actions',
     camera: 'Camera',
     body: 'Body',
     char: 'Characters',
+    mood: 'Mood',
     outfit: 'Outfits',
     pose: 'Poses',
+    prop: 'Props',
     scene: 'Scenes',
     weather: 'Weather',
     style: 'Style',

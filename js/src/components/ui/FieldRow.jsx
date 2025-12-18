@@ -1,4 +1,7 @@
-export default function FieldRow({
+import { memo } from 'react';
+import { IconChevronRight } from '../Icons';
+
+function FieldRow({
   id,
   label,
   description,
@@ -12,6 +15,14 @@ export default function FieldRow({
   const isCollapsible = typeof onToggle === 'function';
   const descriptionId = id ? `${id}-description` : undefined;
   const panelId = id ? `${id}-panel` : undefined;
+  const normalizedLabel =
+    typeof label === 'string'
+      ? label.trim().replace(/\s+/gu, ' ').replace(/:\s*$/u, '')
+      : label;
+  const normalizedDescription =
+    typeof description === 'string'
+      ? description.trim().replace(/\s+/gu, ' ')
+      : description;
   const previewTitle =
     typeof preview === 'string' || typeof preview === 'number'
       ? String(preview)
@@ -24,6 +35,7 @@ export default function FieldRow({
         onClick: onToggle,
         'aria-expanded': expanded,
         'aria-controls': panelId,
+        'aria-describedby': normalizedDescription ? descriptionId : undefined,
       }
     : {};
 
@@ -40,10 +52,10 @@ export default function FieldRow({
           .join(' ')}
       >
         <div className="field-row-main">
-          <div className="field-row-label">{label}</div>
-          {description ? (
+          <div className="field-row-label">{normalizedLabel}</div>
+          {normalizedDescription ? (
             <div id={descriptionId} className="field-row-description">
-              {description}
+              {normalizedDescription}
             </div>
           ) : null}
         </div>
@@ -53,7 +65,7 @@ export default function FieldRow({
           {preview ? <div className="field-row-preview" title={previewTitle}>{preview}</div> : null}
           {isCollapsible ? (
             <div className="field-row-chevron" aria-hidden="true">
-              ›
+              <IconChevronRight size={16} />
             </div>
           ) : null}
         </div>
@@ -67,3 +79,5 @@ export default function FieldRow({
     </div>
   );
 }
+
+export default memo(FieldRow);

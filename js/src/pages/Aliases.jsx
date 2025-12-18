@@ -2,7 +2,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import usePromptAliases from '../hooks/usePromptAliases';
 import { normalizeAliasMap } from '../utils/promptAliases';
+import { validateDanbooruTags } from '../api';
 import BottomSheet from '../components/ui/BottomSheet';
+import TagLibrarySheet from '../components/TagLibrarySheet';
 import { IconTag, IconRefresh } from '../components/Icons';
 import {
   deriveAliasSubcategory,
@@ -15,6 +17,49 @@ const DELIM = '::';
 
 function makeRowId() {
   return `alias-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
+function splitTags(text) {
+  return String(text || '')
+    .split(',')
+    .map((t) => t.trim())
+    .filter(Boolean);
+}
+
+function joinTags(tags) {
+  return (tags || []).map((t) => String(t || '').trim()).filter(Boolean).join(', ');
+}
+
+function addTagToText(text, tag) {
+  const nextTag = String(tag || '').trim();
+  if (!nextTag) return String(text || '');
+  const existing = splitTags(text);
+  const seen = new Set(existing.map((t) => t.toLowerCase()));
+  if (!seen.has(nextTag.toLowerCase())) existing.push(nextTag);
+  return joinTags(existing);
+}
+
+function removeTagFromText(text, tag) {
+  const target = String(tag || '').trim().toLowerCase();
+  if (!target) return String(text || '');
+  const next = splitTags(text).filter((t) => t.toLowerCase() !== target);
+  return joinTags(next);
+}
+
+function replaceTagInText(text, fromTag, toTag) {
+  const from = String(fromTag || '').trim().toLowerCase();
+  const to = String(toTag || '').trim();
+  if (!from || !to) return String(text || '');
+  const tags = splitTags(text).map((t) => (t.toLowerCase() === from ? to : t));
+  const seen = new Set();
+  const deduped = [];
+  tags.forEach((t) => {
+    const key = String(t || '').trim().toLowerCase();
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    deduped.push(t);
+  });
+  return joinTags(deduped);
 }
 
 function rowsFromAliases(aliases, categories = {}) {
@@ -85,6 +130,12 @@ export default function Aliases() {
   const [selectedId, setSelectedId] = useState('');
   const [editorOpen, setEditorOpen] = useState(false);
   const [categoriesOpen, setCategoriesOpen] = useState(false);
+  const [tagLibraryOpen, setTagLibraryOpen] = useState(false);
+  const [tagLibraryQuery, setTagLibraryQuery] = useState('');
+  const [tagLibraryTargetId, setTagLibraryTargetId] = useState('');
+  const [tagCheck, setTagCheck] = useState({ loading: false, invalid: [], suggestions: {} });
+  const [invalidReportOpen, setInvalidReportOpen] = useState(false);
+  const [invalidReport, setInvalidReport] = useState(null);
   const [status, setStatus] = useState('');
   const nameInputRef = useRef(null);
   const [dirty, setDirty] = useState(false);
@@ -153,6 +204,58 @@ export default function Aliases() {
   const handleSave = async () => {
     setStatus('');
     try {
+      // Preflight: block saving if any alias contains tags not present in danbooru_tags.md
+      const tagToRows = new Map(); // lower -> { tag, rows: [rowId] }
+      rows.forEach((row) => {
+        const tags = splitTags(row?.text || '');
+        tags.forEach((t) => {
+          const key = String(t).toLowerCase();
+          if (!key) return;
+          if (!tagToRows.has(key)) tagToRows.set(key, { tag: t, rows: [] });
+          tagToRows.get(key).rows.push(row.id);
+        });
+      });
+
+      if (tagToRows.size) {
+        const uniqueTags = Array.from(tagToRows.values()).map((v) => v.tag);
+        try {
+          const res = await validateDanbooruTags(uniqueTags);
+          const invalid = Array.isArray(res?.invalid) ? res.invalid : [];
+          const invalidLower = new Set(invalid.map((t) => String(t).toLowerCase()));
+          if (invalidLower.size) {
+            const rowsWithInvalid = rows
+              .map((row) => {
+                const tags = splitTags(row?.text || '');
+                const bad = tags.filter((t) => invalidLower.has(String(t).toLowerCase()));
+                if (!bad.length) return null;
+                const token = row.category ? `${row.category}:${row.name}` : row.name;
+                return {
+                  id: row.id,
+                  token,
+                  friendlyName: formatAliasFriendlyName({ name: row.name }) || row.name || 'Untitled',
+                  category: row.category || '',
+                  invalid: bad,
+                };
+              })
+              .filter(Boolean);
+
+            setInvalidReport({
+              invalid,
+              invalidLower: Array.from(invalidLower),
+              rows: rowsWithInvalid,
+              suggestions: res?.suggestions || {},
+            });
+            setInvalidReportOpen(true);
+            setStatus('Fix invalid tags before saving.');
+            return;
+          }
+        } catch (e) {
+          console.error('Unable to validate tags', e);
+          setStatus('Unable to validate tags right now.');
+          return;
+        }
+      }
+
       const nextCats = rowsToCategories(rows);
       await persistAliases({ items: draftAliases, categories: nextCats, categoryList });
       setDirty(false);
@@ -225,6 +328,58 @@ export default function Aliases() {
     }
   }, [editorOpen, selectedId]);
 
+  const selectedRowTags = useMemo(() => splitTags(selectedRow?.text || ''), [selectedRow?.text]);
+  const selectedRowInvalidLower = useMemo(() => {
+    const invalid = Array.isArray(tagCheck?.invalid) ? tagCheck.invalid : [];
+    return new Set(invalid.map((t) => String(t).toLowerCase()));
+  }, [tagCheck]);
+
+  // Validate tags in the editor (debounced)
+  useEffect(() => {
+    if (!editorOpen || !selectedRow) return undefined;
+    const tags = selectedRowTags;
+    const unique = [];
+    const seen = new Set();
+    tags.forEach((t) => {
+      const key = String(t).toLowerCase();
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      unique.push(t);
+    });
+    if (!unique.length) {
+      setTagCheck({ loading: false, invalid: [], suggestions: {} });
+      return undefined;
+    }
+
+    let cancelled = false;
+    const handle = window.setTimeout(async () => {
+      setTagCheck((prev) => ({ ...prev, loading: true }));
+      try {
+        const res = await validateDanbooruTags(unique);
+        if (cancelled) return;
+        setTagCheck({
+          loading: false,
+          invalid: Array.isArray(res?.invalid) ? res.invalid : [],
+          suggestions: res?.suggestions || {},
+        });
+      } catch (e) {
+        console.error('Failed to validate tags', e);
+        if (!cancelled) setTagCheck({ loading: false, invalid: [], suggestions: {} });
+      }
+    }, 260);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(handle);
+    };
+  }, [editorOpen, selectedRow, selectedRowTags]);
+
+  const openTagLibrary = ({ query: q = '', targetId = '' } = {}) => {
+    setTagLibraryQuery(String(q || ''));
+    setTagLibraryTargetId(String(targetId || ''));
+    setTagLibraryOpen(true);
+  };
+
   const addCategory = async () => {
     const name = newCategoryName.trim();
     if (!name) {
@@ -295,6 +450,17 @@ export default function Aliases() {
                 <button
                   type="button"
                   className="ui-button is-tiny is-ghost"
+                  onClick={() => openTagLibrary({ query: query || '', targetId: '' })}
+                  title="Browse danbooru tags"
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <IconTag size={14} />
+                    Tags
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="ui-button is-tiny is-ghost"
                   onClick={refreshAliases}
                   disabled={loading}
                   title="Refresh"
@@ -319,12 +485,12 @@ export default function Aliases() {
                 type="search"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                className="composer-search"
+                className="composer-search ui-control ui-input"
                 placeholder="Search aliases"
                 aria-label="Search aliases"
               />
               <select
-                className="composer-subcategory-select"
+                className="composer-subcategory-select ui-control ui-select is-compact"
                 value={categoryFilter}
                 onChange={(e) => setCategoryFilter(e.target.value)}
                 aria-label="Filter by category"
@@ -338,7 +504,7 @@ export default function Aliases() {
                 ))}
               </select>
               <select
-                className="composer-subcategory-select"
+                className="composer-subcategory-select ui-control ui-select is-compact"
                 value={subcategoryFilter}
                 onChange={(e) => setSubcategoryFilter(e.target.value)}
                 aria-label="Filter by subcategory"
@@ -375,7 +541,7 @@ export default function Aliases() {
 
         {rows.length === 0 && !loading ? (
           <section className="ui-panel text-center py-16">
-            <p className="text-base text-slate-200/80">
+            <p className="text-base text-[rgba(159,178,215,0.8)]">
               No aliases yet. Add your first one.
             </p>
           </section>
@@ -402,7 +568,7 @@ export default function Aliases() {
                     <div className="composer-alias-name">
                       {formatAliasFriendlyName({ name: row.name }) || row.name || 'Untitled'}
                     </div>
-                    {cat ? <span className="composer-alias-category">{cat}</span> : null}
+                    {cat ? <span className="composer-alias-category">{formatCategoryLabel(cat)}</span> : null}
                   </div>
                   <div className="composer-alias-token">${aliasToken || 'alias'}$</div>
                   <div className="composer-alias-text">{short || '—'}</div>
@@ -470,7 +636,7 @@ export default function Aliases() {
                   if (idx !== -1) updateRow(idx, 'name', e.target.value);
                 }}
                 placeholder="e.g. cherry_fruit"
-                className="sheet-input"
+                className="sheet-input ui-control ui-input"
               />
             </div>
 
@@ -482,7 +648,7 @@ export default function Aliases() {
                   const idx = rows.findIndex((r) => r.id === selectedRow.id);
                   if (idx !== -1) updateRow(idx, 'category', e.target.value);
                 }}
-                className="sheet-select"
+                className="sheet-select ui-control ui-select"
               >
                 <option value="">Uncategorized</option>
                 {availableCategories.map((cat) => (
@@ -509,9 +675,120 @@ export default function Aliases() {
                   if (idx !== -1) updateRow(idx, 'text', e.target.value);
                 }}
                 placeholder="Prompt text for this alias"
-                className="sheet-textarea is-compact"
+                className="sheet-textarea ui-control ui-textarea is-compact"
                 rows={6}
               />
+              <div className="tag-editor-actions">
+                <button
+                  type="button"
+                  className="ui-button is-tiny is-ghost"
+                  onClick={() => openTagLibrary({ query: '', targetId: selectedRow.id })}
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <IconTag size={14} />
+                    Browse tags
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="ui-button is-tiny is-muted"
+                  onClick={() => {
+                    setTagCheck((prev) => ({ ...prev, loading: true }));
+                    const tags = splitTags(selectedRow.text || '');
+                    validateDanbooruTags(tags)
+                      .then((res) => {
+                        setTagCheck({
+                          loading: false,
+                          invalid: Array.isArray(res?.invalid) ? res.invalid : [],
+                          suggestions: res?.suggestions || {},
+                        });
+                      })
+                      .catch(() => setTagCheck({ loading: false, invalid: [], suggestions: {} }));
+                  }}
+                  disabled={tagCheck.loading}
+                  title="Validate against danbooru_tags.md"
+                >
+                  {tagCheck.loading ? 'Validating…' : 'Validate'}
+                </button>
+              </div>
+
+              {selectedRowTags.length ? (
+                <div className="tag-chip-list" aria-label="Alias tags">
+                  {selectedRowTags.map((t) => {
+                    const isInvalid = selectedRowInvalidLower.has(String(t).toLowerCase());
+                    return (
+                      <span key={t} className={`tag-chip ${isInvalid ? 'is-invalid' : ''}`}>
+                        <code className="tag-chip-code">{t}</code>
+                        <button
+                          type="button"
+                          className="tag-chip-remove"
+                          onClick={() => {
+                            const idx = rows.findIndex((r) => r.id === selectedRow.id);
+                            if (idx !== -1) {
+                              updateRow(idx, 'text', removeTagFromText(selectedRow.text || '', t));
+                            }
+                          }}
+                          aria-label={`Remove ${t}`}
+                          title="Remove"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="sheet-hint">Tip: Use the Tag library to add validated tags quickly.</div>
+              )}
+
+              {!tagCheck.loading && Array.isArray(tagCheck.invalid) && tagCheck.invalid.length ? (
+                <div className="tag-invalid-panel" role="alert">
+                  <div className="tag-invalid-title">
+                    Invalid tags ({tagCheck.invalid.length})
+                  </div>
+                  <div className="tag-invalid-body">
+                    {tagCheck.invalid.map((bad) => {
+                      const sugg = tagCheck?.suggestions?.[bad] || [];
+                      return (
+                        <div key={bad} className="tag-invalid-row">
+                          <div className="tag-invalid-tag">
+                            <code>{bad}</code>
+                            <button
+                              type="button"
+                              className="ui-button is-tiny is-ghost"
+                              onClick={() => openTagLibrary({ query: bad, targetId: selectedRow.id })}
+                            >
+                              Find
+                            </button>
+                          </div>
+                          {Array.isArray(sugg) && sugg.length ? (
+                            <div className="tag-invalid-suggestions">
+                              {sugg.slice(0, 6).map((s) => (
+                                <button
+                                  key={`${bad}-${s}`}
+                                  type="button"
+                                  className="tag-suggestion"
+                                  onClick={() => {
+                                    const idx = rows.findIndex((r) => r.id === selectedRow.id);
+                                    if (idx !== -1) {
+                                      updateRow(idx, 'text', replaceTagInText(selectedRow.text || '', bad, s));
+                                    }
+                                  }}
+                                  title={`Replace ${bad} with ${s}`}
+                                >
+                                  {s}
+                                </button>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="sheet-hint">No suggestions found for this tag.</div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             <div className="sheet-section">
@@ -560,7 +837,7 @@ export default function Aliases() {
                 value={newCategoryName}
                 onChange={(e) => setNewCategoryName(e.target.value)}
                 placeholder="e.g. styles"
-                className="sheet-input"
+                className="sheet-input ui-control ui-input"
               />
               <button
                 type="button"
@@ -578,7 +855,7 @@ export default function Aliases() {
               <div className="sheet-hint">No categories yet.</div>
             ) : (
               <select
-                className="sheet-select"
+                className="sheet-select ui-control ui-select"
                 defaultValue=""
                 onChange={(e) => {
                   const next = e.target.value;
@@ -596,6 +873,110 @@ export default function Aliases() {
               </select>
             )}
           </div>
+        </div>
+      </BottomSheet>
+
+      <TagLibrarySheet
+        open={tagLibraryOpen}
+        onClose={() => {
+          setTagLibraryOpen(false);
+          setTagLibraryQuery('');
+          setTagLibraryTargetId('');
+        }}
+        initialQuery={tagLibraryQuery}
+        title={tagLibraryTargetId ? 'Tag library — add to alias' : 'Tag library'}
+        onSelectTag={tagLibraryTargetId
+          ? (tag) => {
+              const idx = rows.findIndex((r) => r.id === tagLibraryTargetId);
+              if (idx === -1) return;
+              updateRow(idx, 'text', addTagToText(rows[idx]?.text || '', tag));
+            }
+          : null}
+      />
+
+      <BottomSheet
+        open={invalidReportOpen}
+        onClose={() => setInvalidReportOpen(false)}
+        title="Fix invalid tags"
+        variant="fullscreen"
+        footer={(
+          <div className="flex gap-2">
+            <button
+              type="button"
+              className="ui-button is-muted w-full"
+              onClick={() => setInvalidReportOpen(false)}
+            >
+              Close
+            </button>
+            <button
+              type="button"
+              className="ui-button is-primary w-full"
+              onClick={() => {
+                const invalidLower = new Set((invalidReport?.invalidLower || []).map((t) => String(t).toLowerCase()));
+                if (!invalidLower.size) {
+                  setInvalidReportOpen(false);
+                  return;
+                }
+                setRows((prev) =>
+                  prev.map((row) => {
+                    const tags = splitTags(row?.text || '');
+                    const next = tags.filter((t) => !invalidLower.has(String(t).toLowerCase()));
+                    const nextText = joinTags(next);
+                    return nextText === (row?.text || '') ? row : { ...row, text: nextText };
+                  })
+                );
+                setDirty(true);
+                setInvalidReportOpen(false);
+                setStatus('Removed invalid tags. Review and save again.');
+              }}
+            >
+              Remove invalid tags
+            </button>
+          </div>
+        )}
+      >
+        <div className="sheet-stack">
+          <div className="sheet-section">
+            <div className="sheet-hint">
+              These aliases contain tags not found in <code className="font-mono">danbooru_tags.md</code>. Fix them before saving.
+            </div>
+          </div>
+
+          {invalidReport?.rows?.length ? (
+            <div className="sheet-section">
+              <div className="sheet-label">Aliases with issues</div>
+              <div className="composer-alias-list" role="list">
+                {invalidReport.rows.map((r) => (
+                  <button
+                    key={r.id}
+                    type="button"
+                    role="listitem"
+                    className="composer-alias-item"
+                    onClick={() => {
+                      setSelectedId(r.id);
+                      setEditorOpen(true);
+                      setInvalidReportOpen(false);
+                    }}
+                  >
+                    <div className="composer-alias-header">
+                      <div className="composer-alias-name">{r.friendlyName}</div>
+                      {r.category ? (
+                        <span className="composer-alias-category">{formatCategoryLabel(r.category)}</span>
+                      ) : null}
+                    </div>
+                    <div className="composer-alias-token">${r.token}$</div>
+                    <div className="tag-invalid-inline">
+                      {r.invalid.map((t) => (
+                        <span key={`${r.id}-${t}`} className="tag-chip is-invalid">
+                          <code className="tag-chip-code">{t}</code>
+                        </span>
+                      ))}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </div>
       </BottomSheet>
     </>

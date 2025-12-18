@@ -1,8 +1,10 @@
 // js/src/components/PromptComposer.jsx
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import BottomSheet from './ui/BottomSheet';
+import TokenStrengthSheet from './ui/TokenStrengthSheet';
 import { IconGrip, IconX } from './Icons';
 import { formatCategoryLabel, formatSubcategoryLabel, presentAliasEntry } from '../utils/aliasPresentation';
+import { formatTokenWeight, getTokenWeightRange, setTokenWeight } from '../utils/tokenWeights';
 
 export default function PromptComposer({
   open,
@@ -15,7 +17,6 @@ export default function PromptComposer({
   fieldLabel = 'Prompt',
 }) {
   const textRef = useRef(null);
-  const scrollRestoreRef = useRef(null);
   const searchInputRef = useRef(null);
   const sentinelRef = useRef(null);
   const [localValue, setLocalValue] = useState(value);
@@ -30,11 +31,22 @@ export default function PromptComposer({
   const [dropIndex, setDropIndex] = useState(null);
   const dragNodeRef = useRef(null);
   const touchStartRef = useRef(null);
+  const [strengthOpen, setStrengthOpen] = useState(false);
+  const [strengthToken, setStrengthToken] = useState(null);
 
   // Sync local value with prop when modal opens
   useEffect(() => {
     if (open) {
       setLocalValue(value);
+      setActiveTab('compose');
+      setPickerSearch('');
+      setPickerCategory('All');
+      setPickerSubcategory('All');
+      setVisibleCount(30);
+      setDragIndex(null);
+      setDropIndex(null);
+      setStrengthOpen(false);
+      setStrengthToken(null);
     }
   }, [open, value]);
 
@@ -46,6 +58,15 @@ export default function PromptComposer({
       })),
     [aliasCatalog]
   );
+
+  const aliasByToken = useMemo(() => {
+    const map = new Map();
+    aliasEntries.forEach((entry) => {
+      if (!entry?.token) return;
+      map.set(String(entry.token).toLowerCase(), entry);
+    });
+    return map;
+  }, [aliasEntries]);
 
   const categories = useMemo(() => {
     const set = new Set(['All']);
@@ -64,6 +85,16 @@ export default function PromptComposer({
     });
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [aliasEntries, pickerCategory]);
+
+  const categoryOptions = useMemo(
+    () => ['All', ...categories.filter((c) => c !== 'All')],
+    [categories]
+  );
+
+  const subcategoryOptions = useMemo(
+    () => ['All', ...subcategories.filter((c) => c !== 'All')],
+    [subcategories]
+  );
 
   const filteredAliases = useMemo(() => {
     const term = pickerSearch.trim().toLowerCase();
@@ -122,6 +153,7 @@ export default function PromptComposer({
 
   // Parse tokens from current text
   const tokens = useMemo(() => {
+    if (activeTab !== 'compose') return [];
     if (typeof localValue !== 'string') return [];
     const found = [];
     const re = /\$([a-z0-9_:-]+)\$/gi;
@@ -130,50 +162,30 @@ export default function PromptComposer({
       found.push({ token: match[1], index: match.index, length: match[0].length });
     }
     return found;
-  }, [localValue]);
+  }, [activeTab, localValue]);
 
   // Expanded preview
+  const deferredPreviewValue = useDeferredValue(localValue);
   const expandedPrompt = useMemo(() => {
-    if (!localValue || !aliasLookup) return localValue;
+    const MAX_PREVIEW_CHARS = 2600;
+    const truncate = (s) =>
+      s && s.length > MAX_PREVIEW_CHARS ? `${s.slice(0, MAX_PREVIEW_CHARS)}…` : s;
+    if (activeTab !== 'compose') return '';
+    const text = deferredPreviewValue || '';
+    if (!text) return '';
+    if (!aliasLookup || !text.includes('$')) return truncate(text);
     try {
-      return localValue.replace(/\$([a-z0-9_:-]+)\$/gi, (match, key) => {
+      const expanded = text.replace(/\$([a-z0-9_:-]+)\$/gi, (match, key) => {
         const val = aliasLookup.get(key.toLowerCase());
         return typeof val === 'string' ? val : match;
       });
+      return truncate(expanded);
     } catch {
-      return localValue;
+      return truncate(text);
     }
-  }, [localValue, aliasLookup]);
+  }, [activeTab, deferredPreviewValue, aliasLookup]);
 
-  // Lock body scroll when open
-  useEffect(() => {
-    const body = document.body;
-    if (open && body) {
-      const y = window.scrollY || window.pageYOffset;
-      scrollRestoreRef.current = y;
-      body.style.position = 'fixed';
-      body.style.top = `-${y}px`;
-      body.style.left = '0';
-      body.style.right = '0';
-      body.style.width = '100%';
-    } else if (!open && body && scrollRestoreRef.current !== null) {
-      const y = scrollRestoreRef.current;
-      body.style.position = '';
-      body.style.top = '';
-      body.style.left = '';
-      body.style.right = '';
-      body.style.width = '';
-      window.scrollTo({ top: y, behavior: 'auto' });
-      scrollRestoreRef.current = null;
-    }
-  }, [open]);
-
-  // Focus textarea on open
-  useEffect(() => {
-    if (open && textRef.current) {
-      requestAnimationFrame(() => textRef.current?.focus({ preventScroll: true }));
-    }
-  }, [open]);
+  // Body locking removed to reduce mobile blank/scroll quirks; Modal overlay already blocks scroll.
 
   const handleTextChange = (e) => {
     setLocalValue(e.target.value);
@@ -197,24 +209,38 @@ export default function PromptComposer({
     setLocalValue(nextValue);
     const nextPos = (before + needsLeading + insertText + needsTrailing).length;
 
-    // Switch to compose tab and focus
-    setActiveTab('compose');
+    // Keep composer open without forcing keyboard; store caret for next edit
     requestAnimationFrame(() => {
-      if (el) {
-        el.focus();
-        el.setSelectionRange(nextPos, nextPos);
+      try {
+        el?.setSelectionRange?.(nextPos, nextPos);
+      } catch {
+        /* ignore */
       }
     });
   };
 
   const removeToken = (tokenObj) => {
     const current = localValue || '';
-    const start = tokenObj.index;
-    const end = tokenObj.index + tokenObj.length;
+    const weighted = getTokenWeightRange(current, tokenObj);
+    const start = weighted ? weighted.wrapperStart : tokenObj.index;
+    const end = weighted ? weighted.wrapperEnd : (tokenObj.index + tokenObj.length);
     const before = current.slice(0, start).replace(/[\s,]*$/, '');
     const after = current.slice(end).replace(/^[\s,]*/, '');
     const next = before ? `${before} ${after}`.trim() : after.trim();
     setLocalValue(next);
+  };
+
+  const openStrengthFor = (tokenObj) => {
+    if (!tokenObj) return;
+    const entry = aliasByToken.get(tokenObj.token.toLowerCase());
+    const displayName = entry?.displayName || tokenObj.token;
+    const range = getTokenWeightRange(localValue || '', tokenObj);
+    setStrengthToken({
+      tokenObj,
+      displayName,
+      weight: range?.weight ?? 1,
+    });
+    setStrengthOpen(true);
   };
 
   // Reorder tokens and rebuild the text
@@ -225,8 +251,14 @@ export default function PromptComposer({
     // Find text before first token and after last token
     const firstToken = tokens[0];
     const lastToken = tokens[tokens.length - 1];
-    const prefix = firstToken ? current.slice(0, firstToken.index).replace(/[\s,]*$/, '') : '';
-    const suffix = lastToken ? current.slice(lastToken.index + lastToken.length).replace(/^[\s,]*/, '') : '';
+    const firstWeighted = firstToken ? getTokenWeightRange(current, firstToken) : null;
+    const lastWeighted = lastToken ? getTokenWeightRange(current, lastToken) : null;
+    const prefix = firstToken
+      ? current.slice(0, firstWeighted ? firstWeighted.wrapperStart : firstToken.index).replace(/[\s,]*$/, '')
+      : '';
+    const suffix = lastToken
+      ? current.slice(lastWeighted ? lastWeighted.wrapperEnd : (lastToken.index + lastToken.length)).replace(/^[\s,]*/, '')
+      : '';
 
     // Reorder the token array
     const reordered = [...tokens];
@@ -234,7 +266,11 @@ export default function PromptComposer({
     reordered.splice(toIdx, 0, moved);
 
     // Rebuild text with reordered tokens
-    const tokenStrings = reordered.map((t) => `$${t.token}$`);
+    const tokenStrings = reordered.map((t) => {
+      const weighted = getTokenWeightRange(current, t);
+      if (weighted) return current.slice(weighted.wrapperStart, weighted.wrapperEnd);
+      return current.slice(t.index, t.index + t.length) || `$${t.token}$`;
+    });
     const joinedTokens = tokenStrings.join(', ');
 
     let next = '';
@@ -290,6 +326,7 @@ export default function PromptComposer({
 
   // Touch handlers for mobile drag-and-drop
   const handleTouchStart = useCallback((e, idx) => {
+    e.preventDefault();
     const touch = e.touches[0];
     touchStartRef.current = {
       idx,
@@ -310,6 +347,7 @@ export default function PromptComposer({
     if (deltaX > 10 || deltaY > 10) {
       touchStartRef.current.moved = true;
       setDragIndex(touchStartRef.current.idx);
+      e.preventDefault();
 
       // Find which token we're over
       const tokenElements = document.querySelectorAll('.composer-token-draggable');
@@ -350,8 +388,10 @@ export default function PromptComposer({
     <BottomSheet
       open={open}
       onClose={handleCancel}
-      title="Prompt composer"
+      title="Composer"
       variant="fullscreen"
+      shouldCloseOnOverlayClick={false}
+      shouldCloseOnEsc={false}
       footer={(
         <div className="flex gap-2">
           <button type="button" className="ui-button is-muted w-full" onClick={handleCancel}>
@@ -377,7 +417,7 @@ export default function PromptComposer({
             className={`composer-tab ${activeTab === 'compose' ? 'is-active' : ''}`}
             onClick={() => setActiveTab('compose')}
           >
-            Write
+            Compose
           </button>
           <button
             type="button"
@@ -399,7 +439,7 @@ export default function PromptComposer({
               ref={textRef}
               value={localValue}
               onChange={handleTextChange}
-              placeholder="Write your prompt here… Use $alias$ tokens to insert dynamic content."
+              placeholder="Compose your prompt… Use $category:alias$ tokens to insert aliases."
               className="composer-textarea"
               rows={8}
             />
@@ -408,16 +448,15 @@ export default function PromptComposer({
           {tokens.length > 0 && (
             <div className="composer-tokens">
               <div className="composer-tokens-label">
-                Active tokens <span className="composer-tokens-hint">(drag to reorder)</span>
+                Active aliases <span className="composer-tokens-hint">(drag to reorder)</span>
               </div>
               <div className="composer-tokens-list">
                 {tokens.map((t, idx) => {
-                  const entry = withSubcategory.find(
-                    (e) => e.token?.toLowerCase() === t.token.toLowerCase()
-                  );
+                  const entry = aliasByToken.get(t.token.toLowerCase());
                   const friendlyName = entry?.displayName || t.token;
                   const isDragging = dragIndex === idx;
                   const isDropTarget = dropIndex === idx && dragIndex !== null && dragIndex !== idx;
+                  const weight = getTokenWeightRange(localValue || '', t)?.weight ?? 1;
 
                   return (
                     <span
@@ -432,9 +471,18 @@ export default function PromptComposer({
                       onTouchStart={(e) => handleTouchStart(e, idx)}
                       onTouchMove={handleTouchMove}
                       onTouchEnd={handleTouchEnd}
+                      onClick={() => {
+                        if (dragIndex !== null) return;
+                        openStrengthFor(t);
+                      }}
                     >
                       <span className="composer-token-drag-handle" aria-hidden="true"><IconGrip size={14} /></span>
                       <span className="composer-token-name">{friendlyName}</span>
+                      {Math.abs(weight - 1) > 1e-6 ? (
+                        <span className="composer-token-weight" aria-label={`Strength ${formatTokenWeight(weight)}x`}>
+                          ×{formatTokenWeight(weight)}
+                        </span>
+                      ) : null}
                       <button
                         type="button"
                         className="composer-token-remove"
@@ -454,7 +502,7 @@ export default function PromptComposer({
           )}
 
           <div className="composer-preview">
-            <div className="composer-preview-label">Preview (expanded)</div>
+            <div className="composer-preview-label">Expanded prompt</div>
             <div className="composer-preview-content">{expandedPrompt || '—'}</div>
           </div>
         </div>
@@ -467,27 +515,27 @@ export default function PromptComposer({
               value={pickerSearch}
               onChange={(e) => setPickerSearch(e.target.value)}
               placeholder="Search aliases…"
-              className="composer-search"
+              className="composer-search ui-control ui-input"
             />
             <select
               value={pickerCategory}
               onChange={(e) => setPickerCategory(e.target.value)}
-              className="composer-subcategory-select"
+              className="composer-subcategory-select ui-control ui-select is-compact"
               aria-label="Filter by category"
             >
-              {categories.map((c) => (
+              {categoryOptions.map((c) => (
                 <option key={`cat-${c}`} value={c}>
                   {c === 'All' ? 'Category: All' : formatCategoryLabel(c)}
                 </option>
               ))}
             </select>
-            {subcategories.length > 2 && (
+            {subcategoryOptions.length > 2 && (
               <select
                 value={pickerSubcategory}
                 onChange={(e) => setPickerSubcategory(e.target.value)}
-                className="composer-subcategory-select"
+                className="composer-subcategory-select ui-control ui-select is-compact"
               >
-                {subcategories.map((c) => (
+                {subcategoryOptions.map((c) => (
                   <option key={c} value={c}>
                     {c === 'All' ? 'All subcategories' : formatSubcategoryLabel(c)}
                   </option>
@@ -528,6 +576,30 @@ export default function PromptComposer({
           </div>
         </div>
       </div>
+
+      <TokenStrengthSheet
+        open={strengthOpen}
+        onClose={() => setStrengthOpen(false)}
+        title="Alias strength"
+        tokenLabel={
+          strengthToken
+            ? `${strengthToken.displayName} • $${strengthToken.tokenObj?.token}$`
+            : ''
+        }
+        weight={strengthToken?.weight ?? 1}
+        onApply={(w) => {
+          if (!strengthToken?.tokenObj) return;
+          setLocalValue((prev) => setTokenWeight(prev || '', strengthToken.tokenObj, w));
+        }}
+        onRemoveWeight={() => {
+          if (!strengthToken?.tokenObj) return;
+          setLocalValue((prev) => setTokenWeight(prev || '', strengthToken.tokenObj, null));
+        }}
+        onDeleteToken={() => {
+          if (!strengthToken?.tokenObj) return;
+          removeToken(strengthToken.tokenObj);
+        }}
+      />
     </BottomSheet>
   );
 }

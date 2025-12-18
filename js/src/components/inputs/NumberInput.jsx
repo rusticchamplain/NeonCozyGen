@@ -1,3 +1,5 @@
+import { memo } from 'react';
+
 const sanitizeForId = (value) => {
   if (value === null || value === undefined) return undefined;
   const normalized = String(value)
@@ -8,7 +10,7 @@ const sanitizeForId = (value) => {
   return normalized || undefined;
 };
 
-export default function NumberInput({
+function NumberInput({
   name,
   label,        // DynamicForm renders label
   description,  // DynamicForm renders help text
@@ -86,12 +88,7 @@ export default function NumberInput({
             ? `${fieldId || sanitizeForId(name) || name}-description`
             : undefined
         }
-        className={
-          'w-full rounded-xl border border-[#2A2E4A] bg-[#050716] ' +
-          'px-3 py-2.5 text-[13px] sm:text-sm text-[#E5E7FF] ' +
-          'placeholder-[#6A6FA8] focus:outline-none focus:ring-1 focus:ring-[#3EF0FF80] ' +
-          'transition-shadow shadow-[0_0_18px_rgba(5,7,22,0.7)]'
-        }
+        className="ui-control ui-input"
       />
       {typeof min === 'number' || typeof max === 'number' ? (
         <div className="hidden sm:flex flex-col text-[10px] text-[#6A6FA8] text-right leading-tight">
@@ -102,3 +99,5 @@ export default function NumberInput({
     </div>
   );
 }
+
+export default memo(NumberInput);

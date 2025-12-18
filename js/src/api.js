@@ -99,6 +99,29 @@ export async function savePromptAliases(aliases) {
   return jpost('/cozygen/api/aliases', aliases || {});
 }
 
+/* ---- Danbooru tag reference ---- */
+export async function getDanbooruTagCategories(options = {}) {
+  return jget('/cozygen/api/tags/categories', options);
+}
+
+export async function searchDanbooruTags(
+  { q = '', category = '', sort = 'count', limit = 80, offset = 0 } = {},
+  options = {}
+) {
+  const qs = new URLSearchParams({
+    q: String(q || ''),
+    category: String(category || ''),
+    sort: String(sort || 'count'),
+    limit: String(limit || 80),
+    offset: String(offset || 0),
+  });
+  return jget(`/cozygen/api/tags/search?${qs.toString()}`, options);
+}
+
+export async function validateDanbooruTags(tags = [], options = {}) {
+  return jpost('/cozygen/api/tags/validate', { tags: Array.isArray(tags) ? tags : [] }, options);
+}
+
 /* ---- Workflow metadata ---- */
 export async function getWorkflowTypes() {
   return jget('/cozygen/api/workflow_types');

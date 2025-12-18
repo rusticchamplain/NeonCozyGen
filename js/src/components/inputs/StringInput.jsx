@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import BottomSheet from '../ui/BottomSheet';
 import TextAreaSheet from '../ui/TextAreaSheet';
+import TokenStrengthSheet from '../ui/TokenStrengthSheet';
 import { IconEdit, IconGrip, IconTag, IconX } from '../Icons';
 import { formatCategoryLabel, formatSubcategoryLabel, presentAliasEntry } from '../../utils/aliasPresentation';
+import { formatTokenWeight, getTokenWeightRange, setTokenWeight } from '../../utils/tokenWeights';
 
-export default function StringInput({
+function StringInput({
   name,
   label,        // DynamicForm handles visible label
   description,  // DynamicForm handles help text / tooltip
@@ -29,9 +31,11 @@ export default function StringInput({
   const [pickerCategory, setPickerCategory] = useState('All');
   const [pickerSubcategory, setPickerSubcategory] = useState('All');
   const [recent] = useState([]);
-  const [tokens, setTokens] = useState([]);
   const pickerSearchRef = useRef(null);
   const [expandedEditorOpen, setExpandedEditorOpen] = useState(false);
+  const [strengthOpen, setStrengthOpen] = useState(false);
+  const [strengthToken, setStrengthToken] = useState(null);
+  const valueString = typeof value === 'string' ? value : String(value ?? '');
 
   const aliasList = useMemo(
     () => (Array.isArray(aliasOptions) ? aliasOptions.filter(Boolean) : []),
@@ -54,7 +58,6 @@ export default function StringInput({
   const handleChange = (e) => {
     const next = e.target.value;
     onChange?.(next);
-    parseTokens(next);
   };
 
   const handleKeyDown = (e) => {
@@ -65,17 +68,14 @@ export default function StringInput({
     }
   };
 
-  // Auto-grow textareas up to max height
-  useEffect(() => {
-    if (!multiline) return;
-    const el = textRef.current;
-    if (!el) return;
-    const resize = () => {
-      el.style.height = 'auto';
-      el.style.height = `${Math.min(el.scrollHeight, 320)}px`;
-    };
-    resize();
-  }, [value, multiline]);
+  const aliasByToken = useMemo(() => {
+    const map = new Map();
+    withSubcategory.forEach((entry) => {
+      if (!entry?.token) return;
+      map.set(String(entry.token).toLowerCase(), entry);
+    });
+    return map;
+  }, [withSubcategory]);
 
   const categories = useMemo(() => {
     const set = new Set(['All']);
@@ -99,23 +99,17 @@ export default function StringInput({
     setPickerSubcategory('All');
   }, [pickerCategory]);
 
-  const parseTokens = (text) => {
-    if (typeof text !== 'string') {
-      setTokens([]);
-      return;
-    }
+  const tokens = useMemo(() => {
+    const text = valueString || '';
+    if (!text || !text.includes('$')) return [];
     const found = [];
     const re = /\$([a-z0-9_:-]+)\$/gi;
     let match;
     while ((match = re.exec(text))) {
       found.push({ token: match[1], index: match.index, length: match[0].length });
     }
-    setTokens(found);
-  };
-
-  useEffect(() => {
-    parseTokens(value || '');
-  }, [value]);
+    return found;
+  }, [valueString]);
 
   useEffect(() => {
     if (showPicker && pickerSearchRef.current) {
@@ -154,7 +148,8 @@ export default function StringInput({
         return (
           e.token?.toLowerCase().includes(term) ||
           e.text?.toLowerCase().includes(term) ||
-          e.name?.toLowerCase().includes(term)
+          e.name?.toLowerCase().includes(term) ||
+          e.displayName?.toLowerCase().includes(term)
         );
       })
       .sort((a, b) => {
@@ -179,7 +174,7 @@ export default function StringInput({
   const handleInsertAlias = (token, { closeAfter = true } = {}) => {
     const el = textRef.current;
     const insertText = `$${token}$`;
-    const current = value || '';
+    const current = valueString || '';
     const storedStart = caretRef.current?.start;
     const storedEnd = caretRef.current?.end;
     const start = el?.selectionStart ?? (typeof storedStart === 'number' ? storedStart : current.length);
@@ -205,9 +200,10 @@ export default function StringInput({
   };
 
   const removeToken = (tokenObj) => {
-    const current = value || '';
-    const start = tokenObj.index;
-    const end = tokenObj.index + tokenObj.length;
+    const current = valueString || '';
+    const weighted = getTokenWeightRange(current, tokenObj);
+    const start = weighted ? weighted.wrapperStart : tokenObj.index;
+    const end = weighted ? weighted.wrapperEnd : (tokenObj.index + tokenObj.length);
     // Also trim adjoining spaces/commas
     const before = current.slice(0, start).replace(/[\s,]*$/, '');
     const after = current.slice(end).replace(/^[\s,]*/, '');
@@ -215,26 +211,46 @@ export default function StringInput({
     onChange?.(next);
   };
 
+  const openStrengthFor = (tokenObj) => {
+    if (!tokenObj) return;
+    const entry = aliasByToken.get(tokenObj.token.toLowerCase());
+    const displayName = entry?.displayName || tokenObj.token;
+    const range = getTokenWeightRange(valueString || '', tokenObj);
+    setStrengthToken({
+      tokenObj,
+      displayName,
+      weight: range?.weight ?? 1,
+    });
+    setStrengthOpen(true);
+    requestAnimationFrame(() => textRef.current?.blur?.());
+  };
+
   const reorderTokens = useMemo(() => {
     return (fromIdx, toIdx) => {
       if (fromIdx === toIdx || fromIdx === null || toIdx === null) return;
       if (!tokens?.length) return;
 
-      const current = value || '';
+      const current = valueString || '';
       const firstToken = tokens[0];
       const lastToken = tokens[tokens.length - 1];
+      const firstWeighted = firstToken ? getTokenWeightRange(current, firstToken) : null;
+      const lastWeighted = lastToken ? getTokenWeightRange(current, lastToken) : null;
       const prefix = firstToken
-        ? current.slice(0, firstToken.index).replace(/[\s,]*$/, '')
+        ? current.slice(0, firstWeighted ? firstWeighted.wrapperStart : firstToken.index).replace(/[\s,]*$/, '')
         : '';
       const suffix = lastToken
-        ? current.slice(lastToken.index + lastToken.length).replace(/^[\s,]*/, '')
+        ? current.slice(lastWeighted ? lastWeighted.wrapperEnd : (lastToken.index + lastToken.length)).replace(/^[\s,]*/, '')
         : '';
 
       const reordered = [...tokens];
       const [moved] = reordered.splice(fromIdx, 1);
       reordered.splice(toIdx, 0, moved);
 
-      const tokenStrings = reordered.map((t) => `$${t.token}$`);
+      const tokenStrings = reordered.map((t) => {
+        const weighted = getTokenWeightRange(current, t);
+        if (weighted) return current.slice(weighted.wrapperStart, weighted.wrapperEnd);
+        return current.slice(t.index, t.index + t.length) || `$${t.token}$`;
+      });
       const joinedTokens = tokenStrings.join(', ');
 
       let next = prefix ? `${prefix}, ${joinedTokens}` : joinedTokens;
@@ -242,7 +258,7 @@ export default function StringInput({
 
       onChange?.(next.trim());
     };
-  }, [onChange, tokens, value]);
+  }, [onChange, tokens, valueString]);
 
   const handleDragStart = (e, idx) => {
     setDragIndex(idx);
@@ -334,15 +350,10 @@ export default function StringInput({
   const commonProps = {
     id: name,
     name,
-    value: value ?? '',
+    value: valueString,
     onChange: handleChange,
     disabled,
-    className:
-      'w-full rounded-xl border border-[rgba(255,255,255,0.10)] bg-[rgba(255,255,255,0.03)] ' +
-      'px-3 py-2.5 pr-10 text-[13px] sm:text-sm text-[rgba(237,242,255,0.92)] ' +
-      'placeholder-[rgba(159,178,215,0.65)] focus:outline-none ' +
-      'focus:border-[rgba(68,225,197,0.60)] focus:shadow-[0_0_0_3px_rgba(68,225,197,0.16)] ' +
-      'transition',
+    className: 'ui-control ui-input pr-10 text-[13px] sm:text-sm',
     placeholder: '',
     'aria-label': label || name,
     'aria-describedby': description ? `${name}-description` : undefined,
@@ -384,12 +395,12 @@ export default function StringInput({
               value={pickerSearch}
               onChange={(e) => setPickerSearch(e.target.value)}
               placeholder="Search aliases…"
-              className="composer-search"
+              className="composer-search ui-control ui-input"
             />
             <select
               value={pickerCategory}
               onChange={(e) => setPickerCategory(e.target.value)}
-              className="composer-subcategory-select"
+              className="composer-subcategory-select ui-control ui-select is-compact"
               aria-label="Filter by category"
             >
               {['All', ...categories.filter((c) => c !== 'All')].map((c) => (
@@ -402,7 +413,7 @@ export default function StringInput({
               <select
                 value={pickerSubcategory}
                 onChange={(e) => setPickerSubcategory(e.target.value)}
-                className="composer-subcategory-select"
+                className="composer-subcategory-select ui-control ui-select is-compact"
               >
                 {subcategories.map((c) => (
                   <option key={c} value={c}>
@@ -479,7 +490,7 @@ export default function StringInput({
               className="ui-button is-muted is-compact"
               onClick={() => onOpenComposer(name)}
             >
-              Prompt Studio
+              Open composer
             </button>
             {aliasEntries.length ? (
               <button
@@ -519,7 +530,7 @@ export default function StringInput({
                 className="stringinput-action-link"
                 onClick={() => onOpenComposer(name)}
               >
-                Prompt Studio
+                Open composer
               </button>
               {aliasEntries.length ? (
                 <button
@@ -537,7 +548,7 @@ export default function StringInput({
           open={expandedEditorOpen}
           onClose={() => setExpandedEditorOpen(false)}
           title={label || name}
-          value={value ?? ''}
+          value={valueString}
           onChange={onChange}
           description={description}
         />
@@ -548,12 +559,11 @@ export default function StringInput({
             </div>
             <div className="stringinput-tokens-list">
             {tokens.map((t, idx) => {
-              const entry = withSubcategory.find(
-                (e) => e.token?.toLowerCase() === t.token.toLowerCase()
-              );
+              const entry = aliasByToken.get(t.token.toLowerCase());
               const friendlyName = entry?.displayName || t.token;
               const isDragging = dragIndex === idx;
               const isDropTarget = dropIndex === idx && dragIndex !== null && dragIndex !== idx;
+              const weight = getTokenWeightRange(valueString || '', t)?.weight ?? 1;
               return (
                 <div
                   key={`${t.token}-${t.index}`}
@@ -572,24 +582,12 @@ export default function StringInput({
                   onTouchEnd={handleTouchEnd}
                   onClick={() => {
                     if (dragIndex !== null) return;
-                    const start = t.index;
-                    const end = t.index + t.length;
-                    const el = textRef.current;
-                    if (el) {
-                      el.focus();
-                      el.setSelectionRange(start, end);
-                    }
+                    openStrengthFor(t);
                   }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault();
-                      const start = t.index;
-                      const end = t.index + t.length;
-                      const el = textRef.current;
-                      if (el) {
-                        el.focus();
-                        el.setSelectionRange(start, end);
-                      }
+                      openStrengthFor(t);
                     }
                   }}
                 >
@@ -597,6 +595,11 @@ export default function StringInput({
                     <IconGrip size={14} />
                   </span>
                   <span className="token-chip-label">{friendlyName}</span>
+                  {Math.abs(weight - 1) > 1e-6 ? (
+                    <span className="token-chip-weight" aria-label={`Strength ${formatTokenWeight(weight)}x`}>
+                      ×{formatTokenWeight(weight)}
+                    </span>
+                  ) : null}
                   <button
                     type="button"
                     className="token-chip-remove"
@@ -608,12 +611,35 @@ export default function StringInput({
                   >
                     <IconX size={12} />
                   </button>
-                </div>
-              );
-            })}
+              </div>
+            );
+          })}
             </div>
           </div>
         ) : null}
+        <TokenStrengthSheet
+          open={strengthOpen}
+          onClose={() => setStrengthOpen(false)}
+          title="Alias strength"
+          tokenLabel={
+            strengthToken
+              ? `${strengthToken.displayName} • $${strengthToken.tokenObj?.token}$`
+              : ''
+          }
+          weight={strengthToken?.weight ?? 1}
+          onApply={(w) => {
+            if (!strengthToken?.tokenObj) return;
+            onChange?.(setTokenWeight(valueString || '', strengthToken.tokenObj, w));
+          }}
+          onRemoveWeight={() => {
+            if (!strengthToken?.tokenObj) return;
+            onChange?.(setTokenWeight(valueString || '', strengthToken.tokenObj, null));
+          }}
+          onDeleteToken={() => {
+            if (!strengthToken?.tokenObj) return;
+            removeToken(strengthToken.tokenObj);
+          }}
+        />
         {showPicker ? <AliasPickerSheet /> : null}
       </div>
     );
@@ -640,12 +666,11 @@ export default function StringInput({
           </div>
           <div className="stringinput-tokens-list">
           {tokens.map((t, idx) => {
-            const entry = withSubcategory.find(
-              (e) => e.token?.toLowerCase() === t.token.toLowerCase()
-            );
+            const entry = aliasByToken.get(t.token.toLowerCase());
             const friendlyName = entry?.displayName || t.token;
             const isDragging = dragIndex === idx;
             const isDropTarget = dropIndex === idx && dragIndex !== null && dragIndex !== idx;
+            const weight = getTokenWeightRange(valueString || '', t)?.weight ?? 1;
             return (
               <div
                 key={`${t.token}-${t.index}`}
@@ -653,14 +678,7 @@ export default function StringInput({
                 title={`$${t.token}$`}
                 onClick={() => {
                   if (dragIndex !== null) return;
-                  const start = t.index;
-                  const end = t.index + t.length;
-                  const el = textRef.current;
-                  if (el) {
-                    el.focus();
-                    el.setSelectionRange(start, end);
-                  }
-                  openPicker();
+                  openStrengthFor(t);
                 }}
                 role="button"
                 tabIndex={0}
@@ -676,14 +694,7 @@ export default function StringInput({
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
-                    const start = t.index;
-                    const end = t.index + t.length;
-                    const el = textRef.current;
-                    if (el) {
-                      el.focus();
-                      el.setSelectionRange(start, end);
-                    }
-                    openPicker();
+                    openStrengthFor(t);
                   }
                 }}
               >
@@ -691,6 +702,11 @@ export default function StringInput({
                   <IconGrip size={14} />
                 </span>
                 <span className="token-chip-label">{friendlyName}</span>
+                {Math.abs(weight - 1) > 1e-6 ? (
+                  <span className="token-chip-weight" aria-label={`Strength ${formatTokenWeight(weight)}x`}>
+                    ×{formatTokenWeight(weight)}
+                  </span>
+                ) : null}
                 <button
                   type="button"
                   className="token-chip-remove"
@@ -708,6 +724,29 @@ export default function StringInput({
           </div>
         </div>
       ) : null}
+      <TokenStrengthSheet
+        open={strengthOpen}
+        onClose={() => setStrengthOpen(false)}
+        title="Alias strength"
+        tokenLabel={
+          strengthToken
+            ? `${strengthToken.displayName} • $${strengthToken.tokenObj?.token}$`
+            : ''
+        }
+        weight={strengthToken?.weight ?? 1}
+        onApply={(w) => {
+          if (!strengthToken?.tokenObj) return;
+          onChange?.(setTokenWeight(valueString || '', strengthToken.tokenObj, w));
+        }}
+        onRemoveWeight={() => {
+          if (!strengthToken?.tokenObj) return;
+          onChange?.(setTokenWeight(valueString || '', strengthToken.tokenObj, null));
+        }}
+        onDeleteToken={() => {
+          if (!strengthToken?.tokenObj) return;
+          removeToken(strengthToken.tokenObj);
+        }}
+      />
       {aliasEntries.length ? (
         <button
           type="button"
@@ -722,3 +761,5 @@ export default function StringInput({
     </div>
   );
 }
+
+export default memo(StringInput);

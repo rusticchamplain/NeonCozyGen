@@ -115,7 +115,7 @@ export default function BottomNav() {
             type="button"
             className="bottom-nav-link"
             onClick={requestComposer}
-            aria-label="Prompt composer"
+            aria-label="Open composer"
           >
             <span className="bottom-nav-icon" aria-hidden="true">
               <IconEdit size={20} />

@@ -28,6 +28,7 @@ export function useGallery() {
   const [path, setPath] = useState(safeGet('galleryPath', ''));
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [hasLoaded, setHasLoaded] = useState(false);
 
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -102,7 +103,10 @@ export function useGallery() {
           setTotalPages(1);
         }
       } finally {
-        if (!cancelled && !controller.signal.aborted) setLoading(false);
+        if (!cancelled && !controller.signal.aborted) {
+          setLoading(false);
+          setHasLoaded(true);
+        }
       }
     };
 
@@ -296,6 +300,7 @@ export function useGallery() {
     path,
     items,
     loading,
+    hasLoaded,
     page,
     totalPages,
     perPage,

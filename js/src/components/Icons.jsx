@@ -93,6 +93,16 @@ export const IconTag = (props) => (
   </Icon>
 );
 
+// Aliases - layered tags
+export const IconAlias = (props) => (
+  <Icon {...props}>
+    <path d="M14 3H4a2 2 0 00-2 2v10l6 6h10a2 2 0 002-2V9l-6-6z" />
+    <path d="M14 3v6h6" />
+    <path d="M7 7h5" />
+    <path d="M7 11h7" />
+  </Icon>
+);
+
 // Composer/Edit - pen tool
 export const IconEdit = (props) => (
   <Icon {...props}>

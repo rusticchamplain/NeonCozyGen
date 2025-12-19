@@ -6,11 +6,13 @@ import '../styles/mobile-helpers.css';
 import useGalleryPending from '../hooks/useGalleryPending';
 import { useAuth } from '../hooks/useAuth';
 import { hasLastRenderPayload, requeueLastRender } from '../utils/globalRender';
+import useMediaQuery from '../hooks/useMediaQuery';
 import {
   LogoMark,
   IconStudio,
   IconGallery,
   IconTag,
+  IconAlias,
   IconRender,
   IconLogout,
 } from './Icons';
@@ -21,7 +23,8 @@ const PRIMARY_LINKS = [
 
 const SECONDARY_LINKS = [
   { to: '/gallery', label: 'Gallery', Icon: IconGallery },
-  { to: '/aliases', label: 'Aliases', Icon: IconTag },
+  { to: '/tags', label: 'Tag Library', Icon: IconTag },
+  { to: '/aliases', label: 'Aliases', Icon: IconAlias },
 ];
 
 const navLinkClasses = ({ isActive }) =>
@@ -33,10 +36,11 @@ export default function TopBar() {
   const galleryPending = useGalleryPending();
   const { logout, user } = useAuth();
   const [renderActive, setRenderActive] = useState(false);
+  const isDesktop = useMediaQuery('(min-width: 768px)');
   const toggleMenu = () => setMenuOpen((prev) => !prev);
   const closeMenu = () => setMenuOpen(false);
   const isLogin = pathname === '/login';
-  const showRender = !isLogin;
+  const showRender = !isLogin && isDesktop;
 
   useEffect(() => {
     const handler = (evt) => {
@@ -193,13 +197,24 @@ export default function TopBar() {
             </span>
           </NavLink>
           <NavLink
-            to="/aliases"
+            to="/tags"
             className={navLinkClasses}
             onClick={closeMenu}
             role="menuitem"
           >
             <span className="inline-flex items-center gap-2">
               <IconTag size={16} />
+              <span>Tag Library</span>
+            </span>
+          </NavLink>
+          <NavLink
+            to="/aliases"
+            className={navLinkClasses}
+            onClick={closeMenu}
+            role="menuitem"
+          >
+            <span className="inline-flex items-center gap-2">
+              <IconAlias size={16} />
               <span>Aliases</span>
             </span>
           </NavLink>

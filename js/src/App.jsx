@@ -1,22 +1,16 @@
 // js/src/App.jsx
-import { Suspense, lazy, useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import TopBar from './components/TopBar';
 import BottomNav from './components/BottomNav';
 import { AuthProvider, useAuth } from './hooks/useAuth';
+import useMediaQuery from './hooks/useMediaQuery';
 
-const MainPage = lazy(() => import('./pages/MainPage'));
-const Gallery = lazy(() => import('./pages/Gallery'));
-const Aliases = lazy(() => import('./pages/Aliases'));
-const Login = lazy(() => import('./pages/Login'));
-
-function PageLoading() {
-  return (
-    <div className="min-h-[50vh] flex items-center justify-center text-slate-200">
-      Loading…
-    </div>
-  );
-}
+import MainPage from './pages/MainPage';
+import Gallery from './pages/Gallery';
+import Aliases from './pages/Aliases';
+import TagLibrary from './pages/TagLibrary';
+import Login from './pages/Login';
 
 /* Scroll to top on route change */
 function ScrollToTop({ containerRef }) {
@@ -40,7 +34,10 @@ function RequireAuth({ children }) {
   if (!ready) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-200">
-        Loading…
+        <div className="page-loading">
+          <span className="loading-spinner lg" aria-hidden="true" />
+          <span className="sr-only">Checking session</span>
+        </div>
       </div>
     );
   }
@@ -57,6 +54,9 @@ function App() {
   const { defaultCreds, authed } = useAuth();
   const isLogin = pathname === '/login';
   const contentRef = useRef(null);
+  const isNarrow = useMediaQuery('(max-width: 767px)');
+  const isCoarse = useMediaQuery('(pointer: coarse)');
+  const showBottomNav = !isLogin && (isNarrow || isCoarse);
 
   return (
     <div className="app-shell">
@@ -72,48 +72,54 @@ function App() {
         ref={contentRef}
         className={isLogin ? 'app-content is-login' : 'app-content'}
       >
-        <Suspense fallback={<PageLoading />}>
-          <Routes>
-            <Route path="/login" element={<Login />} />
+        <Routes>
+          <Route path="/login" element={<Login />} />
 
-            <Route
-              path="/"
-              element={
-                <RequireAuth>
-                  <MainPage />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/studio"
-              element={
-                <RequireAuth>
-                  <MainPage />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/gallery"
-              element={
-                <RequireAuth>
-                  <Gallery />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/aliases"
-              element={
-                <RequireAuth>
-                  <Aliases />
-                </RequireAuth>
-              }
-            />
-            {/* Fallback */}
-            <Route path="*" element={<Navigate to="/studio" replace />} />
-          </Routes>
-        </Suspense>
+          <Route
+            path="/"
+            element={
+              <RequireAuth>
+                <MainPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/studio"
+            element={
+              <RequireAuth>
+                <MainPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/gallery"
+            element={
+              <RequireAuth>
+                <Gallery />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/aliases"
+            element={
+              <RequireAuth>
+                <Aliases />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/tags"
+            element={
+              <RequireAuth>
+                <TagLibrary />
+              </RequireAuth>
+            }
+          />
+          {/* Fallback */}
+          <Route path="*" element={<Navigate to="/studio" replace />} />
+        </Routes>
       </main>
-      {!isLogin && <BottomNav />}
+      {showBottomNav ? <BottomNav /> : null}
     </div>
   );
 }

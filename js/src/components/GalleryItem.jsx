@@ -195,7 +195,7 @@ function GalleryItem({
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-[#05071680] opacity-0 group-hover:opacity-100 transition-opacity" />
 
           {isVideo && (
-            <div className="pointer-events-none absolute left-2 top-2 rounded-full bg-[#050716CC] px-2 py-[1px] text-[10px] text-[#CFFAFE] border border-[#3EF0FF80]">
+            <div className="pointer-events-none absolute left-2 top-2 rounded-md bg-[#050716CC] px-2 py-[1px] text-[10px] text-[#CFFAFE] border border-[#3EF0FF80]">
               Video
             </div>
           )}

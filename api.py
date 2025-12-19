@@ -62,7 +62,7 @@ _DANBOORU_CATEGORY_MAP = {
     "lighting": "lighting",
     "location_scene": "scene",
     "meta_quality": "quality",
-    "name_title_misc": "general",
+    "name_title_misc": "names",
     "other": "general",
     "pose_action": "pose",
     "style_medium": "style",

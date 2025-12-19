@@ -111,12 +111,6 @@ function StringInput({
     return found;
   }, [valueString]);
 
-  useEffect(() => {
-    if (showPicker && pickerSearchRef.current) {
-      requestAnimationFrame(() => pickerSearchRef.current?.focus({ preventScroll: true }));
-    }
-  }, [showPicker]);
-
   const openPicker = () => {
     try {
       const el = textRef.current;
@@ -231,32 +225,35 @@ function StringInput({
       if (!tokens?.length) return;
 
       const current = valueString || '';
-      const firstToken = tokens[0];
-      const lastToken = tokens[tokens.length - 1];
-      const firstWeighted = firstToken ? getTokenWeightRange(current, firstToken) : null;
-      const lastWeighted = lastToken ? getTokenWeightRange(current, lastToken) : null;
-      const prefix = firstToken
-        ? current.slice(0, firstWeighted ? firstWeighted.wrapperStart : firstToken.index).replace(/[\s,]*$/, '')
-        : '';
-      const suffix = lastToken
-        ? current.slice(lastWeighted ? lastWeighted.wrapperEnd : (lastToken.index + lastToken.length)).replace(/^[\s,]*/, '')
-        : '';
+      const tokenSlices = tokens.map((t) => {
+        const weighted = getTokenWeightRange(current, t);
+        const start = weighted ? weighted.wrapperStart : t.index;
+        const end = weighted ? weighted.wrapperEnd : (t.index + t.length);
+        return {
+          start,
+          end,
+          text: current.slice(start, end) || `$${t.token}$`,
+        };
+      });
 
-      const reordered = [...tokens];
+      const separators = tokenSlices.slice(0, -1).map((slice, idx) => {
+        const nextSlice = tokenSlices[idx + 1];
+        return current.slice(slice.end, nextSlice.start);
+      });
+      const prefix = tokenSlices.length ? current.slice(0, tokenSlices[0].start) : '';
+      const suffix = tokenSlices.length ? current.slice(tokenSlices[tokenSlices.length - 1].end) : '';
+
+      const reordered = [...tokenSlices];
       const [moved] = reordered.splice(fromIdx, 1);
       reordered.splice(toIdx, 0, moved);
 
-      const tokenStrings = reordered.map((t) => {
-        const weighted = getTokenWeightRange(current, t);
-        if (weighted) return current.slice(weighted.wrapperStart, weighted.wrapperEnd);
-        return current.slice(t.index, t.index + t.length) || `$${t.token}$`;
-      });
-      const joinedTokens = tokenStrings.join(', ');
+      let next = prefix + (reordered[0]?.text || '');
+      for (let i = 1; i < reordered.length; i += 1) {
+        next += (separators[i - 1] ?? ', ') + reordered[i].text;
+      }
+      next += suffix;
 
-      let next = prefix ? `${prefix}, ${joinedTokens}` : joinedTokens;
-      if (suffix) next = `${next}, ${suffix}`;
-
-      onChange?.(next.trim());
+      onChange?.(next);
     };
   }, [onChange, tokens, valueString]);
 
@@ -300,7 +297,8 @@ function StringInput({
   };
 
   const handleTouchStart = (e, idx) => {
-    e.preventDefault();
+    const isHandle = e.target?.closest?.('.token-chip-drag-handle');
+    if (!isHandle) return;
     const touch = e.touches[0];
     touchStartRef.current = {
       idx,
@@ -470,15 +468,6 @@ function StringInput({
       </div>
     </BottomSheet>
   );
-
-  useEffect(() => {
-    if (!showPicker) return;
-    const id = setTimeout(() => {
-      pickerSearchRef.current?.focus?.();
-      pickerSearchRef.current?.select?.();
-    }, 50);
-    return () => clearTimeout(id);
-  }, [showPicker]);
 
   if (multiline) {
     return (

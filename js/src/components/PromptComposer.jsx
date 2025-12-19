@@ -2,12 +2,31 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import BottomSheet from './ui/BottomSheet';
 import TokenStrengthSheet from './ui/TokenStrengthSheet';
-import { IconGrip, IconX } from './Icons';
+import { IconGrip, IconX, IconTag } from './Icons';
 import { formatCategoryLabel, formatSubcategoryLabel, presentAliasEntry } from '../utils/aliasPresentation';
-import { formatTokenWeight, getTokenWeightRange, setTokenWeight } from '../utils/tokenWeights';
+
+function safeCopy(text) {
+  const value = String(text || '');
+  if (!value) return false;
+  try {
+    navigator.clipboard?.writeText?.(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+import {
+  formatTokenWeight,
+  parsePromptElements,
+  getElementWeight,
+  setElementWeight,
+  reorderElements,
+  removeElement,
+} from '../utils/tokenWeights';
+import { getDanbooruTagCategories, searchDanbooruTags } from '../api';
 
 export default function PromptComposer({
-  open,
+  open = false,
   onClose,
   value = '',
   onChange,
@@ -15,6 +34,7 @@ export default function PromptComposer({
   aliasCatalog = [],
   aliasLookup,
   fieldLabel = 'Prompt',
+  variant = 'sheet', // 'sheet' or 'page'
 }) {
   const textRef = useRef(null);
   const searchInputRef = useRef(null);
@@ -34,6 +54,25 @@ export default function PromptComposer({
   const [strengthOpen, setStrengthOpen] = useState(false);
   const [strengthToken, setStrengthToken] = useState(null);
 
+  // Tag library state
+  const tagSearchRef = useRef(null);
+  const tagSentinelRef = useRef(null);
+  const [tagQuery, setTagQuery] = useState('');
+  const [tagCategory, setTagCategory] = useState('');
+  const [tagSort, setTagSort] = useState('count');
+  const [tagCategories, setTagCategories] = useState([]);
+  const [tagItems, setTagItems] = useState([]);
+  const [tagTotal, setTagTotal] = useState(0);
+  const [tagOffset, setTagOffset] = useState(0);
+  const [tagLoading, setTagLoading] = useState(false);
+  const [tagLoadingMore, setTagLoadingMore] = useState(false);
+  const [tagError, setTagError] = useState('');
+  const [tagStatus, setTagStatus] = useState('');
+  const [composerCollectedTags, setComposerCollectedTags] = useState([]);
+  const [collectionSheetOpen, setCollectionSheetOpen] = useState(false);
+  const [collectionStatus, setCollectionStatus] = useState('');
+  const composerCollectionTextareaRef = useRef(null);
+
   // Sync local value with prop when modal opens
   useEffect(() => {
     if (open) {
@@ -47,6 +86,17 @@ export default function PromptComposer({
       setDropIndex(null);
       setStrengthOpen(false);
       setStrengthToken(null);
+      // Reset tag library state
+      setTagQuery('');
+      setTagCategory('');
+      setTagSort('count');
+      setTagItems([]);
+      setTagTotal(0);
+      setTagOffset(0);
+      setTagLoading(false);
+      setTagLoadingMore(false);
+      setTagError('');
+      setTagStatus('');
     }
   }, [open, value]);
 
@@ -151,17 +201,11 @@ export default function PromptComposer({
     return () => observer.disconnect();
   }, [visibleCount, filteredAliases.length]);
 
-  // Parse tokens from current text
-  const tokens = useMemo(() => {
+  // Parse all elements (aliases and plain tags) from current text
+  const elements = useMemo(() => {
     if (activeTab !== 'compose') return [];
     if (typeof localValue !== 'string') return [];
-    const found = [];
-    const re = /\$([a-z0-9_:-]+)\$/gi;
-    let match;
-    while ((match = re.exec(localValue))) {
-      found.push({ token: match[1], index: match.index, length: match[0].length });
-    }
-    return found;
+    return parsePromptElements(localValue);
   }, [activeTab, localValue]);
 
   // Expanded preview
@@ -186,6 +230,96 @@ export default function PromptComposer({
   }, [activeTab, deferredPreviewValue, aliasLookup]);
 
   // Body locking removed to reduce mobile blank/scroll quirks; Modal overlay already blocks scroll.
+
+  // Tag library: load categories on first switch to tags tab
+  useEffect(() => {
+    if (!open || activeTab !== 'tags') return;
+    if (tagCategories.length > 0) return; // Already loaded
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await getDanbooruTagCategories();
+        if (cancelled) return;
+        setTagCategories(Array.isArray(res?.categories) ? res.categories : []);
+      } catch (e) {
+        console.error('Failed to load tag categories', e);
+        if (!cancelled) setTagCategories([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [open, activeTab, tagCategories.length]);
+
+  // Tag library: search function
+  const searchTags = useCallback(async ({ nextQuery, nextCategory, nextSort } = {}) => {
+    const q = typeof nextQuery === 'string' ? nextQuery : tagQuery;
+    const c = typeof nextCategory === 'string' ? nextCategory : tagCategory;
+    const s = typeof nextSort === 'string' ? nextSort : tagSort;
+    setTagLoading(true);
+    setTagError('');
+    setTagStatus('');
+    setTagOffset(0);
+    try {
+      const res = await searchDanbooruTags({ q, category: c, sort: s, limit: 80, offset: 0 });
+      setTagItems(res?.items || []);
+      setTagTotal(Number(res?.total || 0));
+    } catch (e) {
+      console.error('Failed to search tags', e);
+      setTagError('Unable to load tags right now.');
+      setTagItems([]);
+      setTagTotal(0);
+    } finally {
+      setTagLoading(false);
+    }
+  }, [tagCategory, tagQuery, tagSort]);
+
+  // Tag library: load more function
+  const loadMoreTags = useCallback(async () => {
+    if (tagLoading || tagLoadingMore) return;
+    if (tagItems.length >= tagTotal) return;
+    const nextOffset = tagOffset + 80;
+    setTagLoadingMore(true);
+    setTagError('');
+    try {
+      const res = await searchDanbooruTags({ q: tagQuery, category: tagCategory, sort: tagSort, limit: 80, offset: nextOffset });
+      const nextItems = res?.items || [];
+      setTagItems((prev) => [...prev, ...nextItems]);
+      setTagTotal(Number(res?.total || 0));
+      setTagOffset(nextOffset);
+    } catch (e) {
+      console.error('Failed to load more tags', e);
+      setTagError('Unable to load more tags.');
+    } finally {
+      setTagLoadingMore(false);
+    }
+  }, [tagCategory, tagLoading, tagLoadingMore, tagOffset, tagQuery, tagSort, tagItems.length, tagTotal]);
+
+  // Tag library: debounced search when filters change
+  useEffect(() => {
+    if (!open || activeTab !== 'tags') return;
+    const handle = window.setTimeout(() => {
+      searchTags();
+    }, 220);
+    return () => window.clearTimeout(handle);
+  }, [open, activeTab, tagQuery, tagCategory, tagSort, searchTags]);
+
+  // Tag library: infinite scroll sentinel
+  useEffect(() => {
+    if (!open || activeTab !== 'tags') return;
+    const el = tagSentinelRef.current;
+    if (!el) return;
+    if (typeof IntersectionObserver === 'undefined') return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (entry?.isIntersecting) loadMoreTags();
+      },
+      { threshold: 0.1 }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [open, activeTab, loadMoreTags]);
+
+  const tagTotalLabel = tagTotal ? `${tagItems.length.toLocaleString()} / ${tagTotal.toLocaleString()}` : `${tagItems.length.toLocaleString()}`;
 
   const handleTextChange = (e) => {
     setLocalValue(e.target.value);
@@ -219,72 +353,122 @@ export default function PromptComposer({
     });
   };
 
-  const removeToken = (tokenObj) => {
+  // Insert a plain tag (from tag library) into the prompt
+  const addToComposerCollection = useCallback((tag) => {
+    const normalized = String(tag || '').trim();
+    if (!normalized) return;
+    setComposerCollectedTags((prev) => {
+      const seen = new Set(prev.map((t) => t.toLowerCase()));
+      if (seen.has(normalized.toLowerCase())) return prev;
+      return [...prev, normalized];
+    });
+  }, []);
+
+  const composerCollectedText = useMemo(() => composerCollectedTags.join(', '), [composerCollectedTags]);
+
+  const copyComposerCollection = useCallback(() => {
+    if (!composerCollectedTags.length) {
+      setCollectionStatus('No tags to copy.');
+      return;
+    }
+    if (safeCopy(composerCollectedText)) {
+      setCollectionStatus(`Copied ${composerCollectedTags.length} tag${composerCollectedTags.length === 1 ? '' : 's'}.`);
+      return;
+    }
+    const textarea = composerCollectionTextareaRef.current;
+    if (textarea) {
+      try {
+        textarea.value = composerCollectedText;
+        textarea.removeAttribute('readonly');
+        textarea.select();
+        textarea.setSelectionRange(0, composerCollectedText.length);
+        const ok = document.execCommand && document.execCommand('copy');
+        textarea.setAttribute('readonly', 'readonly');
+        window.getSelection()?.removeAllRanges?.();
+        if (ok) {
+          setCollectionStatus(`Copied ${composerCollectedTags.length} tag${composerCollectedTags.length === 1 ? '' : 's'}.`);
+          return;
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+    setCollectionStatus('Copy not available on this browser.');
+  }, [composerCollectedTags, composerCollectedText]);
+
+  const clearComposerCollection = useCallback(() => {
+    setComposerCollectedTags([]);
+    setCollectionStatus('Cleared collected tags.');
+  }, []);
+
+  const removeComposerTag = useCallback((tag) => {
+    const target = String(tag || '').trim().toLowerCase();
+    if (!target) return;
+    setComposerCollectedTags((prev) => prev.filter((t) => t.toLowerCase() !== target));
+  }, []);
+
+  const handleOpenCollectionSheet = useCallback(() => {
+    setCollectionSheetOpen(true);
+  }, []);
+
+  const handleInsertTag = (tag) => {
+    const el = textRef.current;
+    const insertText = String(tag || '').trim();
+    if (!insertText) return;
     const current = localValue || '';
-    const weighted = getTokenWeightRange(current, tokenObj);
-    const start = weighted ? weighted.wrapperStart : tokenObj.index;
-    const end = weighted ? weighted.wrapperEnd : (tokenObj.index + tokenObj.length);
-    const before = current.slice(0, start).replace(/[\s,]*$/, '');
-    const after = current.slice(end).replace(/^[\s,]*/, '');
-    const next = before ? `${before} ${after}`.trim() : after.trim();
-    setLocalValue(next);
+    const start = el?.selectionStart ?? current.length;
+    const end = el?.selectionEnd ?? current.length;
+
+    const before = current.slice(0, start);
+    const after = current.slice(end);
+    const prevCharMatch = before.match(/[^\s]$/);
+    const nextCharMatch = after.match(/^[^\s]/);
+    const needsLeading = prevCharMatch && prevCharMatch[0] !== ',' ? ', ' : '';
+    const needsTrailing = nextCharMatch && nextCharMatch[0] !== ',' ? ', ' : '';
+
+    const nextValue = before + needsLeading + insertText + needsTrailing + after;
+    setLocalValue(nextValue);
+    setTagStatus(`Added: ${insertText}`);
+    addToComposerCollection(insertText);
+    const nextPos = (before + needsLeading + insertText + needsTrailing).length;
+    addToComposerCollection(insertText);
+
+    // Position caret after inserted text
+    requestAnimationFrame(() => {
+      try {
+        el?.setSelectionRange?.(nextPos, nextPos);
+      } catch {
+        /* ignore */
+      }
+    });
   };
 
-  const openStrengthFor = (tokenObj) => {
-    if (!tokenObj) return;
-    const entry = aliasByToken.get(tokenObj.token.toLowerCase());
-    const displayName = entry?.displayName || tokenObj.token;
-    const range = getTokenWeightRange(localValue || '', tokenObj);
+  const handleRemoveElement = (element) => {
+    setLocalValue((prev) => removeElement(prev || '', element));
+  };
+
+  const openStrengthFor = (element) => {
+    if (!element) return;
+    let displayName = element.text;
+    if (element.type === 'alias') {
+      const entry = aliasByToken.get(element.text.toLowerCase());
+      displayName = entry?.displayName || element.text;
+    }
+    const weightInfo = getElementWeight(localValue || '', element);
     setStrengthToken({
-      tokenObj,
+      element,
       displayName,
-      weight: range?.weight ?? 1,
+      weight: weightInfo?.weight ?? 1,
     });
     setStrengthOpen(true);
   };
 
-  // Reorder tokens and rebuild the text
-  const reorderTokens = useCallback((fromIdx, toIdx) => {
+  // Reorder elements and rebuild the text
+  const handleReorderElements = useCallback((fromIdx, toIdx) => {
     if (fromIdx === toIdx || fromIdx === null || toIdx === null) return;
-
-    const current = localValue || '';
-    // Find text before first token and after last token
-    const firstToken = tokens[0];
-    const lastToken = tokens[tokens.length - 1];
-    const firstWeighted = firstToken ? getTokenWeightRange(current, firstToken) : null;
-    const lastWeighted = lastToken ? getTokenWeightRange(current, lastToken) : null;
-    const prefix = firstToken
-      ? current.slice(0, firstWeighted ? firstWeighted.wrapperStart : firstToken.index).replace(/[\s,]*$/, '')
-      : '';
-    const suffix = lastToken
-      ? current.slice(lastWeighted ? lastWeighted.wrapperEnd : (lastToken.index + lastToken.length)).replace(/^[\s,]*/, '')
-      : '';
-
-    // Reorder the token array
-    const reordered = [...tokens];
-    const [moved] = reordered.splice(fromIdx, 1);
-    reordered.splice(toIdx, 0, moved);
-
-    // Rebuild text with reordered tokens
-    const tokenStrings = reordered.map((t) => {
-      const weighted = getTokenWeightRange(current, t);
-      if (weighted) return current.slice(weighted.wrapperStart, weighted.wrapperEnd);
-      return current.slice(t.index, t.index + t.length) || `$${t.token}$`;
-    });
-    const joinedTokens = tokenStrings.join(', ');
-
-    let next = '';
-    if (prefix) {
-      next = `${prefix}, ${joinedTokens}`;
-    } else {
-      next = joinedTokens;
-    }
-    if (suffix) {
-      next = `${next}, ${suffix}`;
-    }
-
-    setLocalValue(next.trim());
-  }, [localValue, tokens]);
+    if (!elements?.length) return;
+    setLocalValue((prev) => reorderElements(prev || '', elements, fromIdx, toIdx));
+  }, [elements]);
 
   // Drag handlers
   const handleDragStart = useCallback((e, idx) => {
@@ -305,12 +489,12 @@ export default function PromptComposer({
       dragNodeRef.current.classList.remove('is-dragging');
     }
     if (dragIndex !== null && dropIndex !== null && dragIndex !== dropIndex) {
-      reorderTokens(dragIndex, dropIndex);
+      handleReorderElements(dragIndex, dropIndex);
     }
     setDragIndex(null);
     setDropIndex(null);
     dragNodeRef.current = null;
-  }, [dragIndex, dropIndex, reorderTokens]);
+  }, [dragIndex, dropIndex, handleReorderElements]);
 
   const handleDragOver = useCallback((e, idx) => {
     e.preventDefault();
@@ -326,7 +510,8 @@ export default function PromptComposer({
 
   // Touch handlers for mobile drag-and-drop
   const handleTouchStart = useCallback((e, idx) => {
-    e.preventDefault();
+    const isHandle = e.target?.closest?.('.composer-token-drag-handle');
+    if (!isHandle) return;
     const touch = e.touches[0];
     touchStartRef.current = {
       idx,
@@ -366,12 +551,12 @@ export default function PromptComposer({
 
   const handleTouchEnd = useCallback(() => {
     if (touchStartRef.current?.moved && dragIndex !== null && dropIndex !== null && dragIndex !== dropIndex) {
-      reorderTokens(dragIndex, dropIndex);
+      handleReorderElements(dragIndex, dropIndex);
     }
     touchStartRef.current = null;
     setDragIndex(null);
     setDropIndex(null);
-  }, [dragIndex, dropIndex, reorderTokens]);
+  }, [dragIndex, dropIndex, handleReorderElements]);
 
   const handleSave = () => {
     onChange?.(localValue);
@@ -431,6 +616,16 @@ export default function PromptComposer({
               <span className="composer-tab-badge">{aliasEntries.length}</span>
             )}
           </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'tags'}
+            className={`composer-tab ${activeTab === 'tags' ? 'is-active' : ''}`}
+            onClick={() => setActiveTab('tags')}
+          >
+            <IconTag size={14} />
+            Tags
+          </button>
         </div>
 
         <div className={`composer-panel composer-panel-compose ${activeTab === 'compose' ? 'is-visible' : ''}`}>
@@ -439,30 +634,37 @@ export default function PromptComposer({
               ref={textRef}
               value={localValue}
               onChange={handleTextChange}
-              placeholder="Compose your prompt… Use $category:alias$ tokens to insert aliases."
               className="composer-textarea"
               rows={8}
             />
           </div>
 
-          {tokens.length > 0 && (
+          {elements.length > 0 && (
             <div className="composer-tokens">
-              <div className="composer-tokens-label">
-                Active aliases <span className="composer-tokens-hint">(drag to reorder)</span>
+              <div className="composer-tokens-header">
+                <span className="composer-tokens-label">
+                  Elements
+                  <span className="composer-tokens-count">{elements.length}</span>
+                </span>
+                <span className="composer-tokens-hint">Drag to reorder · Tap to adjust</span>
               </div>
               <div className="composer-tokens-list">
-                {tokens.map((t, idx) => {
-                  const entry = aliasByToken.get(t.token.toLowerCase());
-                  const friendlyName = entry?.displayName || t.token;
+                {elements.map((el, idx) => {
+                  let displayName = el.text;
+                  if (el.type === 'alias') {
+                    const entry = aliasByToken.get(el.text.toLowerCase());
+                    displayName = entry?.displayName || el.text;
+                  }
                   const isDragging = dragIndex === idx;
                   const isDropTarget = dropIndex === idx && dragIndex !== null && dragIndex !== idx;
-                  const weight = getTokenWeightRange(localValue || '', t)?.weight ?? 1;
+                  const weightInfo = getElementWeight(localValue || '', el);
+                  const weight = weightInfo?.weight ?? 1;
 
                   return (
                     <span
-                      key={`${t.token}-${t.index}`}
-                      className={`composer-token composer-token-draggable ${isDragging ? 'is-dragging' : ''} ${isDropTarget ? 'is-drop-target' : ''}`}
-                      title={`$${t.token}$`}
+                      key={`${el.type}-${el.text}-${el.start}`}
+                      className={`composer-token composer-token-draggable ${el.type === 'alias' ? 'is-alias' : 'is-tag'} ${isDragging ? 'is-dragging' : ''} ${isDropTarget ? 'is-drop-target' : ''}`}
+                      title={el.type === 'alias' ? `Alias: $${el.text}$` : `Tag: ${el.text}`}
                       draggable
                       onDragStart={(e) => handleDragStart(e, idx)}
                       onDragEnd={handleDragEnd}
@@ -473,26 +675,27 @@ export default function PromptComposer({
                       onTouchEnd={handleTouchEnd}
                       onClick={() => {
                         if (dragIndex !== null) return;
-                        openStrengthFor(t);
+                        openStrengthFor(el);
                       }}
                     >
-                      <span className="composer-token-drag-handle" aria-hidden="true"><IconGrip size={14} /></span>
-                      <span className="composer-token-name">{friendlyName}</span>
-                      {Math.abs(weight - 1) > 1e-6 ? (
-                        <span className="composer-token-weight" aria-label={`Strength ${formatTokenWeight(weight)}x`}>
-                          ×{formatTokenWeight(weight)}
+                      <span className="composer-token-drag-handle" aria-hidden="true"><IconGrip size={10} /></span>
+                      <span className="composer-token-name">{displayName}</span>
+                      {el.type === 'alias' && <span className="composer-token-type">$</span>}
+                      {Math.abs(weight - 1) > 1e-6 && (
+                        <span className="composer-token-weight">
+                          {formatTokenWeight(weight)}×
                         </span>
-                      ) : null}
+                      )}
                       <button
                         type="button"
                         className="composer-token-remove"
                         onClick={(e) => {
                           e.stopPropagation();
-                          removeToken(t);
+                          handleRemoveElement(el);
                         }}
-                        aria-label={`Remove ${t.token}`}
+                        aria-label={`Remove ${el.text}`}
                       >
-                        <IconX size={12} />
+                        <IconX size={9} />
                       </button>
                     </span>
                   );
@@ -575,29 +778,236 @@ export default function PromptComposer({
             )}
           </div>
         </div>
+
+        <div
+          className={`composer-panel composer-panel-tags ${activeTab === 'tags' ? 'is-visible' : ''}`}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="composer-filters">
+            <input
+              ref={tagSearchRef}
+              type="search"
+              value={tagQuery}
+              onChange={(e) => setTagQuery(e.target.value)}
+              placeholder="Search tags… (e.g. smile, city, sword)"
+              className="composer-search ui-control ui-input"
+              aria-label="Search tags"
+            />
+            <select
+              value={tagCategory}
+              onChange={(e) => setTagCategory(e.target.value)}
+              className="composer-subcategory-select ui-control ui-select is-compact"
+              aria-label="Filter by category"
+            >
+              <option value="">Category: All</option>
+              {tagCategories.map((c) => (
+                <option key={c.key} value={c.key}>
+                  {formatSubcategoryLabel(c.key)} ({Number(c.actual || c.count || 0).toLocaleString()})
+                </option>
+              ))}
+            </select>
+            <select
+              value={tagSort}
+              onChange={(e) => setTagSort(e.target.value)}
+              className="composer-subcategory-select ui-control ui-select is-compact"
+              aria-label="Sort tags"
+            >
+              <option value="count">Sort: Popular</option>
+              <option value="alpha">Sort: A–Z</option>
+            </select>
+          </div>
+
+          <div className="composer-tags-header">
+            <div className="composer-tags-hint">
+              <span className="inline-flex items-center gap-2">
+                <IconTag size={14} />
+                Tap a tag to insert into prompt
+              </span>
+              <span className="ml-3 opacity-80">{tagTotalLabel}</span>
+            </div>
+            <button
+              type="button"
+              className="ui-button is-tiny is-primary"
+              onClick={(e) => {
+                e.stopPropagation();
+                setActiveTab('compose');
+              }}
+            >
+              Done
+            </button>
+          </div>
+          <div className="composer-tag-collection-bar is-sticky">
+            <div>
+              <div className="composer-tag-collection-label">
+                {composerCollectedTags.length ? `${composerCollectedTags.length} tags collected` : 'No tags collected'}
+              </div>
+              {collectionStatus ? (
+                <div className="composer-tag-collection-status">{collectionStatus}</div>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              className="composer-tag-collection-btn"
+              onClick={handleOpenCollectionSheet}
+              disabled={!composerCollectedTags.length}
+            >
+              Manage
+            </button>
+          </div>
+          <div className="composer-tag-collection-bar">
+            <div>
+              <div className="composer-tag-collection-label">
+                {composerCollectedTags.length ? `${composerCollectedTags.length} tags ready` : 'No tags collected yet'}
+              </div>
+              {collectionStatus ? (
+                <div className="composer-tag-collection-status">{collectionStatus}</div>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              className="composer-tag-collection-btn"
+              onClick={handleOpenCollectionSheet}
+              disabled={!composerCollectedTags.length}
+            >
+              Manage
+            </button>
+          </div>
+          {tagStatus ? <div className="composer-tags-status">{tagStatus}</div> : null}
+          {tagError ? <div className="composer-tags-error">{tagError}</div> : null}
+
+          <div className="composer-alias-list composer-tags-grid" role="list">
+            {tagLoading ? (
+              <div className="composer-alias-empty">Loading tags…</div>
+            ) : tagItems.length === 0 ? (
+              <div className="composer-alias-empty">No tags found.</div>
+            ) : (
+              <>
+                {tagItems.map((t) => {
+                  const isCollected = composerCollectedTags.some(
+                    (tag) => tag.toLowerCase() === String(t.tag || '').toLowerCase()
+                  );
+                  return (
+                    <button
+                      key={`${t.tag}-${t.category}`}
+                      type="button"
+                      className={`composer-alias-item composer-tag-item ${isCollected ? 'is-collected' : ''}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleInsertTag(t.tag);
+                      }}
+                    >
+                    <div className="composer-alias-header">
+                      <div className="composer-alias-name composer-tag-name">
+                        <code className="composer-tag-code">{t.tag}</code>
+                      </div>
+                      {t.category ? (
+                        <span className="composer-alias-category">
+                          {formatSubcategoryLabel(t.category)}
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="composer-alias-token composer-tag-count">{Number(t.count || 0).toLocaleString()}</div>
+                  </button>
+                  );
+                })}
+                {tagItems.length < tagTotal && (
+                  <div ref={tagSentinelRef} className="composer-sentinel" />
+                )}
+                {tagLoadingMore ? (
+                  <div className="composer-alias-empty">Loading more…</div>
+                ) : null}
+              </>
+            )}
+          </div>
+        </div>
       </div>
+
+      <BottomSheet
+        open={collectionSheetOpen}
+        onClose={() => setCollectionSheetOpen(false)}
+        title="Collected tags"
+        variant="sheet"
+        shouldCloseOnOverlayClick
+      >
+        <div className="sheet-stack">
+          <div className="sheet-section">
+            <div className="sheet-label">Tags ({composerCollectedTags.length})</div>
+            <div className="composer-collection-chips" role="list">
+              {composerCollectedTags.length ? (
+                composerCollectedTags.map((tag) => (
+                  <button
+                    key={tag}
+                    type="button"
+                    className="collected-tag-chip"
+                    onClick={() => removeComposerTag(tag)}
+                    aria-label={`Remove ${tag}`}
+                  >
+                    <code className="collected-tag-code">{tag}</code>
+                    <span aria-hidden="true">×</span>
+                  </button>
+                ))
+              ) : (
+                <div className="sheet-hint">No tags collected yet.</div>
+              )}
+            </div>
+          </div>
+          <div className="sheet-section flex gap-2">
+            <button
+              type="button"
+              className="ui-button is-muted w-full"
+              onClick={() => setCollectionSheetOpen(false)}
+            >
+              Close
+            </button>
+            <button
+              type="button"
+              className="ui-button is-ghost w-full"
+              onClick={clearComposerCollection}
+              disabled={!composerCollectedTags.length}
+            >
+              Clear
+            </button>
+            <button
+              type="button"
+              className="ui-button is-primary w-full"
+              onClick={copyComposerCollection}
+              disabled={!composerCollectedTags.length}
+            >
+              Copy
+            </button>
+            <textarea
+              ref={composerCollectionTextareaRef}
+              readOnly
+              className="sr-only"
+              aria-label="Collected tags"
+            />
+          </div>
+        </div>
+      </BottomSheet>
 
       <TokenStrengthSheet
         open={strengthOpen}
         onClose={() => setStrengthOpen(false)}
-        title="Alias strength"
+        title={strengthToken?.element?.type === 'alias' ? 'Alias strength' : 'Tag strength'}
         tokenLabel={
           strengthToken
-            ? `${strengthToken.displayName} • $${strengthToken.tokenObj?.token}$`
+            ? strengthToken.element?.type === 'alias'
+              ? `${strengthToken.displayName} • $${strengthToken.element?.text}$`
+              : strengthToken.displayName
             : ''
         }
         weight={strengthToken?.weight ?? 1}
         onApply={(w) => {
-          if (!strengthToken?.tokenObj) return;
-          setLocalValue((prev) => setTokenWeight(prev || '', strengthToken.tokenObj, w));
+          if (!strengthToken?.element) return;
+          setLocalValue((prev) => setElementWeight(prev || '', strengthToken.element, w));
         }}
         onRemoveWeight={() => {
-          if (!strengthToken?.tokenObj) return;
-          setLocalValue((prev) => setTokenWeight(prev || '', strengthToken.tokenObj, null));
+          if (!strengthToken?.element) return;
+          setLocalValue((prev) => setElementWeight(prev || '', strengthToken.element, null));
         }}
         onDeleteToken={() => {
-          if (!strengthToken?.tokenObj) return;
-          removeToken(strengthToken.tokenObj);
+          if (!strengthToken?.element) return;
+          handleRemoveElement(strengthToken.element);
         }}
       />
     </BottomSheet>

@@ -1,5 +1,5 @@
 // js/src/pages/MainPage.jsx
-import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import BottomBar from '../components/BottomBar';
 import ImageInput from '../components/ImageInput';
 import FieldSpotlight from '../components/FieldSpotlight';
@@ -44,32 +44,6 @@ const WorkflowSelectorBar = memo(function WorkflowSelectorBar({
   );
 });
 
-const PromptPreviewCard = memo(function PromptPreviewCard({
-  workflowData,
-  expandedPrompt,
-  onOpenComposer,
-  promptFieldName,
-}) {
-  if (!workflowData) return null;
-  return (
-    <div className="studio-preview-card">
-      <div className="studio-preview-head">
-        <span className="studio-preview-title">Expanded prompt</span>
-        <button
-          type="button"
-          onClick={() => onOpenComposer(promptFieldName)}
-          className="ui-button is-muted is-compact"
-        >
-          <span>Open composer</span>
-        </button>
-      </div>
-      <div className="studio-preview-body">
-        {expandedPrompt || '—'}
-      </div>
-    </div>
-  );
-});
-
 function MainPage() {
   const {
     workflows = [],
@@ -108,7 +82,6 @@ function MainPage() {
 
   const parameterSectionRef = useRef(null);
   const imageSectionRef = useRef(null);
-  const [collapseAllState, setCollapseAllState] = useState({ key: 0, collapsed: true });
   const [lastEditedParam, setLastEditedParam] = useState(() => {
     return loadLastEditedParam();
   });
@@ -215,55 +188,6 @@ function MainPage() {
     }
   }, [statusPhase]);
 
-  const previewField = useMemo(() => {
-    // Prefer the resolved prompt field (works even when the key isn't literally "prompt")
-    if (promptFieldName && typeof previewFormData?.[promptFieldName] === 'string') {
-      return promptFieldName;
-    }
-
-    // Prefer the canonical prompt field when present.
-    if (typeof previewFormData?.prompt === 'string') return 'prompt';
-
-    // Otherwise use first string with $alias$.
-    const withAlias = Object.entries(previewFormData || {}).find(
-      ([, v]) => typeof v === 'string' && v.includes('$')
-    );
-    if (withAlias) return withAlias[0];
-
-    // Finally: show *some* string field rather than blanking the card.
-    const firstString = Object.entries(previewFormData || {}).find(
-      ([, v]) => typeof v === 'string'
-    );
-    return firstString?.[0] || '';
-  }, [previewFormData, promptFieldName]);
-
-  const previewPromptText = useMemo(() => {
-    if (!previewField) return '';
-    const promptText = previewFormData?.[previewField] || '';
-    return typeof promptText === 'string' ? promptText : String(promptText ?? '');
-  }, [previewField, previewFormData]);
-
-  const deferredPreviewPromptText = useDeferredValue(previewPromptText);
-
-  const expandedPrompt = useMemo(() => {
-    const MAX_PREVIEW_CHARS = 2600;
-    const truncate = (s) => (s && s.length > MAX_PREVIEW_CHARS ? `${s.slice(0, MAX_PREVIEW_CHARS)}…` : s);
-    const text = deferredPreviewPromptText || '';
-
-    if (!text) return '';
-    if (!aliasLookup || !text.includes('$')) return truncate(text);
-
-    try {
-      const expanded = text.replace(/\$([a-z0-9_:-]+)\$/gi, (match, key) => {
-        const val = aliasLookup.get(key.toLowerCase());
-        return typeof val === 'string' ? val : match;
-      });
-      return truncate(expanded);
-    } catch {
-      return truncate(text);
-    }
-  }, [aliasLookup, deferredPreviewPromptText]);
-
   const handleWorkflowSelect = useCallback((name) => {
     if (!name || name === selectedWorkflow) return;
     if (selectedWorkflow) {
@@ -271,17 +195,6 @@ function MainPage() {
     }
     selectWorkflow(name);
   }, [formData, selectedWorkflow, selectWorkflow]);
-
-  const applyFormPatch = useCallback((patch) => {
-    if (!patch) return;
-    setFormData((prev) => {
-      const next = { ...(prev || {}), ...(patch || {}) };
-      if (selectedWorkflow) {
-        saveFormState(selectedWorkflow, next);
-      }
-      return next;
-    });
-  }, [selectedWorkflow, setFormData]);
 
   // Prompt Composer handlers
   const openComposer = useCallback((fieldName = 'prompt') => {
@@ -436,43 +349,6 @@ function MainPage() {
         />
 
         {workflowData ? (
-          <div className="controls-toolbar">
-            <div className="controls-toolbar-row">
-              <button
-                type="button"
-                className="ui-button is-muted is-compact"
-                onClick={() => setCollapseAllState((prev) => ({ key: prev.key + 1, collapsed: true }))}
-              >
-                Collapse all
-              </button>
-              <button
-                type="button"
-                className="ui-button is-muted is-compact"
-                onClick={() => setCollapseAllState((prev) => ({ key: prev.key + 1, collapsed: false }))}
-              >
-                Expand all
-              </button>
-            </div>
-            <div className="controls-toolbar-row">
-              <button
-                type="button"
-                className="ui-button is-ghost is-compact"
-                onClick={() => openComposer(promptFieldName)}
-              >
-                Open composer
-              </button>
-              <button
-                type="button"
-                className="ui-button is-ghost is-compact"
-                onClick={() => parameterSectionRef.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' })}
-              >
-                Jump to top
-              </button>
-            </div>
-          </div>
-        ) : null}
-
-        {workflowData ? (
           <WorkflowFormLayout
             workflowName={selectedWorkflow}
             dynamicInputs={orderedDynamicInputs}
@@ -480,7 +356,6 @@ function MainPage() {
             onFormChange={handleFormChange}
             parameterSectionRef={parameterSectionRef}
             compactControls
-            collapseAllState={collapseAllState}
             lastEditedParam={lastEditedParam}
             spotlightName={spotlightName}
             onCloseSpotlight={handleCloseSpotlight}
@@ -497,12 +372,6 @@ function MainPage() {
             <span>Select a workflow above to get started</span>
           </div>
         )}
-        <PromptPreviewCard
-          workflowData={workflowData}
-          expandedPrompt={expandedPrompt}
-          onOpenComposer={openComposer}
-          promptFieldName={promptFieldName}
-        />
       </CollapsibleSection>
 
       <CollapsibleSection

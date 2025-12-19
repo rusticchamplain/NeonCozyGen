@@ -151,6 +151,7 @@ export default function Gallery() {
   const {
     path,
     loading,
+    hasLoaded,
     page,
     totalPages,
     perPage,
@@ -236,7 +237,10 @@ export default function Gallery() {
     window.dispatchEvent(new Event('cozygen:gallery-viewed'));
   }, []);
 
-  const summaryMeta = loading ? 'Loading…' : `${filtered.length} items`;
+  const isInitialLoading = loading && !hasLoaded;
+  const isRefreshing = loading && hasLoaded;
+  const summaryCount = `${filtered.length} items`;
+  const summaryMeta = isInitialLoading ? 'Loading…' : summaryCount;
   const { containerRef, visibleItems, topSpacer, bottomSpacer, virtualized } =
     useVirtualGrid(filtered, isGrid);
 
@@ -295,7 +299,8 @@ export default function Gallery() {
           </div>
 
           <div className="md:hidden gallery-mobile-meta">
-            {loading ? 'Loading…' : `${summaryMeta} • Page ${page} of ${totalPages}`}
+            {isRefreshing ? <span className="loading-spinner" aria-hidden="true" /> : null}
+            <span>{summaryMeta} • Page {page} of {totalPages}</span>
           </div>
 
           {/* Desktop toolbar (kept out of mobile header to avoid redundancy) */}
@@ -392,11 +397,8 @@ export default function Gallery() {
           {/* Compact pagination/status row (anchored) */}
           <div className="gallery-pagination">
             <div className="gallery-pagination-info">
-              {loading ? (
-                <span className="gallery-loading-text">Loading…</span>
-              ) : (
-                <span>{summaryMeta}</span>
-              )}
+              {isRefreshing ? <span className="loading-spinner" aria-hidden="true" /> : null}
+              <span className={isInitialLoading ? 'gallery-loading-text' : ''}>{summaryMeta}</span>
             </div>
             <div className="gallery-pagination-controls">
               <button
@@ -437,7 +439,7 @@ export default function Gallery() {
       </div>
 
       {/* Grid/feed content (scrolls under anchored toolbar) */}
-      {loading && filtered.length === 0 ? (
+      {isInitialLoading && filtered.length === 0 ? (
         <div className="gallery-grid-responsive">
           {Array.from({ length: 8 }).map((_, i) => (
             <div key={i} className="gallery-skeleton-item">
@@ -446,7 +448,7 @@ export default function Gallery() {
             </div>
           ))}
         </div>
-      ) : filtered.length === 0 && !loading ? (
+      ) : filtered.length === 0 ? (
         <div className="gallery-empty">
           <div className="gallery-empty-icon"><IconEmpty size={48} /></div>
           <div className="gallery-empty-title">No media found</div>
@@ -601,7 +603,8 @@ export default function Gallery() {
               <option value={120}>120</option>
             </select>
             <div className="sheet-hint">
-              {loading ? 'Loading…' : `${summaryMeta} • Page ${page} of ${totalPages}`}
+              {isRefreshing ? <span className="loading-spinner" aria-hidden="true" /> : null}
+              <span>{summaryMeta} • Page {page} of {totalPages}</span>
             </div>
             <div className="flex items-center gap-2">
               <button

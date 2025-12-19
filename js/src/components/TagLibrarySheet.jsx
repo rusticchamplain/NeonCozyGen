@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import BottomSheet from './ui/BottomSheet';
 import { getDanbooruTagCategories, searchDanbooruTags } from '../api';
-import { IconRefresh, IconTag } from './Icons';
+import { IconGrip, IconRefresh, IconTag } from './Icons';
 import { formatSubcategoryLabel } from '../utils/aliasPresentation';
 
 function safeCopy(text) {
@@ -11,22 +11,7 @@ function safeCopy(text) {
     navigator.clipboard?.writeText?.(value);
     return true;
   } catch {
-    // Fallback for older browsers
-    try {
-      const ta = document.createElement('textarea');
-      ta.value = value;
-      ta.style.position = 'fixed';
-      ta.style.left = '-9999px';
-      ta.style.top = '-9999px';
-      document.body.appendChild(ta);
-      ta.focus();
-      ta.select();
-      document.execCommand('copy');
-      document.body.removeChild(ta);
-      return true;
-    } catch {
-      return false;
-    }
+    return false;
   }
 }
 
@@ -36,6 +21,11 @@ export default function TagLibrarySheet({
   onSelectTag,
   initialQuery = '',
   title = 'Tag library',
+  contextTitle = '',
+  contextToken = '',
+  contextText = '',
+  contextTagCount = null,
+  inline = false,
 }) {
   const [query, setQuery] = useState(initialQuery || '');
   const [category, setCategory] = useState('');
@@ -48,10 +38,167 @@ export default function TagLibrarySheet({
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
+  const [collectedTags, setCollectedTags] = useState([]);
+  const [collectionManagerOpen, setCollectionManagerOpen] = useState(false);
+  const [dragIndex, setDragIndex] = useState(null);
+  const [dropIndex, setDropIndex] = useState(null);
   const sentinelRef = useRef(null);
   const searchRef = useRef(null);
+  const collectedTextareaRef = useRef(null);
+  const dragNodeRef = useRef(null);
+  const touchStartRef = useRef(null);
 
   const canLoadMore = items.length < total;
+  const isActive = inline || open;
+
+  const collectedText = useMemo(() => collectedTags.join(', '), [collectedTags]);
+  const collectedSet = useMemo(() => new Set(collectedTags.map((t) => t.toLowerCase())), [collectedTags]);
+
+  const addToCollection = useCallback((tag) => {
+    const normalized = String(tag || '').trim();
+    if (!normalized) return;
+    setCollectedTags((prev) => {
+      const seen = new Set(prev.map((t) => t.toLowerCase()));
+      if (seen.has(normalized.toLowerCase())) return prev;
+      return [...prev, normalized];
+    });
+  }, []);
+
+  const removeFromCollection = useCallback((tag) => {
+    const target = String(tag || '').trim().toLowerCase();
+    if (!target) return;
+    setCollectedTags((prev) => prev.filter((t) => t.toLowerCase() !== target));
+  }, []);
+
+  const clearCollection = useCallback(() => {
+    setCollectedTags([]);
+    setStatus('Cleared collected tags.');
+  }, []);
+
+  const copyCollection = useCallback(() => {
+    if (!collectedTags.length) {
+      setStatus('No tags to copy.');
+      return;
+    }
+
+    // Try modern async clipboard first
+    if (safeCopy(collectedText)) {
+      setStatus(`Copied ${collectedTags.length} tag${collectedTags.length === 1 ? '' : 's'}.`);
+      return;
+    }
+
+    // Fallback for mobile/webviews: select hidden textarea and execCommand
+    const textarea = collectedTextareaRef.current;
+    if (textarea) {
+      try {
+        textarea.value = collectedText;
+        textarea.removeAttribute('readonly');
+        textarea.select();
+        textarea.setSelectionRange(0, collectedText.length);
+        const ok = document.execCommand && document.execCommand('copy');
+        textarea.setAttribute('readonly', 'readonly');
+        window.getSelection()?.removeAllRanges?.();
+        if (ok) {
+          setStatus(`Copied ${collectedTags.length} tag${collectedTags.length === 1 ? '' : 's'}.`);
+          return;
+        }
+      } catch {
+        // fall through
+      }
+    }
+
+    setStatus('Copy not available on this browser.');
+  }, [collectedTags, collectedText]);
+
+  // Reorder collected tags
+  const reorderCollectedTags = useCallback((fromIdx, toIdx) => {
+    setCollectedTags((prev) => {
+      const next = [...prev];
+      const [moved] = next.splice(fromIdx, 1);
+      next.splice(toIdx, 0, moved);
+      return next;
+    });
+  }, []);
+
+  // Drag handlers for collected tags
+  const handleDragStart = useCallback((e, idx) => {
+    setDragIndex(idx);
+    dragNodeRef.current = e.target;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', idx.toString());
+    requestAnimationFrame(() => {
+      if (dragNodeRef.current) {
+        dragNodeRef.current.classList.add('is-dragging');
+      }
+    });
+  }, []);
+
+  const handleDragEnd = useCallback(() => {
+    if (dragNodeRef.current) {
+      dragNodeRef.current.classList.remove('is-dragging');
+    }
+    if (dragIndex !== null && dropIndex !== null && dragIndex !== dropIndex) {
+      reorderCollectedTags(dragIndex, dropIndex);
+    }
+    setDragIndex(null);
+    setDropIndex(null);
+    dragNodeRef.current = null;
+  }, [dragIndex, dropIndex, reorderCollectedTags]);
+
+  const handleDragOver = useCallback((e, idx) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDropIndex(idx);
+  }, []);
+
+  const handleDragLeave = useCallback(() => {
+    // Don't clear dropIndex here to prevent flickering
+  }, []);
+
+  // Touch handlers for mobile drag-and-drop
+  const handleTouchStart = useCallback((e, idx) => {
+    const touch = e.touches[0];
+    touchStartRef.current = {
+      idx,
+      startX: touch.clientX,
+      startY: touch.clientY,
+      moved: false,
+    };
+  }, []);
+
+  const handleTouchMove = useCallback((e) => {
+    if (!touchStartRef.current) return;
+    const touch = e.touches[0];
+    const deltaX = Math.abs(touch.clientX - touchStartRef.current.startX);
+    const deltaY = Math.abs(touch.clientY - touchStartRef.current.startY);
+
+    if (deltaX > 10 || deltaY > 10) {
+      touchStartRef.current.moved = true;
+      setDragIndex(touchStartRef.current.idx);
+      e.preventDefault();
+
+      const chipElements = document.querySelectorAll('.collected-tag-chip');
+      const touchX = touch.clientX;
+      const touchY = touch.clientY;
+
+      for (let i = 0; i < chipElements.length; i++) {
+        const rect = chipElements[i].getBoundingClientRect();
+        if (touchX >= rect.left && touchX <= rect.right && touchY >= rect.top && touchY <= rect.bottom) {
+          setDropIndex(i);
+          break;
+        }
+      }
+    }
+  }, []);
+
+  const handleTouchEnd = useCallback(() => {
+    if (touchStartRef.current?.moved && dragIndex !== null && dropIndex !== null && dragIndex !== dropIndex) {
+      reorderCollectedTags(dragIndex, dropIndex);
+    }
+    touchStartRef.current = null;
+    setDragIndex(null);
+    setDropIndex(null);
+  }, [dragIndex, dropIndex, reorderCollectedTags]);
 
   const resetAndSearch = useCallback(async ({ nextQuery, nextCategory, nextSort } = {}) => {
     const q = typeof nextQuery === 'string' ? nextQuery : query;
@@ -97,7 +244,7 @@ export default function TagLibrarySheet({
 
   // Load categories on open
   useEffect(() => {
-    if (!open) return undefined;
+    if (!isActive) return undefined;
     setError('');
     setStatus('');
     let cancelled = false;
@@ -114,11 +261,11 @@ export default function TagLibrarySheet({
     return () => {
       cancelled = true;
     };
-  }, [open]);
+  }, [isActive]);
 
   // Reset local state when opening
   useEffect(() => {
-    if (!open) return;
+    if (!isActive) return;
     setQuery(initialQuery || '');
     setCategory('');
     setSort('count');
@@ -129,21 +276,22 @@ export default function TagLibrarySheet({
     setLoadingMore(false);
     setError('');
     setStatus('');
-    requestAnimationFrame(() => searchRef.current?.focus?.({ preventScroll: true }));
-  }, [open, initialQuery]);
+    setCollectedTags([]);
+    // Avoid auto-focusing to prevent mobile keyboard pop.
+  }, [initialQuery, isActive]);
 
   // Debounced search
   useEffect(() => {
-    if (!open) return undefined;
+    if (!isActive) return undefined;
     const handle = window.setTimeout(() => {
       resetAndSearch();
     }, 220);
     return () => window.clearTimeout(handle);
-  }, [open, query, category, sort, resetAndSearch]);
+  }, [category, isActive, query, resetAndSearch, sort]);
 
   // Infinite load sentinel
   useEffect(() => {
-    if (!open) return undefined;
+    if (!isActive) return undefined;
     const el = sentinelRef.current;
     if (!el) return undefined;
     if (typeof IntersectionObserver === 'undefined') return undefined;
@@ -156,28 +304,294 @@ export default function TagLibrarySheet({
     );
     obs.observe(el);
     return () => obs.disconnect();
-  }, [open, loadMore]);
+  }, [isActive, loadMore]);
 
-  const footer = useMemo(() => (
-    <div className="flex gap-2">
-      <button type="button" className="ui-button is-muted w-full" onClick={onClose}>
-        Done
-      </button>
-      <button
-        type="button"
-        className="ui-button is-ghost w-full"
-        onClick={() => resetAndSearch()}
-        disabled={loading || loadingMore}
-      >
-        <span className="inline-flex items-center gap-2">
-          <IconRefresh size={14} />
-          Refresh
-        </span>
-      </button>
-    </div>
-  ), [loading, loadingMore, onClose, resetAndSearch]);
+  const footer = useMemo(() => {
+    if (inline) return null;
+    return (
+      <div className="flex gap-2">
+        <button type="button" className="ui-button is-muted w-full" onClick={onClose}>
+          Done
+        </button>
+        <button
+          type="button"
+          className="ui-button is-ghost w-full"
+          onClick={() => resetAndSearch()}
+          disabled={loading || loadingMore}
+        >
+          <span className="inline-flex items-center gap-2">
+            <IconRefresh size={14} />
+            Refresh
+          </span>
+        </button>
+      </div>
+    );
+  }, [inline, loading, loadingMore, onClose, resetAndSearch]);
 
   const totalLabel = total ? `${items.length.toLocaleString()} / ${total.toLocaleString()}` : `${items.length.toLocaleString()}`;
+  const showContext = Boolean(onSelectTag && (contextTitle || contextToken || contextText));
+  const tagCountLabel = Number.isFinite(contextTagCount) ? `${contextTagCount} tags` : '';
+  const content = (
+    <div className={`sheet-stack ${inline ? 'tag-library-page' : ''}`}>
+      {showContext ? (
+        <div className="tag-library-context">
+          <div className="tag-library-context-head">
+            <div className="min-w-0">
+              <div className="sheet-label">Adding to alias</div>
+              <div className="tag-library-context-title">{contextTitle || 'Alias'}</div>
+              {contextToken ? (
+                <div className="tag-library-context-token">{contextToken}</div>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              className="ui-button is-tiny is-muted"
+              onClick={onClose}
+            >
+              Back
+            </button>
+          </div>
+          <div className="tag-library-context-preview">
+            {contextText || '—'}
+          </div>
+          {tagCountLabel ? (
+            <div className="tag-library-context-meta">{tagCountLabel}</div>
+          ) : null}
+        </div>
+      ) : null}
+
+      <div className="sheet-section">
+        {!inline ? <div className="sheet-label">Browse</div> : null}
+        <div className="composer-filters">
+          <input
+            ref={searchRef}
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search tags… (e.g. smile, city, sword)"
+            className="composer-search ui-control ui-input"
+            aria-label="Search tags"
+          />
+          <select
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            className="composer-subcategory-select ui-control ui-select is-compact"
+            aria-label="Filter by category"
+          >
+            <option value="">Category: All</option>
+            {categories.map((c) => (
+              <option key={c.key} value={c.key}>
+                {formatSubcategoryLabel(c.key)} ({Number(c.actual || c.count || 0).toLocaleString()})
+              </option>
+            ))}
+          </select>
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value)}
+            className="composer-subcategory-select ui-control ui-select is-compact"
+            aria-label="Sort tags"
+          >
+            <option value="count">Sort: Popular</option>
+            <option value="alpha">Sort: A–Z</option>
+          </select>
+        </div>
+        <div className="sheet-hint">
+          <span className="inline-flex items-center gap-2">
+            <IconTag size={14} />
+            Tap a tag to {onSelectTag ? 'add it to the alias' : 'collect it'}
+          </span>
+          <span className="ml-3 opacity-80">{totalLabel}</span>
+        </div>
+        {status ? <div className="text-xs text-[#9DA3FFCC]">{status}</div> : null}
+        {error ? <div className="text-xs text-[#FF8F70]">{error}</div> : null}
+      </div>
+
+      <div className="composer-alias-list tag-library-grid" role="list">
+        {loading ? (
+          <div className="composer-alias-empty">Loading tags…</div>
+        ) : items.length === 0 ? (
+          <div className="composer-alias-empty">No tags found.</div>
+        ) : (
+          <>
+            {items.map((t) => (
+              <div key={`${t.tag}-${t.category}`} className="tag-library-row" role="listitem">
+                <button
+                  type="button"
+                  className={`composer-alias-item tag-library-item ${!onSelectTag && collectedSet.has(String(t.tag || '').toLowerCase()) ? 'is-collected' : ''}`}
+                  onClick={() => {
+                    if (onSelectTag) {
+                      onSelectTag(String(t.tag || ''));
+                      setStatus(`Added: ${t.tag}`);
+                      return;
+                    }
+                    // Standalone mode: add to collection
+                    const tagStr = String(t.tag || '');
+                    if (collectedSet.has(tagStr.toLowerCase())) {
+                      removeFromCollection(tagStr);
+                      setStatus(`Removed: ${t.tag}`);
+                    } else {
+                      addToCollection(tagStr);
+                      setStatus(`Added: ${t.tag}`);
+                    }
+                  }}
+                >
+                  <div className="composer-alias-header">
+                    <div className="composer-alias-name tag-library-name">
+                      <code className="tag-library-code">{t.tag}</code>
+                    </div>
+                    {t.category ? (
+                      <span className="composer-alias-category">
+                        {formatSubcategoryLabel(t.category)}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="composer-alias-token">{Number(t.count || 0).toLocaleString()}</div>
+                </button>
+              </div>
+            ))}
+            <div ref={sentinelRef} className="composer-sentinel" />
+            {loadingMore ? (
+              <div className="composer-alias-empty">Loading more…</div>
+            ) : null}
+          </>
+        )}
+      </div>
+    </div>
+  );
+
+  if (!isActive) return null;
+
+  if (inline) {
+    return (
+      <section className="tag-library-surface">
+        {title ? <div className="sheet-label tag-library-page-title">{title}</div> : null}
+        {content}
+        {!onSelectTag ? (
+          <div className="tag-collection-bar" aria-live="polite">
+            <div className="tag-collection-bar-main">
+              <div className="tag-collection-bar-title">
+                Tags
+              </div>
+              <div className="tag-collection-bar-count" aria-live="polite">
+                {collectedTags.length === 0 ? 'No tags selected' : `${collectedTags.length} selected`}
+              </div>
+            </div>
+            <button
+              type="button"
+              className="tag-collection-menu-btn"
+              onClick={() => setCollectionManagerOpen(true)}
+              aria-label="Manage collected tags"
+            >
+              ⋯
+            </button>
+            <textarea
+              ref={collectedTextareaRef}
+              value={collectedText}
+              onChange={(e) => {
+                const tags = e.target.value
+                  .split(',')
+                  .map((t) => t.trim())
+                  .filter(Boolean);
+                const seen = new Set();
+                const unique = [];
+                tags.forEach((t) => {
+                  const key = t.toLowerCase();
+                  if (!seen.has(key)) {
+                    seen.add(key);
+                    unique.push(t);
+                  }
+                });
+                setCollectedTags(unique);
+              }}
+              className="sr-only"
+              aria-label="Collected tags text"
+            />
+          </div>
+        ) : null}
+
+        {!onSelectTag ? (
+          <BottomSheet
+            open={collectionManagerOpen}
+            onClose={() => setCollectionManagerOpen(false)}
+            title="Collected tags"
+            variant="sheet"
+            shouldCloseOnOverlayClick
+          >
+            <div className="sheet-stack">
+              <div className="sheet-section">
+                <div className="sheet-label">
+                  Tags ({collectedTags.length})
+                </div>
+                <div className="tag-collection-codeblock">
+                  <pre className="tag-collection-pre">{collectedText || '—'}</pre>
+                  <button
+                    type="button"
+                    className="tag-collection-copy-btn"
+                    onClick={copyCollection}
+                    disabled={collectedTags.length === 0}
+                    aria-label="Copy collected tags"
+                  >
+                    ⧉
+                  </button>
+                  <textarea
+                    ref={collectedTextareaRef}
+                    value={collectedText}
+                    readOnly
+                    className="sr-only"
+                    aria-label="Collected tags text"
+                  />
+                </div>
+                {collectedTags.length ? (
+                  <div className="tag-collection-chips">
+                    {collectedTags.map((tag, idx) => (
+                      <span
+                        key={`${tag}-${idx}`}
+                        className="collected-tag-chip"
+                        onClick={() => removeFromCollection(tag)}
+                      >
+                        <code className="collected-tag-code">{tag}</code>
+                        <button
+                          type="button"
+                          className="collected-tag-remove"
+                          aria-label={`Remove ${tag}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeFromCollection(tag);
+                          }}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="sheet-hint">No tags collected yet.</div>
+                )}
+              </div>
+
+              <div className="sheet-section flex gap-2">
+                <button
+                  type="button"
+                  className="ui-button is-muted w-full"
+                  onClick={() => setCollectionManagerOpen(false)}
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  className="ui-button is-ghost w-full"
+                  onClick={clearCollection}
+                  disabled={collectedTags.length === 0}
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+          </BottomSheet>
+        ) : null}
+      </section>
+    );
+  }
 
   return (
     <BottomSheet
@@ -185,119 +599,11 @@ export default function TagLibrarySheet({
       onClose={onClose}
       title={title}
       variant="fullscreen"
+      contentClassName="tag-library-sheet"
       footer={footer}
       shouldCloseOnOverlayClick={false}
     >
-      <div className="sheet-stack">
-        <div className="sheet-section">
-          <div className="sheet-label">Browse</div>
-          <div className="composer-filters">
-            <input
-              ref={searchRef}
-              type="search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search tags… (e.g. smile, city, sword)"
-              className="composer-search ui-control ui-input"
-              aria-label="Search tags"
-            />
-            <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              className="composer-subcategory-select ui-control ui-select is-compact"
-              aria-label="Filter by category"
-            >
-              <option value="">Category: All</option>
-              {categories.map((c) => (
-                <option key={c.key} value={c.key}>
-                  {formatSubcategoryLabel(c.key)} ({Number(c.actual || c.count || 0).toLocaleString()})
-                </option>
-              ))}
-            </select>
-            <select
-              value={sort}
-              onChange={(e) => setSort(e.target.value)}
-              className="composer-subcategory-select ui-control ui-select is-compact"
-              aria-label="Sort tags"
-            >
-              <option value="count">Sort: Popular</option>
-              <option value="alpha">Sort: A–Z</option>
-            </select>
-          </div>
-          <div className="sheet-hint">
-            <span className="inline-flex items-center gap-2">
-              <IconTag size={14} />
-              Tap a tag to {onSelectTag ? 'add it to the alias' : 'copy it'}
-            </span>
-            <span className="ml-3 opacity-80">{totalLabel}</span>
-          </div>
-          {status ? <div className="text-xs text-[#9DA3FFCC]">{status}</div> : null}
-          {error ? <div className="text-xs text-[#FF8F70]">{error}</div> : null}
-        </div>
-
-        <div className="composer-alias-list" role="list">
-          {loading ? (
-            <div className="composer-alias-empty">Loading tags…</div>
-          ) : items.length === 0 ? (
-            <div className="composer-alias-empty">No tags found.</div>
-          ) : (
-            <>
-              {items.map((t) => (
-                <div key={`${t.tag}-${t.category}`} className="tag-library-row" role="listitem">
-                  <button
-                    type="button"
-                    className="composer-alias-item tag-library-item"
-                    onClick={() => {
-                      if (onSelectTag) {
-                        onSelectTag(String(t.tag || ''));
-                        setStatus(`Added: ${t.tag}`);
-                        return;
-                      }
-                      if (safeCopy(t.tag)) {
-                        setStatus(`Copied: ${t.tag}`);
-                      } else {
-                        setStatus('Copy not available on this browser.');
-                      }
-                    }}
-                  >
-                    <div className="composer-alias-header">
-                      <div className="composer-alias-name tag-library-name">
-                        <code className="tag-library-code">{t.tag}</code>
-                      </div>
-                      {t.category ? (
-                        <span className="composer-alias-category">
-                          {formatSubcategoryLabel(t.category)}
-                        </span>
-                      ) : null}
-                    </div>
-                    <div className="composer-alias-token">{Number(t.count || 0).toLocaleString()}</div>
-                  </button>
-                  <button
-                    type="button"
-                    className="ui-button is-tiny is-ghost tag-library-copy"
-                    onClick={() => {
-                      if (safeCopy(t.tag)) {
-                        setStatus(`Copied: ${t.tag}`);
-                      } else {
-                        setStatus('Copy not available on this browser.');
-                      }
-                    }}
-                    aria-label={`Copy ${t.tag}`}
-                    title="Copy"
-                  >
-                    Copy
-                  </button>
-                </div>
-              ))}
-              <div ref={sentinelRef} className="composer-sentinel" />
-              {loadingMore ? (
-                <div className="composer-alias-empty">Loading more…</div>
-              ) : null}
-            </>
-          )}
-        </div>
-      </div>
+      {content}
     </BottomSheet>
   );
 }
-

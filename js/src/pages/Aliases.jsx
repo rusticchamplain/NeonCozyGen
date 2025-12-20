@@ -5,7 +5,7 @@ import usePromptAliases from '../hooks/usePromptAliases';
 import { normalizeAliasMap } from '../utils/promptAliases';
 import { validateDanbooruTags } from '../api';
 import BottomSheet from '../components/ui/BottomSheet';
-import { IconTag, IconRefresh } from '../components/Icons';
+import { IconTag } from '../components/Icons';
 import useMediaQuery from '../hooks/useMediaQuery';
 import {
   deriveAliasSubcategory,
@@ -120,7 +120,6 @@ export default function Aliases() {
     saving,
     error,
     persistAliases,
-    refreshAliases,
   } = usePromptAliases();
 
   const [rows, setRows] = useState(() => rowsFromAliases(aliases, aliasCategories));
@@ -813,69 +812,48 @@ export default function Aliases() {
   return (
     <>
       <div className="page-shell page-stack alias-page">
-        <div className="screen-sticky">
-          <div className="space-y-3 py-3">
-            <header className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="ui-kicker">Library</div>
-                <h2 className="text-xl font-semibold flex items-center gap-2">
-                  <IconTag size={18} />
-                  <span className="truncate">Aliases</span>
-                </h2>
-                <div className="text-[11px] text-[#9DA3FFCC] mt-1">{countsLabel}</div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  className="ui-button is-tiny is-muted"
-                  onClick={() => setCategoriesOpen(true)}
-                >
-                  Categories
-                </button>
-                <button
-                  type="button"
-                  className="ui-button is-tiny is-ghost"
-                  onClick={() => openTagLibrary({ query: query || '', targetId: '' })}
-                  title="Browse danbooru tags"
-                >
-                  <span className="inline-flex items-center gap-2">
-                    <IconTag size={14} />
-                    Tags
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  className="ui-button is-tiny is-ghost"
-                  onClick={refreshAliases}
-                  disabled={loading}
-                  title="Refresh"
-                >
-                  <span className="inline-flex items-center gap-2">
-                    <IconRefresh size={14} />
-                    Refresh
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  className="ui-button is-tiny is-primary"
-                  onClick={addRow}
-                >
-                  Add
-                </button>
-              </div>
-            </header>
-
+        <div className="page-bar">
+          <h1 className="page-bar-title">Aliases</h1>
+          <div className="page-bar-actions">
+            <button
+              type="button"
+              className="page-bar-btn"
+              onClick={() => openTagLibrary({ query: query || '', targetId: '' })}
+              title="Browse danbooru tags"
+            >
+              Tags
+            </button>
+            <button
+              type="button"
+              className="page-bar-btn is-primary"
+              onClick={addRow}
+            >
+              Add
+            </button>
+          </div>
+        </div>
+        <div className="library-toolbar screen-sticky">
+          <div className="library-toolbar-inner">
             <div className="composer-filters">
-              <input
-                ref={searchInputRef}
-                type="search"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                className="composer-search ui-control ui-input"
-                placeholder="Search aliases"
-                aria-label="Search aliases"
-              />
+              <div className="input-with-action">
+                <input
+                  ref={searchInputRef}
+                  type="search"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  className="composer-search ui-control ui-input"
+                  placeholder="Search aliases"
+                  aria-label="Search aliases"
+                />
+                <button
+                  type="button"
+                  className="input-action-btn"
+                  onClick={() => setQuery('')}
+                  disabled={!query}
+                >
+                  Clear
+                </button>
+              </div>
               <select
                 className="composer-subcategory-select ui-control ui-select is-compact"
                 value={categoryFilter}
@@ -914,14 +892,13 @@ export default function Aliases() {
                 </button>
               ) : null}
             </div>
-
             {error ? (
-              <div className="text-xs text-[#FF8F70]">
+              <div className="library-toolbar-status is-error">
                 Could not load aliases. Try again later.
               </div>
             ) : null}
             {status ? (
-              <div className="text-xs text-[#9DA3FFCC]">{status}</div>
+              <div className="library-toolbar-status">{status}</div>
             ) : null}
           </div>
         </div>

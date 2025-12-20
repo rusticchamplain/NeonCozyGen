@@ -39,7 +39,8 @@ export function useMediaViewer(mediaItems) {
     if (!mediaItems || !mediaItems.length) return;
     setViewerIndex((prevIndex) => {
       if (prevIndex === null || prevIndex === undefined) return prevIndex;
-      return (prevIndex + 1) % mediaItems.length;
+      if (prevIndex >= mediaItems.length - 1) return prevIndex;
+      return prevIndex + 1;
     });
   }, [mediaItems]);
 
@@ -47,7 +48,8 @@ export function useMediaViewer(mediaItems) {
     if (!mediaItems || !mediaItems.length) return;
     setViewerIndex((prevIndex) => {
       if (prevIndex === null || prevIndex === undefined) return prevIndex;
-      return (prevIndex - 1 + mediaItems.length) % mediaItems.length;
+      if (prevIndex <= 0) return prevIndex;
+      return prevIndex - 1;
     });
   }, [mediaItems]);
 
@@ -59,11 +61,17 @@ export function useMediaViewer(mediaItems) {
     viewerIndex < mediaItems.length
       ? mediaItems[viewerIndex]
       : null;
+  const total = mediaItems?.length || 0;
+  const canPrev = viewerIndex !== null && viewerIndex > 0;
+  const canNext = viewerIndex !== null && viewerIndex < total - 1;
 
   return {
     viewerOpen,
     viewerIndex,
     currentMedia,
+    total,
+    canPrev,
+    canNext,
     open,
     close,
     next,

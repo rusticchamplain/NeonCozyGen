@@ -23,19 +23,28 @@ export default function MediaViewerModal({
   onClose,
   onPrev,
   onNext,
+  total = 0,
+  canPrev = false,
+  canNext = false,
 }) {
   const overlayPointerDownRef = useRef(false);
+  const closeButtonRef = useRef(null);
 
   useEffect(() => {
     if (!isOpen) return undefined;
     const onKeyDown = (e) => {
       if (e.key === 'Escape') onClose?.();
-      if (e.key === 'ArrowLeft') onPrev?.();
-      if (e.key === 'ArrowRight') onNext?.();
+      if (e.key === 'ArrowLeft' && canPrev) onPrev?.();
+      if (e.key === 'ArrowRight' && canNext) onNext?.();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [isOpen, onClose, onNext, onPrev]);
+  }, [isOpen, onClose, onNext, onPrev, canPrev, canNext]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    closeButtonRef.current?.focus?.();
+  }, [isOpen]);
 
   if (!media) return null;
   if (!isOpen) return null;
@@ -44,6 +53,7 @@ export default function MediaViewerModal({
   const url = mediaUrl(media);
   const locationLabel = media.subfolder || 'Gallery';
   const isClip = isVideo(media.filename);
+  const showNav = total > 1;
 
   return (
     createPortal(
@@ -80,55 +90,57 @@ export default function MediaViewerModal({
                 </div>
               </div>
               <div className="media-viewer-actions">
-                <button
-                  type="button"
-                  className="media-btn ghost"
-                  onClick={onPrev}
-                  aria-label="Previous item"
-                >
-                  ←
-                </button>
-                <button
-                  type="button"
-                  className="media-btn ghost"
-                  onClick={onNext}
-                  aria-label="Next item"
-                >
-                  →
-                </button>
                 <a href={url} target="_blank" rel="noreferrer" className="media-btn">
                   Open
                 </a>
-                <button type="button" className="media-btn solid" onClick={onClose}>
+                <button
+                  ref={closeButtonRef}
+                  type="button"
+                  className="media-btn solid"
+                  onClick={onClose}
+                >
                   Close
                 </button>
               </div>
             </header>
 
             <div className="media-viewer-stage">
-              <button
-                type="button"
-                className="media-stage-nav is-left"
-                onClick={onPrev}
-                aria-label="Previous"
-              >
-                ←
-              </button>
+              {showNav ? (
+                <button
+                  type="button"
+                  className={`media-stage-nav is-left ${canPrev ? '' : 'is-disabled'}`}
+                  onClick={onPrev}
+                  aria-label="Previous"
+                  disabled={!canPrev}
+                >
+                  ←
+                </button>
+              ) : null}
               <div className="media-viewer-frame">
                 {isClip ? (
-                  <video src={url} controls className="media-viewer-media" autoPlay />
+                  <video
+                    src={url}
+                    controls
+                    className="media-viewer-media"
+                    autoPlay
+                    muted
+                    playsInline
+                  />
                 ) : (
                   <img src={url} alt={media.filename} className="media-viewer-media" />
                 )}
               </div>
-              <button
-                type="button"
-                className="media-stage-nav is-right"
-                onClick={onNext}
-                aria-label="Next"
-              >
-                →
-              </button>
+              {showNav ? (
+                <button
+                  type="button"
+                  className={`media-stage-nav is-right ${canNext ? '' : 'is-disabled'}`}
+                  onClick={onNext}
+                  aria-label="Next"
+                  disabled={!canNext}
+                >
+                  →
+                </button>
+              ) : null}
             </div>
           </div>
         </div>

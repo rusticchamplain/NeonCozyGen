@@ -58,14 +58,8 @@ export default function GalleryNav({
   onSelectDir,
 }) {
   return (
-    <div className="space-y-3 text-[#F8F4FF]">
-      <div className="flex items-center justify-start gap-2 flex-wrap" />
-
-      <div
-        className="flex items-center gap-2 flex-wrap text-[#C3C7FF]"
-        role="navigation"
-        aria-label="Gallery path"
-      >
+    <div className="gallery-nav">
+      <div className="gallery-crumbs" role="navigation" aria-label="Gallery path">
         {crumbs.map((crumb, idx) => (
           <Fragment key={crumb.path || crumb.name || idx}>
             <span className="text-[#6A6FA8]">/</span>
@@ -82,7 +76,7 @@ export default function GalleryNav({
       </div>
 
       {dirChips.length > 0 ? (
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="gallery-dir-chips">
           {dirChips.map((dir) => (
             <button
               key={dir.subfolder || dir.filename}

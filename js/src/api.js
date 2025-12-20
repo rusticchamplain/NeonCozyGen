@@ -21,6 +21,7 @@ const jget = async (url, options = {}) => {
   const { signal } = options;
   const res = await fetch(url, {
     headers: { ...authHeaders() },
+    credentials: 'include',
     signal,
   });
   return handleResponse(url, res);
@@ -129,6 +130,21 @@ export async function getWorkflowTypes() {
 
 export async function saveWorkflowType(workflow, mode) {
   return jpost('/cozygen/api/workflow_types', { workflow, mode });
+}
+
+/* ---- Workflow presets ---- */
+export async function getWorkflowPresets(workflow, options = {}) {
+  const qs = new URLSearchParams();
+  if (workflow) qs.set('workflow', workflow);
+  return jget(`/cozygen/api/workflow_presets?${qs.toString()}`, options);
+}
+
+export async function saveWorkflowPreset(workflow, preset, options = {}) {
+  return jpost('/cozygen/api/workflow_presets', { workflow, preset }, options);
+}
+
+export async function deleteWorkflowPreset(workflow, presetId, options = {}) {
+  return jpost('/cozygen/api/workflow_presets', { workflow, delete: presetId }, options);
 }
 
 /* ---- Auth ---- */

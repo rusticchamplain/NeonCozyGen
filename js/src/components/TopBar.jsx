@@ -9,7 +9,9 @@ import { hasLastRenderPayload, requeueLastRender } from '../utils/globalRender';
 import useMediaQuery from '../hooks/useMediaQuery';
 import {
   LogoMark,
+  IconHome,
   IconStudio,
+  IconControls,
   IconGallery,
   IconTag,
   IconAlias,
@@ -18,7 +20,8 @@ import {
 } from './Icons';
 
 const PRIMARY_LINKS = [
-  { to: '/', label: 'Studio', Icon: IconStudio, end: true },
+  { to: '/studio', label: 'Studio', Icon: IconHome, end: true },
+  { to: '/controls', label: 'Controls', Icon: IconControls },
 ];
 
 const SECONDARY_LINKS = [
@@ -53,8 +56,8 @@ export default function TopBar() {
 
   const requestRender = async () => {
     if (renderActive) return;
-    const isStudio = pathname === '/' || pathname === '/studio';
-    if (isStudio) {
+    const isControls = pathname === '/controls';
+    if (isControls) {
       try {
         window.dispatchEvent(new Event('cozygen:request-render'));
       } catch {
@@ -91,7 +94,7 @@ export default function TopBar() {
     <header className="top-bar">
       <div className="top-bar-shell">
         <div className="brand-row">
-          <Link to="/" className="brand-mark" onClick={closeMenu}>
+          <Link to="/studio" className="brand-mark" onClick={closeMenu}>
             <LogoMark size={28} className="brand-logo" />
             <span className="brand-text">CozyGen</span>
           </Link>

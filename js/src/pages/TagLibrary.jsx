@@ -1,9 +1,9 @@
 import { useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import TagLibrarySheet from '../components/TagLibrarySheet';
-import { IconTag } from '../components/Icons';
 
 export default function TagLibrary() {
+  const navigate = useNavigate();
   const [params] = useSearchParams();
   const initialQuery = params.get('q') || '';
 
@@ -13,16 +13,23 @@ export default function TagLibrary() {
 
   return (
     <div className="page-shell page-stack">
-      <div className="page-header">
-        <div className="page-title-row">
-          <span className="page-title-icon" aria-hidden="true">
-            <IconTag size={18} />
-          </span>
-          <div>
-            <div className="page-kicker">Reference</div>
-            <h1 className="page-title">{pageTitle}</h1>
-            <p className="page-subtitle">Browse, collect, and copy tags from the centralized library.</p>
-          </div>
+      <div className="page-bar">
+        <h1 className="page-bar-title">{pageTitle}</h1>
+        <div className="page-bar-actions">
+          <button
+            type="button"
+            className="page-bar-btn"
+            onClick={() => navigate('/aliases')}
+          >
+            Aliases
+          </button>
+          <button
+            type="button"
+            className="page-bar-btn"
+            onClick={() => navigate('/compose')}
+          >
+            Composer
+          </button>
         </div>
       </div>
 

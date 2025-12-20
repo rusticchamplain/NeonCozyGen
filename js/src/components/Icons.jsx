@@ -76,6 +76,15 @@ export const IconStudio = (props) => (
   </Icon>
 );
 
+// Home - simple house
+export const IconHome = (props) => (
+  <Icon {...props}>
+    <path d="M3 10l9-7 9 7" />
+    <path d="M5 10v10h14V10" />
+    <path d="M9 20v-6h6v6" />
+  </Icon>
+);
+
 // Gallery - minimalist frame with landscape
 export const IconGallery = (props) => (
   <Icon {...props}>

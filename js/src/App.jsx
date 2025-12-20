@@ -1,16 +1,19 @@
 // js/src/App.jsx
 import { useEffect, useRef } from 'react';
-import { HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { HashRouter, Routes, Route, Navigate, useLocation, Outlet, useNavigate } from 'react-router-dom';
 import TopBar from './components/TopBar';
 import BottomNav from './components/BottomNav';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import useMediaQuery from './hooks/useMediaQuery';
 
 import MainPage from './pages/MainPage';
+import StudioLanding from './pages/StudioLanding';
 import Gallery from './pages/Gallery';
 import Aliases from './pages/Aliases';
 import TagLibrary from './pages/TagLibrary';
+import ComposerPage from './pages/Composer';
 import Login from './pages/Login';
+import { StudioProvider } from './contexts/StudioContext';
 
 /* Scroll to top on route change */
 function ScrollToTop({ containerRef }) {
@@ -51,12 +54,24 @@ function RequireAuth({ children }) {
 
 function App() {
   const { pathname } = useLocation();
+  const navigate = useNavigate();
   const { defaultCreds, authed } = useAuth();
   const isLogin = pathname === '/login';
   const contentRef = useRef(null);
   const isNarrow = useMediaQuery('(max-width: 767px)');
   const isCoarse = useMediaQuery('(pointer: coarse)');
   const showBottomNav = !isLogin && (isNarrow || isCoarse);
+
+  useEffect(() => {
+    if (!authed) return undefined;
+    const handler = (evt) => {
+      const fieldName = String(evt?.detail?.fieldName || '').trim();
+      const qs = fieldName ? `?field=${encodeURIComponent(fieldName)}` : '';
+      navigate(`/compose${qs}`);
+    };
+    window.addEventListener('cozygen:open-composer', handler);
+    return () => window.removeEventListener('cozygen:open-composer', handler);
+  }, [authed, navigate]);
 
   return (
     <div className="app-shell">
@@ -76,45 +91,23 @@ function App() {
           <Route path="/login" element={<Login />} />
 
           <Route
-            path="/"
             element={
               <RequireAuth>
-                <MainPage />
+                <StudioProvider>
+                  <Outlet />
+                </StudioProvider>
               </RequireAuth>
             }
-          />
-          <Route
-            path="/studio"
-            element={
-              <RequireAuth>
-                <MainPage />
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/gallery"
-            element={
-              <RequireAuth>
-                <Gallery />
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/aliases"
-            element={
-              <RequireAuth>
-                <Aliases />
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/tags"
-            element={
-              <RequireAuth>
-                <TagLibrary />
-              </RequireAuth>
-            }
-          />
+          >
+            <Route path="/" element={<Navigate to="/studio" replace />} />
+            <Route path="/studio" element={<StudioLanding />} />
+            <Route path="/controls" element={<MainPage />} />
+            <Route path="/compose" element={<ComposerPage />} />
+            <Route path="/gallery" element={<Gallery />} />
+            <Route path="/aliases" element={<Aliases />} />
+            <Route path="/tags" element={<TagLibrary />} />
+          </Route>
+
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/studio" replace />} />
         </Routes>

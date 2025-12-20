@@ -1,6 +1,7 @@
 // js/src/components/ImagePickerSheet.jsx
 import { inputFileUrl, outputFileUrl } from '../hooks/useImagePicker';
 import BottomSheet from './ui/BottomSheet';
+import SegmentedTabs from './ui/SegmentedTabs';
 
 export default function ImagePickerSheet({
   open,
@@ -46,6 +47,15 @@ export default function ImagePickerSheet({
 
   const parts = cwd.split('/').filter(Boolean);
   const title = effectiveSource === 'outputs' ? 'Choose output' : 'Choose input';
+  const quickItems = [
+    { key: '', label: 'Root' },
+    ...topDirs.map((d) => ({ key: d.rel_path, label: d.name })),
+  ];
+
+  const handleQuickSelect = (nextKey) => {
+    setCwd(nextKey);
+    setPage(1);
+  };
 
   return (
     <BottomSheet
@@ -106,22 +116,16 @@ export default function ImagePickerSheet({
         {hasSourceToggle ? (
           <div className="sheet-section">
             <div className="sheet-label">Source</div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                className={`ui-button is-compact ${effectiveSource === 'inputs' ? 'is-primary' : 'is-muted'}`}
-                onClick={() => switchSource('inputs')}
-              >
-                Inputs
-              </button>
-              <button
-                type="button"
-                className={`ui-button is-compact ${effectiveSource === 'outputs' ? 'is-primary' : 'is-muted'}`}
-                onClick={() => switchSource('outputs')}
-              >
-                Outputs
-              </button>
-            </div>
+            <SegmentedTabs
+              ariaLabel="Source"
+              value={effectiveSource}
+              onChange={switchSource}
+              size="sm"
+              items={[
+                { key: 'inputs', label: 'Inputs' },
+                { key: 'outputs', label: 'Outputs' },
+              ]}
+            />
           </div>
         ) : null}
 
@@ -166,28 +170,16 @@ export default function ImagePickerSheet({
         {topDirs.length > 0 ? (
           <div className="sheet-section">
             <div className="sheet-label">Quick folders</div>
-            <div className="imagepicker-chips">
-              <button
-                type="button"
-                className={`gallery-pill ${cwd === '' ? 'is-active' : ''}`}
-                onClick={handleRootClick}
-              >
-                Root
-              </button>
-              {topDirs.map((d) => (
-                <button
-                  key={d.rel_path}
-                  type="button"
-                  className={`gallery-pill ${cwd === d.rel_path ? 'is-active' : ''}`}
-                  onClick={() => {
-                    setCwd(d.rel_path);
-                    setPage(1);
-                  }}
-                >
-                  {d.name}
-                </button>
-              ))}
-            </div>
+            <SegmentedTabs
+              ariaLabel="Quick folders"
+              value={cwd}
+              onChange={handleQuickSelect}
+              size="sm"
+              layout="auto"
+              wrap
+              className="imagepicker-chips"
+              items={quickItems}
+            />
           </div>
         ) : null}
 

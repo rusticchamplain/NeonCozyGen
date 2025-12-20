@@ -18,6 +18,8 @@ export default function BottomBar({
   primaryLabel = 'Render',
   onPrimary,
   primaryDisabled = false,
+  onLogs,
+  logsLabel = 'Logs',
 }) {
   const pct = getPercent(progressValue, progressMax);
 
@@ -70,6 +72,11 @@ export default function BottomBar({
           <span className="dock-status-text">
             {statusText || (busy ? 'Working…' : 'Idle')}
           </span>
+          {onLogs ? (
+            <button type="button" className="dock-logs-btn" onClick={onLogs}>
+              {logsLabel}
+            </button>
+          ) : null}
         </span>
       </div>
     </div>

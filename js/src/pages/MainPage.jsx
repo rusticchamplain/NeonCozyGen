@@ -1,67 +1,152 @@
 // js/src/pages/MainPage.jsx
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import BottomBar from '../components/BottomBar';
 import ImageInput from '../components/ImageInput';
 import FieldSpotlight from '../components/FieldSpotlight';
-import PromptComposer from '../components/PromptComposer';
 import WorkflowFormLayout from '../components/workflow/WorkflowFormLayout';
 import CollapsibleSection from '../components/CollapsibleSection';
 import RunLogsSheet from '../components/RunLogsSheet';
-import { IconControls, IconImages, IconArrowUp, IconActivity } from '../components/Icons';
-import { resolveConfig } from '../components/DynamicForm';
-import { isModelFileLike } from '../utils/modelDisplay';
-
-import { useWorkflows } from '../hooks/useWorkflows';
-import { useWorkflowForm } from '../hooks/useWorkflowForm';
-import { useExecutionQueue } from '../hooks/useExecutionQueue';
+import { IconControls, IconImages, IconArrowUp } from '../components/Icons';
 import { loadLastEditedParam, saveFormState, saveLastEditedParam } from '../utils/storage';
-import { applyFieldOrder } from '../utils/fieldOrder';
-import usePromptAliases from '../hooks/usePromptAliases';
-import { presentAliasEntry } from '../utils/aliasPresentation';
+import { useStudioContext } from '../contexts/StudioContext';
+import { deleteWorkflowPreset, getWorkflowPresets, saveWorkflowPreset } from '../api';
 
 const WorkflowSelectorBar = memo(function WorkflowSelectorBar({
   workflows,
   selectedWorkflow,
   onWorkflowChange,
   workflowData,
+  presets,
+  presetName,
+  onPresetNameChange,
+  selectedPresetId,
+  onPresetSelect,
+  onPresetSave,
+  onPresetApply,
+  onPresetDelete,
+  presetStatus,
 }) {
+  const presetCount = presets.length;
+  const presetLabel = presetCount ? `${presetCount} saved` : 'No presets yet';
+  const [menuOpen, setMenuOpen] = useState(false);
+  const toggleMenu = () => setMenuOpen((v) => !v);
+  const closeMenu = () => setMenuOpen(false);
   return (
-    <div className="context-bar">
-      <div className="context-chip">
-        <select
-          value={selectedWorkflow || ''}
-          onChange={(e) => onWorkflowChange(e.target.value)}
-          className="context-select"
-          aria-label="Workflow"
-        >
-          <option value="">Select workflow…</option>
-          {workflows.map((wf) => (
-            <option key={wf} value={wf}>{wf}</option>
-          ))}
-        </select>
+    <div className="controls-context">
+      <div className="controls-context-row">
+        <div className="controls-context-field">
+          <label className="controls-context-label" htmlFor="workflow-select">
+            Workflow
+          </label>
+          <select
+            id="workflow-select"
+            value={selectedWorkflow || ''}
+            onChange={(e) => onWorkflowChange(e.target.value)}
+            className="controls-context-select"
+            aria-label="Workflow"
+          >
+            <option value="">Select workflow…</option>
+            {workflows.map((wf) => (
+              <option key={wf} value={wf}>{wf}</option>
+            ))}
+          </select>
+        </div>
+        <div className="controls-context-field">
+          <label className="controls-context-label" htmlFor="preset-select">
+            Preset
+          </label>
+          <select
+            id="preset-select"
+            value={selectedPresetId || ''}
+            onChange={(e) => onPresetSelect(e.target.value)}
+            className="controls-context-select"
+            aria-label="Workflow preset"
+            disabled={!workflowData}
+          >
+            <option value="">Presets…</option>
+            {presets.map((preset) => (
+              <option key={preset.id} value={preset.id}>{preset.name}</option>
+            ))}
+          </select>
+        </div>
+        <div className="controls-context-actions">
+          <button
+            type="button"
+            className="controls-context-btn is-primary"
+            onClick={onPresetApply}
+            disabled={!workflowData || !selectedPresetId}
+          >
+            Apply
+          </button>
+          <div className="controls-context-menu">
+            <button
+              type="button"
+              className="controls-context-btn is-ghost"
+              onClick={toggleMenu}
+              aria-haspopup="true"
+              aria-expanded={menuOpen}
+            >
+              ⋯
+            </button>
+            {menuOpen ? (
+              <div className="controls-context-menu-items" role="menu">
+                <div className="controls-context-menu-row">
+                  <input
+                    type="text"
+                    value={presetName}
+                    onChange={(e) => onPresetNameChange(e.target.value)}
+                    className="controls-context-input"
+                    placeholder="Preset name"
+                    aria-label="Preset name"
+                    disabled={!workflowData}
+                  />
+                  <button
+                    type="button"
+                    className="controls-context-menu-btn"
+                    onClick={() => { onPresetSave(); closeMenu(); }}
+                    disabled={!workflowData || !presetName.trim()}
+                    role="menuitem"
+                  >
+                    Save
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  className="controls-context-menu-btn is-danger"
+                  onClick={() => { onPresetDelete(); closeMenu(); }}
+                  disabled={!workflowData || !selectedPresetId}
+                  role="menuitem"
+                >
+                  Delete
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </div>
+      <div className="controls-context-meta">
+        <span>{presetLabel}</span>
+        {presetStatus ? <span className="controls-context-status">{presetStatus}</span> : null}
       </div>
     </div>
   );
 });
 
 function MainPage() {
+  const navigate = useNavigate();
   const {
     workflows = [],
     selectedWorkflow,
     selectWorkflow,
-  } = useWorkflows();
-
-  const {
     workflowData,
     dynamicInputs = [],
     imageInputs = [],
     formData,
     setFormData,
     handleFormChange,
-  } = useWorkflowForm(selectedWorkflow);
-  const { aliases, aliasCategories, aliasLookup, aliasOptions } = usePromptAliases();
-
-  const {
+    aliasOptions,
+    aliasCatalog,
     isLoading,
     progressValue,
     progressMax,
@@ -70,110 +155,31 @@ function MainPage() {
     handleGenerate,
     logEntries,
     clearLogs,
-  } = useExecutionQueue({
-    selectedWorkflow,
-    workflowData,
-    dynamicInputs,
-    imageInputs,
-    formData,
-    setFormData,
-    promptAliases: aliasLookup,
-  });
+    promptFieldName,
+    orderedDynamicInputs,
+  } = useStudioContext();
 
   const parameterSectionRef = useRef(null);
   const imageSectionRef = useRef(null);
-  const [lastEditedParam, setLastEditedParam] = useState(() => {
-    return loadLastEditedParam();
-  });
+  const [lastEditedParam, setLastEditedParam] = useState(() => loadLastEditedParam());
   const [spotlight, setSpotlight] = useState(null);
   const spotlightName = spotlight?.name || '';
   const handleCloseSpotlight = useCallback(() => setSpotlight(null), []);
-  const [composerOpen, setComposerOpen] = useState(false);
-  const [composerField, setComposerField] = useState('prompt');
   const [logsOpen, setLogsOpen] = useState(false);
   const [visibleParams, setVisibleParams] = useState([]);
+  const [presets, setPresets] = useState([]);
+  const [presetName, setPresetName] = useState('');
+  const [selectedPresetId, setSelectedPresetId] = useState('');
+  const [presetStatus, setPresetStatus] = useState('');
   const spotlightCacheRef = useRef(new Map());
-  const previewFormData = formData || {};
-
-  // Find the best prompt field to edit (also used for preview)
-  const orderedDynamicInputs = useMemo(
-    () => applyFieldOrder(selectedWorkflow, dynamicInputs),
-    [selectedWorkflow, dynamicInputs]
+  const openComposer = useCallback(
+    (fieldName = '') => {
+      const target = fieldName || promptFieldName || 'prompt';
+      const query = target ? `?field=${encodeURIComponent(target)}` : '';
+      navigate(`/compose${query}`);
+    },
+    [navigate, promptFieldName]
   );
-
-  const promptFieldName = useMemo(() => {
-    const inputs = (orderedDynamicInputs || dynamicInputs || []).filter(
-      (inp) => inp?.class_type !== 'CozyGenImageInput'
-    );
-
-    const bannedRe = /\b(checkpoint|ckpt|lora|model|vae|embedding|clip|sampler|scheduler|seed)\b/i;
-    const scoreField = (cfg) => {
-      const name = String(cfg?.paramName || '').toLowerCase();
-      const label = String(cfg?.label || '').toLowerCase();
-      const combined = `${name} ${label}`;
-      const value = formData?.[cfg?.paramName];
-      const strVal = typeof value === 'string' ? value : '';
-
-      let score = 0;
-      if (combined.includes('prompt')) score += 100;
-      if (combined.includes('negative') && combined.includes('prompt')) score -= 15;
-      if (cfg?.multiline) score += 10;
-      if (strVal.includes('$')) score += 20;
-      if (bannedRe.test(combined)) score -= 200;
-      if (isModelFileLike(strVal)) score -= 200;
-      return score;
-    };
-
-    // Prefer the canonical 'prompt' field when present and string-like.
-    if (typeof formData?.prompt === 'string') return 'prompt';
-
-    const candidates = inputs
-      .map((inp) => resolveConfig(inp))
-      .filter((cfg) => cfg?.paramType === 'STRING' && cfg?.paramName);
-
-    if (!candidates.length) {
-      // Fall back to legacy heuristic when no schema exists.
-      const withAlias = Object.entries(formData || {}).find(
-        ([, v]) => typeof v === 'string' && v.includes('$') && !isModelFileLike(v)
-      );
-      if (withAlias) return withAlias[0];
-      const firstString = Object.entries(formData || {}).find(
-        ([, v]) => typeof v === 'string' && !isModelFileLike(v)
-      );
-      return firstString?.[0] || 'prompt';
-    }
-
-    let best = candidates[0];
-    let bestScore = scoreField(best);
-    for (let i = 1; i < candidates.length; i++) {
-      const cfg = candidates[i];
-      const score = scoreField(cfg);
-      if (score > bestScore) {
-        best = cfg;
-        bestScore = score;
-      }
-    }
-    return best?.paramName || 'prompt';
-  }, [dynamicInputs, formData, orderedDynamicInputs]);
-
-  const aliasCatalog = useMemo(() => {
-    const entries = [];
-    Object.entries(aliases || {}).forEach(([key, text]) => {
-      const parts = String(key).split('::');
-      const hasCat = parts.length > 1;
-      const category = (aliasCategories && aliasCategories[key]) || (hasCat ? parts[0] : '');
-      const name = hasCat ? parts.slice(1).join('::') : key;
-      const base = {
-        key,
-        name,
-        category,
-        text,
-        token: category ? `${category}:${name}` : name,
-      };
-      entries.push({ ...base, ...presentAliasEntry(base) });
-    });
-    return entries;
-  }, [aliases, aliasCategories]);
 
   useEffect(() => {
     if (statusPhase === 'finished') {
@@ -193,36 +199,22 @@ function MainPage() {
     if (selectedWorkflow) {
       saveFormState(selectedWorkflow, formData || {}, { immediate: true });
     }
+    setPresetName('');
+    setSelectedPresetId('');
+    setPresetStatus('');
     selectWorkflow(name);
   }, [formData, selectedWorkflow, selectWorkflow]);
 
-  // Prompt Composer handlers
-  const openComposer = useCallback((fieldName = 'prompt') => {
-    setComposerField(fieldName);
-    setComposerOpen(true);
-  }, []);
-
-  const handleComposerChange = useCallback((newValue) => {
-    if (composerField) {
-      handleFormChange(composerField, newValue);
-    }
-  }, [composerField, handleFormChange]);
-
-  const openDefaultComposer = useCallback(() => {
-    openComposer(promptFieldName || 'prompt');
-  }, [openComposer, promptFieldName]);
+  const handlePresetSelect = useCallback((id) => {
+    setSelectedPresetId(id);
+    const preset = presets.find((entry) => entry.id === id);
+    setPresetName(preset?.name || '');
+  }, [presets]);
 
   // Apply user-defined ordering + hiding
   const safeImageInputs = imageInputs || [];
   const hasWorkflowLoaded = Boolean(workflowData && selectedWorkflow);
   const hasImageInputs = safeImageInputs.length > 0;
-  const imageMeta = workflowData
-    ? hasImageInputs
-      ? `${safeImageInputs.length} slots`
-      : 'No inputs'
-    : 'Waiting';
-  const controlMeta = workflowData ? '' : 'Waiting';
-
   const buildSpotlightState = useCallback(
     (name, payload) => {
       const cache = spotlightCacheRef.current;
@@ -276,6 +268,107 @@ function MainPage() {
     setSpotlight(buildSpotlightState(payload.name, payload));
   }, [buildSpotlightState]);
 
+  const availablePresetKeys = useMemo(() => {
+    const inputs = [...(orderedDynamicInputs || []), ...(imageInputs || [])];
+    const keys = inputs
+      .map((input) => input?.inputs?.param_name)
+      .filter((key) => key && typeof key === 'string');
+    return new Set(keys);
+  }, [orderedDynamicInputs, imageInputs]);
+
+  const loadPresets = useCallback(async (workflowName) => {
+    if (!workflowName) {
+      setPresets([]);
+      setSelectedPresetId('');
+      return;
+    }
+    try {
+      const data = await getWorkflowPresets(workflowName);
+      const next = Array.isArray(data?.presets) ? data.presets : [];
+      setPresets(next);
+      setSelectedPresetId((prev) => (prev && next.some((p) => p.id === prev) ? prev : ''));
+      setPresetMenuOpen(false);
+    } catch (err) {
+      console.error('Failed to load workflow presets', err);
+      setPresets([]);
+      setPresetStatus('Presets unavailable.');
+    }
+  }, []);
+
+  useEffect(() => {
+    loadPresets(selectedWorkflow);
+  }, [selectedWorkflow, loadPresets]);
+
+  const handlePresetSave = useCallback(async () => {
+    if (!selectedWorkflow) return;
+    const name = presetName.trim();
+    if (!name) {
+      setPresetStatus('Name a preset to save.');
+      return;
+    }
+    const values = {};
+    const allowedKeys = availablePresetKeys;
+    Object.entries(formData || {}).forEach(([key, value]) => {
+      if (!allowedKeys.size || allowedKeys.has(key)) {
+        values[key] = value;
+      }
+    });
+    const selectedPreset = presets.find((p) => p.id === selectedPresetId);
+    const targetId = selectedPreset && selectedPreset.name.toLowerCase() === name.toLowerCase()
+      ? selectedPreset.id
+      : undefined;
+    try {
+      const data = await saveWorkflowPreset(selectedWorkflow, {
+        id: targetId,
+        name,
+        values,
+      });
+      const next = Array.isArray(data?.presets) ? data.presets : [];
+      const saved = data?.preset;
+      setPresets(next);
+      if (saved?.id) {
+        setSelectedPresetId(saved.id);
+      }
+      setPresetStatus(`Saved "${name}".`);
+    } catch (err) {
+      console.error('Failed to save preset', err);
+      setPresetStatus('Save failed.');
+    }
+  }, [availablePresetKeys, formData, presetName, presets, selectedPresetId, selectedWorkflow]);
+
+  const handlePresetApply = useCallback(() => {
+    if (!selectedWorkflow || !selectedPresetId) return;
+    const preset = presets.find((p) => p.id === selectedPresetId);
+    if (!preset?.values) return;
+    const allowedKeys = availablePresetKeys;
+    const nextValues = {};
+    Object.entries(preset.values).forEach(([key, value]) => {
+      if (!allowedKeys.size || allowedKeys.has(key)) {
+        nextValues[key] = value;
+      }
+    });
+    setFormData((prev) => {
+      const next = { ...prev, ...nextValues };
+      saveFormState(selectedWorkflow, next, { immediate: true });
+      return next;
+    });
+    setPresetStatus(`Applied "${preset.name}".`);
+  }, [availablePresetKeys, presets, selectedPresetId, selectedWorkflow, setFormData]);
+
+  const handlePresetDelete = useCallback(async () => {
+    if (!selectedWorkflow || !selectedPresetId) return;
+    try {
+      const data = await deleteWorkflowPreset(selectedWorkflow, selectedPresetId);
+      const next = Array.isArray(data?.presets) ? data.presets : [];
+      setPresets(next);
+      setSelectedPresetId('');
+      setPresetStatus('Preset deleted.');
+    } catch (err) {
+      console.error('Failed to delete preset', err);
+      setPresetStatus('Delete failed.');
+    }
+  }, [selectedPresetId, selectedWorkflow]);
+
   const renderSpotlightContent = useCallback(
     () => spotlight?.render?.(formData),
     [spotlight, formData]
@@ -289,19 +382,6 @@ function MainPage() {
     window.addEventListener('cozygen:request-render', handler);
     return () => window.removeEventListener('cozygen:request-render', handler);
   }, [handleGenerate, hasWorkflowLoaded, isLoading]);
-
-  useEffect(() => {
-    const handler = (evt) => {
-      const fieldName = evt?.detail?.fieldName;
-      if (typeof fieldName === 'string' && fieldName.trim()) {
-        openComposer(fieldName.trim());
-        return;
-      }
-      openDefaultComposer();
-    };
-    window.addEventListener('cozygen:open-composer', handler);
-    return () => window.removeEventListener('cozygen:open-composer', handler);
-  }, [openComposer, openDefaultComposer]);
 
   useEffect(() => {
     const active =
@@ -332,112 +412,120 @@ function MainPage() {
   }
 
   return (
-    <div className="page-shell page-stack has-dock">
-      <CollapsibleSection
-        kicker="Parameters"
-        title={<><IconControls size={18} className="inline-block mr-2 align-text-bottom" />Controls</>}
-        meta={controlMeta}
-        bodyClassName="control-shell"
-        defaultOpen
-        variant="bare"
-      >
-        <WorkflowSelectorBar
-          workflows={workflows}
-          selectedWorkflow={selectedWorkflow}
-          onWorkflowChange={handleWorkflowSelect}
-          workflowData={workflowData}
-        />
+    <div className="page-shell page-stack has-dock controls-page">
+      <div className="page-bar controls-bar">
+        <h1 className="page-bar-title">Controls</h1>
+        <div className="page-bar-actions">
+          {lastEditedParam ? (
+            <span className="controls-meta">Last: {lastEditedParam}</span>
+          ) : null}
+        </div>
+      </div>
 
-        {workflowData ? (
-          <WorkflowFormLayout
-            workflowName={selectedWorkflow}
-            dynamicInputs={orderedDynamicInputs}
-            formData={formData}
-            onFormChange={handleFormChange}
-            parameterSectionRef={parameterSectionRef}
-            compactControls
-            lastEditedParam={lastEditedParam}
-            spotlightName={spotlightName}
-            onCloseSpotlight={handleCloseSpotlight}
-            onVisibleParamsChange={handleVisibleParamsChange}
-            aliasOptions={aliasOptions}
-            aliasCatalog={aliasCatalog}
-            onOpenComposer={openComposer}
-            onParamEdited={handleParamEdited}
-            onSpotlight={handleSpotlight}
+      <section className="controls-board">
+        <CollapsibleSection
+          title={<><IconControls size={18} className="inline-block mr-2 align-text-bottom" />Parameters</>}
+          bodyClassName="control-shell controls-body"
+          defaultOpen
+          className="controls-panel"
+        >
+          <WorkflowSelectorBar
+            workflows={workflows}
+            selectedWorkflow={selectedWorkflow}
+            onWorkflowChange={handleWorkflowSelect}
+            workflowData={workflowData}
+            presets={presets}
+            presetName={presetName}
+            onPresetNameChange={setPresetName}
+            selectedPresetId={selectedPresetId}
+            onPresetSelect={handlePresetSelect}
+            onPresetSave={handlePresetSave}
+            onPresetApply={handlePresetApply}
+            onPresetDelete={handlePresetDelete}
+            presetStatus={presetStatus}
           />
-        ) : (
-          <div className="empty-state-inline">
-            <span className="empty-state-arrow"><IconArrowUp size={20} /></span>
-            <span>Select a workflow above to get started</span>
-          </div>
-        )}
-      </CollapsibleSection>
 
-      <CollapsibleSection
-        kicker="Run"
-        title={<><IconActivity size={18} className="inline-block mr-2 align-text-bottom" />Status</>}
-        meta={statusText || 'Idle'}
-        defaultOpen={false}
-        className="studio-status-card is-compact"
-      >
-        <div className="run-status-strip">
-          <div className="run-status-left">
-            <div className={`run-status-dot is-${statusPhase || 'idle'}`} aria-hidden="true" />
-            <div className="run-status-text">
-              <div className="run-status-phase">{statusPhase || 'idle'}</div>
-              <div className="run-status-msg">{statusText || 'Idle'}</div>
+          {workflowData ? (
+            <WorkflowFormLayout
+              workflowName={selectedWorkflow}
+              dynamicInputs={orderedDynamicInputs}
+              formData={formData}
+              onFormChange={handleFormChange}
+              parameterSectionRef={parameterSectionRef}
+              compactControls
+              lastEditedParam={lastEditedParam}
+              spotlightName={spotlightName}
+              onCloseSpotlight={handleCloseSpotlight}
+              onVisibleParamsChange={handleVisibleParamsChange}
+              aliasOptions={aliasOptions}
+              aliasCatalog={aliasCatalog}
+              onOpenComposer={openComposer}
+              onParamEdited={handleParamEdited}
+              onSpotlight={handleSpotlight}
+            />
+          ) : (
+            <div className="empty-state-inline">
+              <span className="empty-state-arrow"><IconArrowUp size={20} /></span>
+              <span>Select a workflow above to get started</span>
             </div>
-          </div>
-          <div className="run-status-actions">
-            {isLoading && progressMax > 0 ? (
-              <div className="run-status-meter" aria-label="Progress">
-                <div
-                  className="run-status-meter-fill"
-                  style={{
-                    width: `${Math.max(
-                      0,
-                      Math.min(100, Math.round(((progressValue || 0) / progressMax) * 100))
-                    )}%`,
-                  }}
-                />
+          )}
+        </CollapsibleSection>
+
+        {hasImageInputs ? (
+          <CollapsibleSection
+            ref={imageSectionRef}
+            className="scroll-mt-24 controls-panel controls-subpanel"
+            title={<><IconImages size={18} className="inline-block mr-2 align-text-bottom" />Images</>}
+            defaultOpen={false}
+            variant="bare"
+          >
+            {workflowData ? (
+              <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                {safeImageInputs.map((imgInput) => (
+                  <ImageInput
+                    key={imgInput.id}
+                    input={imgInput}
+                    value={formData[imgInput.inputs.param_name] || ''}
+                    onFormChange={handleFormChange}
+                  />
+                ))}
               </div>
             ) : null}
-            <button
-              type="button"
-              className="ui-button is-muted is-compact"
-              onClick={() => setLogsOpen(true)}
-            >
-              View logs
-            </button>
+          </CollapsibleSection>
+        ) : null}
+      </section>
+
+      <div className="controls-status-strip">
+        <div className="controls-status-left">
+          <span className={`controls-status-dot is-${statusPhase || 'idle'}`} aria-hidden="true" />
+          <div className="controls-status-text">
+            <span className="controls-status-phase">{statusPhase || 'idle'}</span>
+            <span className="controls-status-msg">{statusText || 'Idle'}</span>
           </div>
         </div>
-      </CollapsibleSection>
-
-      {hasImageInputs ? (
-        <CollapsibleSection
-          ref={imageSectionRef}
-          className="scroll-mt-24 is-compact"
-          kicker="Assets"
-          title={<><IconImages size={18} className="inline-block mr-2 align-text-bottom" />Images</>}
-          meta={imageMeta}
-          defaultOpen={false}
-          variant="bare"
-        >
-          {workflowData ? (
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-              {safeImageInputs.map((imgInput) => (
-                <ImageInput
-                  key={imgInput.id}
-                  input={imgInput}
-                  value={formData[imgInput.inputs.param_name] || ''}
-                  onFormChange={handleFormChange}
-                />
-              ))}
+        <div className="controls-status-right">
+          {isLoading && progressMax > 0 ? (
+            <div className="controls-status-meter" aria-label="Progress">
+              <div
+                className="controls-status-meter-fill"
+                style={{
+                  width: `${Math.max(
+                    0,
+                    Math.min(100, Math.round(((progressValue || 0) / progressMax) * 100))
+                  )}%`,
+                }}
+              />
             </div>
           ) : null}
-        </CollapsibleSection>
-      ) : null}
+          <button
+            type="button"
+            className="controls-status-btn"
+            onClick={() => setLogsOpen(true)}
+          >
+            Logs
+          </button>
+        </div>
+      </div>
 
       <section className="dock-panel">
         <BottomBar
@@ -449,6 +537,7 @@ function MainPage() {
           primaryLabel="Render"
           onPrimary={handleGenerate}
           primaryDisabled={!hasWorkflowLoaded}
+          onLogs={() => setLogsOpen(true)}
         />
       </section>
 
@@ -466,17 +555,6 @@ function MainPage() {
       >
         {null}
       </FieldSpotlight>
-
-      <PromptComposer
-        open={composerOpen}
-        onClose={() => setComposerOpen(false)}
-        value={formData?.[composerField] || ''}
-        onChange={handleComposerChange}
-        aliasOptions={aliasOptions}
-        aliasCatalog={aliasCatalog}
-        aliasLookup={aliasLookup}
-        fieldLabel={composerField}
-      />
 
       <RunLogsSheet
         open={logsOpen}

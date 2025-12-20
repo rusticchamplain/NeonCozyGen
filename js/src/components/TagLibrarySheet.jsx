@@ -328,7 +328,6 @@ export default function TagLibrarySheet({
     );
   }, [inline, loading, loadingMore, onClose, resetAndSearch]);
 
-  const totalLabel = total ? `${items.length.toLocaleString()} / ${total.toLocaleString()}` : `${items.length.toLocaleString()}`;
   const showContext = Boolean(onSelectTag && (contextTitle || contextToken || contextText));
   const tagCountLabel = Number.isFinite(contextTagCount) ? `${contextTagCount} tags` : '';
   const content = (
@@ -363,15 +362,25 @@ export default function TagLibrarySheet({
       <div className="sheet-section">
         {!inline ? <div className="sheet-label">Browse</div> : null}
         <div className="composer-filters">
-          <input
-            ref={searchRef}
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search tags… (e.g. smile, city, sword)"
-            className="composer-search ui-control ui-input"
-            aria-label="Search tags"
-          />
+          <div className="input-with-action">
+            <input
+              ref={searchRef}
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search tags… (e.g. smile, city, sword)"
+              className="composer-search ui-control ui-input"
+              aria-label="Search tags"
+            />
+            <button
+              type="button"
+              className="input-action-btn"
+              onClick={() => setQuery('')}
+              disabled={!query}
+            >
+              Clear
+            </button>
+          </div>
           <select
             value={category}
             onChange={(e) => setCategory(e.target.value)}
@@ -394,13 +403,6 @@ export default function TagLibrarySheet({
             <option value="count">Sort: Popular</option>
             <option value="alpha">Sort: A–Z</option>
           </select>
-        </div>
-        <div className="sheet-hint">
-          <span className="inline-flex items-center gap-2">
-            <IconTag size={14} />
-            Tap a tag to {onSelectTag ? 'add it to the alias' : 'collect it'}
-          </span>
-          <span className="ml-3 opacity-80">{totalLabel}</span>
         </div>
         {status ? <div className="text-xs text-[#9DA3FFCC]">{status}</div> : null}
         {error ? <div className="text-xs text-[#FF8F70]">{error}</div> : null}

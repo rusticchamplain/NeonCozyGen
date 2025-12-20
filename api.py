@@ -28,6 +28,7 @@ DATA_DIR = os.path.join(EXT_DIR, "data")
 THUMBS_DIR = os.path.join(DATA_DIR, "thumbs")
 ALIASES_FILE = os.path.join(DATA_DIR, "aliases.json")
 WORKFLOW_TYPES_FILE = os.path.join(DATA_DIR, "workflow_types.json")
+WORKFLOW_PRESETS_FILE = os.path.join(DATA_DIR, "workflow_presets.json")
 WORKFLOW_MODE_CHOICES = {
     "text-to-image",
     "text-to-video",
@@ -41,6 +42,9 @@ if not os.path.exists(ALIASES_FILE):
 if not os.path.exists(WORKFLOW_TYPES_FILE):
     with open(WORKFLOW_TYPES_FILE, "w", encoding="utf-8") as f:
         json.dump({"version": 1, "workflows": {}}, f)
+if not os.path.exists(WORKFLOW_PRESETS_FILE):
+    with open(WORKFLOW_PRESETS_FILE, "w", encoding="utf-8") as f:
+        json.dump({"version": 2, "users": {}}, f)
 
 # Danbooru tag reference (used for in-app tag browsing + alias validation)
 DANBOORU_TAGS_FILE = os.path.join(DATA_DIR, "danbooru_tags.md")
@@ -230,6 +234,34 @@ def _load_workflow_types() -> dict:
 
 def _save_workflow_types(workflows: dict):
     _save(WORKFLOW_TYPES_FILE, {"version": 1, "workflows": workflows})
+
+
+def _normalize_workflow_presets(data: dict) -> dict:
+    if not isinstance(data, dict):
+        return {"version": 2, "users": {}}
+    if isinstance(data.get("users"), dict):
+        return {"version": 2, "users": data.get("users", {})}
+    workflows = data.get("workflows")
+    workflows = workflows if isinstance(workflows, dict) else {}
+    return {"version": 2, "users": {"default": {"workflows": workflows}}}
+
+
+def _load_workflow_presets() -> dict:
+    data = _load(WORKFLOW_PRESETS_FILE, {"version": 2, "users": {}})
+    return _normalize_workflow_presets(data)
+
+
+def _save_workflow_presets(data: dict):
+    _save(WORKFLOW_PRESETS_FILE, _normalize_workflow_presets(data))
+
+
+def _get_preset_user(request: web.Request) -> str:
+    if auth.auth_enabled():
+        token = auth.extract_token(request)
+        verified = auth.verify_token(token)
+        if verified:
+            return verified[0]
+    return "default"
 
 
 # ---------------- Basic
@@ -933,6 +965,94 @@ async def workflow_types_save(request: web.Request):
         data.pop(workflow, None)
     _save_workflow_types(data)
     return web.json_response({"status": "ok", "workflows": data})
+
+
+@routes.get("/cozygen/api/workflow_presets")
+async def workflow_presets_list(request: web.Request):
+    workflow = (request.rel_url.query.get("workflow") or "").strip()
+    data = _load_workflow_presets()
+    user = _get_preset_user(request)
+    workflows = (data.get("users", {}).get(user) or {}).get("workflows") or {}
+    if workflow:
+        presets = workflows.get(workflow, [])
+        return web.json_response({"workflow": workflow, "presets": presets, "user": user})
+    return web.json_response({"workflows": workflows, "user": user})
+
+
+@routes.post("/cozygen/api/workflow_presets")
+async def workflow_presets_save(request: web.Request):
+    body = await request.json()
+    workflow = (body.get("workflow") or "").strip()
+    if not workflow:
+        raise web.HTTPBadRequest(text="Missing workflow")
+
+    data = _load_workflow_presets()
+    user = _get_preset_user(request)
+    workflows = (data.get("users", {}).get(user) or {}).get("workflows") or {}
+    presets = workflows.get(workflow, [])
+    if not isinstance(presets, list):
+        presets = []
+
+    delete_id = body.get("delete")
+    if delete_id:
+        delete_id = str(delete_id)
+        presets = [p for p in presets if str(p.get("id")) != delete_id]
+        workflows[workflow] = presets
+        data.setdefault("users", {})[user] = {"workflows": workflows}
+        _save_workflow_presets(data)
+        return web.json_response({"status": "ok", "presets": presets, "user": user})
+
+    preset = body.get("preset") or {}
+    if not isinstance(preset, dict):
+        raise web.HTTPBadRequest(text="Invalid preset")
+    name = (preset.get("name") or "").strip()
+    if not name:
+        raise web.HTTPBadRequest(text="Missing preset name")
+
+    preset_id = preset.get("id")
+    values = preset.get("values") if isinstance(preset.get("values"), dict) else {}
+    now = int(time.time())
+
+    match_index = None
+    if preset_id:
+        preset_id = str(preset_id)
+        for idx, existing in enumerate(presets):
+            if str(existing.get("id")) == preset_id:
+                match_index = idx
+                break
+
+    if match_index is None:
+        for idx, existing in enumerate(presets):
+            if str(existing.get("name") or "").strip().lower() == name.lower():
+                match_index = idx
+                preset_id = existing.get("id")
+                break
+
+    if not preset_id:
+        preset_id = str(uuid.uuid4())
+
+    existing_created = now
+    if match_index is not None:
+        existing_created = presets[match_index].get("created", now)
+
+    payload = {
+        "id": preset_id,
+        "name": name,
+        "values": values,
+        "updated": now,
+        "created": existing_created,
+    }
+
+    if match_index is None:
+        presets.append(payload)
+    else:
+        presets[match_index] = payload
+
+    presets = sorted(presets, key=lambda p: int(p.get("updated") or 0), reverse=True)
+    workflows[workflow] = presets
+    data.setdefault("users", {})[user] = {"workflows": workflows}
+    _save_workflow_presets(data)
+    return web.json_response({"status": "ok", "presets": presets, "preset": payload, "user": user})
 
 
 # ---------------- Thumbnails

@@ -4,6 +4,7 @@ import GalleryNav from '../components/GalleryNav';
 import GalleryItem from '../components/GalleryItem';
 import MediaViewerModal from '../components/MediaViewerModal';
 import BottomSheet from '../components/ui/BottomSheet';
+import SegmentedTabs from '../components/ui/SegmentedTabs';
 import { useGallery } from '../hooks/useGallery';
 import { useMediaViewer } from '../hooks/useMediaViewer';
 import {
@@ -177,6 +178,9 @@ export default function Gallery() {
   const {
     viewerOpen,
     currentMedia,
+    total,
+    canPrev,
+    canNext,
     open: openMedia,
     close: closeViewer,
     next: handleNext,
@@ -223,6 +227,43 @@ export default function Gallery() {
   const isGrid = viewMode === 'grid';
   const [filtersOpen, setFiltersOpen] = useState(false);
 
+  const filterItems = useMemo(
+    () => [
+      { key: 'all', label: 'All' },
+      { key: 'image', label: 'Images' },
+      { key: 'video', label: 'Videos' },
+    ],
+    []
+  );
+
+  const viewItems = useMemo(
+    () => [
+      {
+        key: 'grid',
+        ariaLabel: 'Grid view',
+        icon: (
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+            <rect x="1" y="1" width="6" height="6" rx="1" />
+            <rect x="9" y="1" width="6" height="6" rx="1" />
+            <rect x="1" y="9" width="6" height="6" rx="1" />
+            <rect x="9" y="9" width="6" height="6" rx="1" />
+          </svg>
+        ),
+      },
+      {
+        key: 'feed',
+        ariaLabel: 'Feed view',
+        icon: (
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+            <rect x="2" y="1" width="12" height="5" rx="1" />
+            <rect x="2" y="8" width="12" height="5" rx="1" />
+          </svg>
+        ),
+      },
+    ],
+    []
+  );
+
   const itemKey = (item) =>
     item.type === 'directory'
       ? `dir:${item.subfolder || item.filename}`
@@ -247,114 +288,53 @@ export default function Gallery() {
   return (
     <div className="page-shell gallery-shell">
       <div className="screen-sticky gallery-header">
-        <div className="gallery-header-inner space-y-3">
-          <GalleryNav
-            subfolder={path}
-            crumbs={crumbs}
-            dirChips={dirChips}
-            onBack={goBack}
-            onRoot={goRoot}
-            onCrumb={(p) => goToPath(p)}
-            onSelectDir={(subfolder) => selectDir(subfolder)}
-          />
-
-          {/* Mobile: keep header compact and move filters into a sheet */}
-          <div className="md:hidden flex items-center justify-between gap-2">
-            <button
-              type="button"
-              className="ui-button is-muted is-compact"
-              onClick={() => setFiltersOpen(true)}
-            >
-              Filters
-            </button>
-
-            <div className="gallery-view-toggle" role="group" aria-label="View mode">
+        <div className="gallery-header-inner">
+          <div className="page-bar gallery-bar">
+            <h1 className="page-bar-title">Gallery</h1>
+            <div className="page-bar-actions">
+              <span className="gallery-status">{summaryMeta}</span>
+              <SegmentedTabs
+                ariaLabel="View mode"
+                value={viewMode}
+                onChange={setViewMode}
+                layout="icon"
+                size="sm"
+                items={viewItems}
+              />
               <button
                 type="button"
-                className={viewMode === 'grid' ? 'is-active' : ''}
-                onClick={() => setViewMode('grid')}
-                aria-pressed={viewMode === 'grid'}
-                title="Grid view"
+                className="page-bar-btn gallery-filter-btn"
+                onClick={() => setFiltersOpen(true)}
               >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                  <rect x="1" y="1" width="6" height="6" rx="1" />
-                  <rect x="9" y="1" width="6" height="6" rx="1" />
-                  <rect x="1" y="9" width="6" height="6" rx="1" />
-                  <rect x="9" y="9" width="6" height="6" rx="1" />
-                </svg>
-              </button>
-              <button
-                type="button"
-                className={viewMode === 'feed' ? 'is-active' : ''}
-                onClick={() => setViewMode('feed')}
-                aria-pressed={viewMode === 'feed'}
-                title="Feed view"
-              >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                  <rect x="2" y="1" width="12" height="5" rx="1" />
-                  <rect x="2" y="8" width="12" height="5" rx="1" />
-                </svg>
+                Filters
               </button>
             </div>
           </div>
 
-          <div className="md:hidden gallery-mobile-meta">
-            {isRefreshing ? <span className="loading-spinner" aria-hidden="true" /> : null}
-            <span>{summaryMeta} • Page {page} of {totalPages}</span>
+          <div className="gallery-nav-row">
+            <GalleryNav
+              subfolder={path}
+              crumbs={crumbs}
+              dirChips={dirChips}
+              onBack={goBack}
+              onRoot={goRoot}
+              onCrumb={(p) => goToPath(p)}
+              onSelectDir={(subfolder) => selectDir(subfolder)}
+            />
           </div>
 
-          {/* Desktop toolbar (kept out of mobile header to avoid redundancy) */}
           <div className="gallery-toolbar">
             <div className="gallery-toolbar-left">
-              <div className="gallery-pills" role="group" aria-label="Filter by type">
-                {[
-                  { key: 'all', label: 'All' },
-                  { key: 'image', label: 'Images' },
-                  { key: 'video', label: 'Videos' },
-                ].map((opt) => (
-                  <button
-                    key={opt.key}
-                    type="button"
-                    className={`gallery-pill ${kind === opt.key ? 'is-active' : ''}`}
-                    onClick={() => setKind(opt.key)}
-                    aria-pressed={kind === opt.key}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
+              <SegmentedTabs
+                ariaLabel="Filter by type"
+                value={kind}
+                onChange={setKind}
+                size="sm"
+                items={filterItems}
+              />
             </div>
 
             <div className="gallery-toolbar-right">
-              <div className="gallery-view-toggle" role="group" aria-label="View mode">
-                <button
-                  type="button"
-                  className={viewMode === 'grid' ? 'is-active' : ''}
-                  onClick={() => setViewMode('grid')}
-                  aria-pressed={viewMode === 'grid'}
-                  title="Grid view"
-                >
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                    <rect x="1" y="1" width="6" height="6" rx="1" />
-                    <rect x="9" y="1" width="6" height="6" rx="1" />
-                    <rect x="1" y="9" width="6" height="6" rx="1" />
-                    <rect x="9" y="9" width="6" height="6" rx="1" />
-                  </svg>
-                </button>
-                <button
-                  type="button"
-                  className={viewMode === 'feed' ? 'is-active' : ''}
-                  onClick={() => setViewMode('feed')}
-                  aria-pressed={viewMode === 'feed'}
-                  title="Feed view"
-                >
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                    <rect x="2" y="1" width="12" height="5" rx="1" />
-                    <rect x="2" y="8" width="12" height="5" rx="1" />
-                  </svg>
-                </button>
-              </div>
-
               <div className="gallery-options">
                 <button
                   type="button"
@@ -394,7 +374,6 @@ export default function Gallery() {
             </div>
           </div>
 
-          {/* Compact pagination/status row (anchored) */}
           <div className="gallery-pagination">
             <div className="gallery-pagination-info">
               {isRefreshing ? <span className="loading-spinner" aria-hidden="true" /> : null}
@@ -507,6 +486,9 @@ export default function Gallery() {
         onClose={closeViewer}
         onPrev={handlePrev}
         onNext={handleNext}
+        total={total}
+        canPrev={canPrev}
+        canNext={canNext}
       />
 
       <BottomSheet
@@ -522,23 +504,13 @@ export default function Gallery() {
         <div className="sheet-stack">
           <div className="sheet-section">
             <div className="sheet-label">Type</div>
-            <div className="gallery-pills" role="group" aria-label="Filter by type">
-              {[
-                { key: 'all', label: 'All' },
-                { key: 'image', label: 'Images' },
-                { key: 'video', label: 'Videos' },
-              ].map((opt) => (
-                <button
-                  key={opt.key}
-                  type="button"
-                  className={`gallery-pill ${kind === opt.key ? 'is-active' : ''}`}
-                  onClick={() => setKind(opt.key)}
-                  aria-pressed={kind === opt.key}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
+            <SegmentedTabs
+              ariaLabel="Filter by type"
+              value={kind}
+              onChange={setKind}
+              size="sm"
+              items={filterItems}
+            />
           </div>
 
           <div className="sheet-section">

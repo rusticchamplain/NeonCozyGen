@@ -1,20 +1,11 @@
 // js/src/components/PromptComposer.jsx
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import BottomSheet from './ui/BottomSheet';
+import SegmentedTabs from './ui/SegmentedTabs';
 import TokenStrengthSheet from './ui/TokenStrengthSheet';
-import { IconGrip, IconX, IconTag } from './Icons';
+import { IconGrip, IconX, IconTag, IconAlias, IconEdit } from './Icons';
 import { formatCategoryLabel, formatSubcategoryLabel, presentAliasEntry } from '../utils/aliasPresentation';
 
-function safeCopy(text) {
-  const value = String(text || '');
-  if (!value) return false;
-  try {
-    navigator.clipboard?.writeText?.(value);
-    return true;
-  } catch {
-    return false;
-  }
-}
 import {
   formatTokenWeight,
   parsePromptElements,
@@ -32,13 +23,13 @@ export default function PromptComposer({
   onChange,
   aliasOptions = [],
   aliasCatalog = [],
-  aliasLookup,
   fieldLabel = 'Prompt',
   variant = 'sheet', // 'sheet' or 'page'
 }) {
-  const textRef = useRef(null);
+  const inputRef = useRef(null);
   const searchInputRef = useRef(null);
   const sentinelRef = useRef(null);
+  const tokensListRef = useRef(null);
   const [localValue, setLocalValue] = useState(value);
   const [pickerSearch, setPickerSearch] = useState('');
   const [pickerCategory, setPickerCategory] = useState('All');
@@ -49,6 +40,7 @@ export default function PromptComposer({
   // Drag and drop state
   const [dragIndex, setDragIndex] = useState(null);
   const [dropIndex, setDropIndex] = useState(null);
+  const [selectedTokenIndex, setSelectedTokenIndex] = useState(null);
   const dragNodeRef = useRef(null);
   const touchStartRef = useRef(null);
   const [strengthOpen, setStrengthOpen] = useState(false);
@@ -67,11 +59,10 @@ export default function PromptComposer({
   const [tagLoading, setTagLoading] = useState(false);
   const [tagLoadingMore, setTagLoadingMore] = useState(false);
   const [tagError, setTagError] = useState('');
-  const [tagStatus, setTagStatus] = useState('');
   const [composerCollectedTags, setComposerCollectedTags] = useState([]);
-  const [collectionSheetOpen, setCollectionSheetOpen] = useState(false);
   const [collectionStatus, setCollectionStatus] = useState('');
-  const composerCollectionTextareaRef = useRef(null);
+  const [composerCollectedAliases, setComposerCollectedAliases] = useState([]);
+  const [aliasCollectionStatus, setAliasCollectionStatus] = useState('');
 
   // Sync local value with prop when modal opens
   useEffect(() => {
@@ -84,8 +75,10 @@ export default function PromptComposer({
       setVisibleCount(30);
       setDragIndex(null);
       setDropIndex(null);
+      setSelectedTokenIndex(null);
       setStrengthOpen(false);
       setStrengthToken(null);
+      setComposerInput('');
       // Reset tag library state
       setTagQuery('');
       setTagCategory('');
@@ -96,9 +89,40 @@ export default function PromptComposer({
       setTagLoading(false);
       setTagLoadingMore(false);
       setTagError('');
-      setTagStatus('');
     }
   }, [open, value]);
+
+  useEffect(() => {
+    if (dragIndex === null) return undefined;
+    if (typeof document === 'undefined') return undefined;
+    const scrollEl = document.querySelector('main.app-content');
+    const prev = {
+      htmlOverscroll: document.documentElement.style.overscrollBehavior,
+      bodyOverscroll: document.body.style.overscrollBehavior,
+      bodyOverflow: document.body.style.overflow,
+      scrollOverflow: scrollEl?.style.overflow,
+      scrollTouch: scrollEl?.style.touchAction,
+      scrollOverscroll: scrollEl?.style.overscrollBehavior,
+    };
+    document.documentElement.style.overscrollBehavior = 'none';
+    document.body.style.overscrollBehavior = 'none';
+    document.body.style.overflow = 'hidden';
+    if (scrollEl) {
+      scrollEl.style.overflow = 'hidden';
+      scrollEl.style.touchAction = 'none';
+      scrollEl.style.overscrollBehavior = 'none';
+    }
+    return () => {
+      document.documentElement.style.overscrollBehavior = prev.htmlOverscroll || '';
+      document.body.style.overscrollBehavior = prev.bodyOverscroll || '';
+      document.body.style.overflow = prev.bodyOverflow || '';
+      if (scrollEl) {
+        scrollEl.style.overflow = prev.scrollOverflow || '';
+        scrollEl.style.touchAction = prev.scrollTouch || '';
+        scrollEl.style.overscrollBehavior = prev.scrollOverscroll || '';
+      }
+    };
+  }, [dragIndex]);
 
   const aliasEntries = useMemo(
     () =>
@@ -203,32 +227,11 @@ export default function PromptComposer({
 
   // Parse all elements (aliases and plain tags) from current text
   const elements = useMemo(() => {
-    if (activeTab !== 'compose') return [];
     if (typeof localValue !== 'string') return [];
     return parsePromptElements(localValue);
-  }, [activeTab, localValue]);
+  }, [localValue]);
 
   // Expanded preview
-  const deferredPreviewValue = useDeferredValue(localValue);
-  const expandedPrompt = useMemo(() => {
-    const MAX_PREVIEW_CHARS = 2600;
-    const truncate = (s) =>
-      s && s.length > MAX_PREVIEW_CHARS ? `${s.slice(0, MAX_PREVIEW_CHARS)}…` : s;
-    if (activeTab !== 'compose') return '';
-    const text = deferredPreviewValue || '';
-    if (!text) return '';
-    if (!aliasLookup || !text.includes('$')) return truncate(text);
-    try {
-      const expanded = text.replace(/\$([a-z0-9_:-]+)\$/gi, (match, key) => {
-        const val = aliasLookup.get(key.toLowerCase());
-        return typeof val === 'string' ? val : match;
-      });
-      return truncate(expanded);
-    } catch {
-      return truncate(text);
-    }
-  }, [activeTab, deferredPreviewValue, aliasLookup]);
-
   // Body locking removed to reduce mobile blank/scroll quirks; Modal overlay already blocks scroll.
 
   // Tag library: load categories on first switch to tags tab
@@ -256,7 +259,6 @@ export default function PromptComposer({
     const s = typeof nextSort === 'string' ? nextSort : tagSort;
     setTagLoading(true);
     setTagError('');
-    setTagStatus('');
     setTagOffset(0);
     try {
       const res = await searchDanbooruTags({ q, category: c, sort: s, limit: 80, offset: 0 });
@@ -321,80 +323,55 @@ export default function PromptComposer({
 
   const tagTotalLabel = tagTotal ? `${tagItems.length.toLocaleString()} / ${tagTotal.toLocaleString()}` : `${tagItems.length.toLocaleString()}`;
 
-  const handleTextChange = (e) => {
-    setLocalValue(e.target.value);
-  };
-
-  const handleInsertAlias = (token) => {
-    const el = textRef.current;
-    const insertText = `$${token}$`;
-    const current = localValue || '';
-    const start = el?.selectionStart ?? current.length;
-    const end = el?.selectionEnd ?? current.length;
-
-    const before = current.slice(0, start);
-    const after = current.slice(end);
-    const prevCharMatch = before.match(/[^\s]$/);
-    const nextCharMatch = after.match(/^[^\s]/);
-    const needsLeading = prevCharMatch && prevCharMatch[0] !== ',' ? ', ' : '';
-    const needsTrailing = nextCharMatch && nextCharMatch[0] !== ',' ? ', ' : '';
-
-    const nextValue = before + needsLeading + insertText + needsTrailing + after;
-    setLocalValue(nextValue);
-    const nextPos = (before + needsLeading + insertText + needsTrailing).length;
-
-    // Keep composer open without forcing keyboard; store caret for next edit
-    requestAnimationFrame(() => {
-      try {
-        el?.setSelectionRange?.(nextPos, nextPos);
-      } catch {
-        /* ignore */
+  const updatePromptValue = useCallback((updater) => {
+    setLocalValue((prev) => {
+      const base = typeof prev === 'string' ? prev : '';
+      const next = typeof updater === 'function' ? updater(base) : String(updater || '');
+      if (variant === 'page') {
+        onChange?.(next);
       }
+      return next;
     });
-  };
+  }, [onChange, variant]);
 
-  // Insert a plain tag (from tag library) into the prompt
-  const addToComposerCollection = useCallback((tag) => {
-    const normalized = String(tag || '').trim();
-    if (!normalized) return;
-    setComposerCollectedTags((prev) => {
-      const seen = new Set(prev.map((t) => t.toLowerCase()));
-      if (seen.has(normalized.toLowerCase())) return prev;
-      return [...prev, normalized];
+  const insertAtCursor = useCallback((insertText) => {
+    const text = String(insertText || '').trim();
+    if (!text) return;
+    updatePromptValue((current) => {
+      const start = current.length;
+      const end = current.length;
+      const before = current.slice(0, start);
+      const after = current.slice(end);
+      const prevCharMatch = before.match(/[^\s]$/);
+      const nextCharMatch = after.match(/^[^\s]/);
+      const needsLeading = prevCharMatch && prevCharMatch[0] !== ',' ? ', ' : '';
+      const needsTrailing = nextCharMatch && nextCharMatch[0] !== ',' ? ', ' : '';
+      return before + needsLeading + text + needsTrailing + after;
     });
-  }, []);
-
-  const composerCollectedText = useMemo(() => composerCollectedTags.join(', '), [composerCollectedTags]);
-
-  const copyComposerCollection = useCallback(() => {
-    if (!composerCollectedTags.length) {
-      setCollectionStatus('No tags to copy.');
-      return;
-    }
-    if (safeCopy(composerCollectedText)) {
-      setCollectionStatus(`Copied ${composerCollectedTags.length} tag${composerCollectedTags.length === 1 ? '' : 's'}.`);
-      return;
-    }
-    const textarea = composerCollectionTextareaRef.current;
-    if (textarea) {
+    if (inputRef.current) {
       try {
-        textarea.value = composerCollectedText;
-        textarea.removeAttribute('readonly');
-        textarea.select();
-        textarea.setSelectionRange(0, composerCollectedText.length);
-        const ok = document.execCommand && document.execCommand('copy');
-        textarea.setAttribute('readonly', 'readonly');
-        window.getSelection()?.removeAllRanges?.();
-        if (ok) {
-          setCollectionStatus(`Copied ${composerCollectedTags.length} tag${composerCollectedTags.length === 1 ? '' : 's'}.`);
-          return;
-        }
+        inputRef.current.blur();
       } catch {
         /* ignore */
       }
     }
-    setCollectionStatus('Copy not available on this browser.');
-  }, [composerCollectedTags, composerCollectedText]);
+  }, [updatePromptValue]);
+
+  const [composerInput, setComposerInput] = useState('');
+
+  const handleAddInput = useCallback(() => {
+    const raw = String(composerInput || '').trim();
+    if (!raw) return;
+    const parts = raw
+      .split(',')
+      .map((part) => part.trim())
+      .filter(Boolean);
+    const joined = parts.join(', ');
+    if (!joined) return;
+    insertAtCursor(joined);
+    setComposerInput('');
+    setActiveTab('compose');
+  }, [composerInput, insertAtCursor]);
 
   const clearComposerCollection = useCallback(() => {
     setComposerCollectedTags([]);
@@ -407,45 +384,83 @@ export default function PromptComposer({
     setComposerCollectedTags((prev) => prev.filter((t) => t.toLowerCase() !== target));
   }, []);
 
-  const handleOpenCollectionSheet = useCallback(() => {
-    setCollectionSheetOpen(true);
+  const applyComposerCollection = useCallback(() => {
+    if (!composerCollectedTags.length) {
+      setCollectionStatus('No tags to apply.');
+      return;
+    }
+    insertAtCursor(composerCollectedTags.join(', '));
+    setCollectionStatus(`Applied ${composerCollectedTags.length} tag${composerCollectedTags.length === 1 ? '' : 's'}.`);
+    setComposerCollectedTags([]);
+    setActiveTab('compose');
+  }, [composerCollectedTags, insertAtCursor]);
+
+  const toggleComposerTag = useCallback((tag) => {
+    const normalized = String(tag || '').trim();
+    if (!normalized) return;
+    setComposerCollectedTags((prev) => {
+      const target = normalized.toLowerCase();
+      const exists = prev.some((t) => t.toLowerCase() === target);
+      if (exists) {
+        setCollectionStatus(`Removed: ${normalized}`);
+        return prev.filter((t) => t.toLowerCase() !== target);
+      }
+      setCollectionStatus(`Selected: ${normalized}`);
+      return [...prev, normalized];
+    });
   }, []);
 
-  const handleInsertTag = (tag) => {
-    const el = textRef.current;
-    const insertText = String(tag || '').trim();
-    if (!insertText) return;
-    const current = localValue || '';
-    const start = el?.selectionStart ?? current.length;
-    const end = el?.selectionEnd ?? current.length;
-
-    const before = current.slice(0, start);
-    const after = current.slice(end);
-    const prevCharMatch = before.match(/[^\s]$/);
-    const nextCharMatch = after.match(/^[^\s]/);
-    const needsLeading = prevCharMatch && prevCharMatch[0] !== ',' ? ', ' : '';
-    const needsTrailing = nextCharMatch && nextCharMatch[0] !== ',' ? ', ' : '';
-
-    const nextValue = before + needsLeading + insertText + needsTrailing + after;
-    setLocalValue(nextValue);
-    setTagStatus(`Added: ${insertText}`);
-    addToComposerCollection(insertText);
-    const nextPos = (before + needsLeading + insertText + needsTrailing).length;
-    addToComposerCollection(insertText);
-
-    // Position caret after inserted text
-    requestAnimationFrame(() => {
-      try {
-        el?.setSelectionRange?.(nextPos, nextPos);
-      } catch {
-        /* ignore */
+  const toggleComposerAlias = useCallback((token) => {
+    const normalized = String(token || '').trim();
+    if (!normalized) return;
+    setComposerCollectedAliases((prev) => {
+      const target = normalized.toLowerCase();
+      const exists = prev.some((t) => t.toLowerCase() === target);
+      if (exists) {
+        setAliasCollectionStatus(`Removed: ${normalized}`);
+        return prev.filter((t) => t.toLowerCase() !== target);
       }
+      setAliasCollectionStatus(`Selected: ${normalized}`);
+      return [...prev, normalized];
     });
-  };
+  }, []);
+
+  const clearComposerAliases = useCallback(() => {
+    setComposerCollectedAliases([]);
+    setAliasCollectionStatus('Cleared selected aliases.');
+  }, []);
+
+  const removeComposerAlias = useCallback((token) => {
+    const target = String(token || '').trim().toLowerCase();
+    if (!target) return;
+    setComposerCollectedAliases((prev) => prev.filter((t) => t.toLowerCase() !== target));
+  }, []);
+
+  const applyComposerAliases = useCallback(() => {
+    if (!composerCollectedAliases.length) {
+      setAliasCollectionStatus('No aliases to apply.');
+      return;
+    }
+    const insertText = composerCollectedAliases.map((token) => `$${token}$`).join(', ');
+    insertAtCursor(insertText);
+    setAliasCollectionStatus(
+      `Applied ${composerCollectedAliases.length} alias${composerCollectedAliases.length === 1 ? '' : 'es'}.`
+    );
+    setComposerCollectedAliases([]);
+    setActiveTab('compose');
+  }, [composerCollectedAliases, insertAtCursor]);
 
   const handleRemoveElement = (element) => {
-    setLocalValue((prev) => removeElement(prev || '', element));
+    updatePromptValue((prev) => removeElement(prev || '', element));
   };
+
+  const moveElementBy = useCallback((idx, delta) => {
+    if (!elements?.length) return;
+    const target = idx + delta;
+    if (target < 0 || target >= elements.length) return;
+    updatePromptValue((prev) => reorderElements(prev || '', elements, idx, target));
+    setSelectedTokenIndex(target);
+  }, [elements, updatePromptValue]);
 
   const openStrengthFor = (element) => {
     if (!element) return;
@@ -467,8 +482,8 @@ export default function PromptComposer({
   const handleReorderElements = useCallback((fromIdx, toIdx) => {
     if (fromIdx === toIdx || fromIdx === null || toIdx === null) return;
     if (!elements?.length) return;
-    setLocalValue((prev) => reorderElements(prev || '', elements, fromIdx, toIdx));
-  }, [elements]);
+    updatePromptValue((prev) => reorderElements(prev || '', elements, fromIdx, toIdx));
+  }, [elements, updatePromptValue]);
 
   // Drag handlers
   const handleDragStart = useCallback((e, idx) => {
@@ -513,11 +528,19 @@ export default function PromptComposer({
     const isHandle = e.target?.closest?.('.composer-token-drag-handle');
     if (!isHandle) return;
     const touch = e.touches[0];
+    const timer = window.setTimeout(() => {
+      if (!touchStartRef.current) return;
+      touchStartRef.current.active = true;
+      setDragIndex(idx);
+      setDropIndex(idx);
+    }, 240);
+
     touchStartRef.current = {
       idx,
       startX: touch.clientX,
       startY: touch.clientY,
-      moved: false,
+      active: false,
+      timer,
     };
   }, []);
 
@@ -528,35 +551,50 @@ export default function PromptComposer({
     const deltaX = Math.abs(touch.clientX - touchStartRef.current.startX);
     const deltaY = Math.abs(touch.clientY - touchStartRef.current.startY);
 
-    // Start drag if moved enough
-    if (deltaX > 10 || deltaY > 10) {
-      touchStartRef.current.moved = true;
-      setDragIndex(touchStartRef.current.idx);
-      e.preventDefault();
+    if (!touchStartRef.current.active) {
+      if (deltaX > 8 || deltaY > 8) {
+        window.clearTimeout(touchStartRef.current.timer);
+        touchStartRef.current = null;
+      }
+      return;
+    }
 
-      // Find which token we're over
-      const tokenElements = document.querySelectorAll('.composer-token-draggable');
-      const touchX = touch.clientX;
-      const touchY = touch.clientY;
+    e.preventDefault();
 
-      for (let i = 0; i < tokenElements.length; i++) {
-        const rect = tokenElements[i].getBoundingClientRect();
-        if (touchX >= rect.left && touchX <= rect.right && touchY >= rect.top && touchY <= rect.bottom) {
-          setDropIndex(i);
-          break;
-        }
+    // Find which token we're over
+    const tokenElements = document.querySelectorAll('.composer-token-draggable');
+    const touchX = touch.clientX;
+    const touchY = touch.clientY;
+
+    for (let i = 0; i < tokenElements.length; i++) {
+      const rect = tokenElements[i].getBoundingClientRect();
+      if (touchX >= rect.left && touchX <= rect.right && touchY >= rect.top && touchY <= rect.bottom) {
+        setDropIndex(i);
+        break;
       }
     }
   }, []);
 
   const handleTouchEnd = useCallback(() => {
-    if (touchStartRef.current?.moved && dragIndex !== null && dropIndex !== null && dragIndex !== dropIndex) {
+    if (touchStartRef.current?.timer) {
+      window.clearTimeout(touchStartRef.current.timer);
+    }
+    if (touchStartRef.current?.active && dragIndex !== null && dropIndex !== null && dragIndex !== dropIndex) {
       handleReorderElements(dragIndex, dropIndex);
     }
     touchStartRef.current = null;
     setDragIndex(null);
     setDropIndex(null);
   }, [dragIndex, dropIndex, handleReorderElements]);
+
+  const handleTouchCancel = useCallback(() => {
+    if (touchStartRef.current?.timer) {
+      window.clearTimeout(touchStartRef.current.timer);
+    }
+    touchStartRef.current = null;
+    setDragIndex(null);
+    setDropIndex(null);
+  }, []);
 
   const handleSave = () => {
     onChange?.(localValue);
@@ -567,88 +605,65 @@ export default function PromptComposer({
     onClose?.();
   };
 
-  if (!open) return null;
+  const isPage = variant === 'page';
+  const isVisible = isPage || open;
+  if (!isVisible) return null;
 
-  return (
-    <BottomSheet
-      open={open}
-      onClose={handleCancel}
-      title="Composer"
-      variant="fullscreen"
-      shouldCloseOnOverlayClick={false}
-      shouldCloseOnEsc={false}
-      footer={(
-        <div className="flex gap-2">
-          <button type="button" className="ui-button is-muted w-full" onClick={handleCancel}>
-            Cancel
-          </button>
-          <button type="button" className="ui-button is-primary w-full" onClick={handleSave}>
-            Apply
-          </button>
-        </div>
-      )}
-    >
-      <div className="composer-shell">
-        <div className="composer-subhead">
-          <div className="sheet-label">Editing</div>
-          <div className="composer-field">{fieldLabel}</div>
-        </div>
-
-        <div className="composer-tabs" role="tablist" aria-label="Composer tabs">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeTab === 'compose'}
-            className={`composer-tab ${activeTab === 'compose' ? 'is-active' : ''}`}
-            onClick={() => setActiveTab('compose')}
-          >
-            Compose
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeTab === 'aliases'}
-            className={`composer-tab ${activeTab === 'aliases' ? 'is-active' : ''}`}
-            onClick={() => setActiveTab('aliases')}
-          >
-            Aliases
-            {aliasEntries.length > 0 && (
-              <span className="composer-tab-badge">{aliasEntries.length}</span>
-            )}
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeTab === 'tags'}
-            className={`composer-tab ${activeTab === 'tags' ? 'is-active' : ''}`}
-            onClick={() => setActiveTab('tags')}
-          >
-            <IconTag size={14} />
-            Tags
-          </button>
-        </div>
+  const composerShell = (
+    <div className={`composer-shell ${isPage ? 'is-page' : ''}`}>
+        <SegmentedTabs
+          ariaLabel="Composer tabs"
+          value={activeTab}
+          onChange={setActiveTab}
+          items={[
+            { key: 'compose', label: 'Compose', icon: <IconEdit size={14} /> },
+            { key: 'aliases', label: 'Aliases', icon: <IconAlias size={14} /> },
+            { key: 'tags', label: 'Tags', icon: <IconTag size={14} /> },
+          ]}
+        />
 
         <div className={`composer-panel composer-panel-compose ${activeTab === 'compose' ? 'is-visible' : ''}`}>
-          <div className="composer-textarea-wrap">
-            <textarea
-              ref={textRef}
-              value={localValue}
-              onChange={handleTextChange}
-              className="composer-textarea"
-              rows={8}
-            />
+          <div className="composer-editor">
+            <div className="composer-input-row">
+              <input
+                ref={inputRef}
+                type="text"
+                value={composerInput}
+                onChange={(e) => setComposerInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleAddInput();
+                  }
+                }}
+                className="composer-input ui-control ui-input is-compact"
+                placeholder="Add prompt text"
+              />
+              <button
+                type="button"
+                className="composer-add-btn"
+                onClick={handleAddInput}
+                disabled={!composerInput.trim()}
+                aria-label="Add prompt text"
+              >
+                +
+              </button>
+            </div>
           </div>
 
-          {elements.length > 0 && (
-            <div className="composer-tokens">
-              <div className="composer-tokens-header">
-                <span className="composer-tokens-label">
-                  Elements
-                  <span className="composer-tokens-count">{elements.length}</span>
-                </span>
-                <span className="composer-tokens-hint">Drag to reorder · Tap to adjust</span>
-              </div>
-              <div className="composer-tokens-list">
+          <div className="composer-tokens">
+            <div className="composer-tokens-header">
+              <span className="composer-tokens-label">
+                Elements
+                <span className="composer-tokens-count">{elements.length}</span>
+              </span>
+              <span className="composer-tokens-hint">Drag to reorder · Tap to adjust</span>
+            </div>
+            {elements.length ? (
+              <div
+                ref={tokensListRef}
+                className={`composer-tokens-list ${dragIndex !== null ? 'is-dragging' : ''}`}
+              >
                 {elements.map((el, idx) => {
                   let displayName = el.text;
                   if (el.type === 'alias') {
@@ -663,7 +678,7 @@ export default function PromptComposer({
                   return (
                     <span
                       key={`${el.type}-${el.text}-${el.start}`}
-                      className={`composer-token composer-token-draggable ${el.type === 'alias' ? 'is-alias' : 'is-tag'} ${isDragging ? 'is-dragging' : ''} ${isDropTarget ? 'is-drop-target' : ''}`}
+                      className={`composer-token composer-token-draggable ${el.type === 'alias' ? 'is-alias' : 'is-tag'} ${isDragging ? 'is-dragging' : ''} ${isDropTarget ? 'is-drop-target' : ''} ${selectedTokenIndex === idx ? 'is-selected' : ''}`}
                       title={el.type === 'alias' ? `Alias: $${el.text}$` : `Tag: ${el.text}`}
                       draggable
                       onDragStart={(e) => handleDragStart(e, idx)}
@@ -673,11 +688,14 @@ export default function PromptComposer({
                       onTouchStart={(e) => handleTouchStart(e, idx)}
                       onTouchMove={handleTouchMove}
                       onTouchEnd={handleTouchEnd}
+                      onTouchCancel={handleTouchCancel}
                       onClick={() => {
                         if (dragIndex !== null) return;
+                        setSelectedTokenIndex(idx);
                         openStrengthFor(el);
                       }}
                     >
+                      <span className="composer-token-order">{idx + 1}</span>
                       <span className="composer-token-drag-handle" aria-hidden="true"><IconGrip size={10} /></span>
                       <span className="composer-token-name">{displayName}</span>
                       {el.type === 'alias' && <span className="composer-token-type">$</span>}
@@ -686,6 +704,32 @@ export default function PromptComposer({
                           {formatTokenWeight(weight)}×
                         </span>
                       )}
+                      <div className="composer-token-shift" role="group" aria-label="Reorder token">
+                        <button
+                          type="button"
+                          className="composer-token-shift-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            moveElementBy(idx, -1);
+                          }}
+                          aria-label="Move up"
+                          disabled={idx === 0}
+                        >
+                          ▲
+                        </button>
+                        <button
+                          type="button"
+                          className="composer-token-shift-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            moveElementBy(idx, 1);
+                          }}
+                          aria-label="Move down"
+                          disabled={idx === elements.length - 1}
+                        >
+                          ▼
+                        </button>
+                      </div>
                       <button
                         type="button"
                         className="composer-token-remove"
@@ -701,25 +745,44 @@ export default function PromptComposer({
                   );
                 })}
               </div>
-            </div>
-          )}
+            ) : (
+              <div className="composer-empty">No elements yet.</div>
+            )}
+          </div>
 
-          <div className="composer-preview">
-            <div className="composer-preview-label">Expanded prompt</div>
-            <div className="composer-preview-content">{expandedPrompt || '—'}</div>
+          <div className="composer-expanded">
+            <div className="composer-expanded-header">
+              <span className="composer-expanded-label">Expanded prompt</span>
+              <span className="composer-expanded-meta">
+                {localValue ? `${localValue.length} chars` : 'Empty'}
+              </span>
+            </div>
+            <div className="composer-expanded-box" aria-label="Expanded prompt">
+              {localValue ? localValue : 'No prompt yet.'}
+            </div>
           </div>
         </div>
 
         <div className={`composer-panel composer-panel-aliases ${activeTab === 'aliases' ? 'is-visible' : ''}`}>
           <div className="composer-filters">
-            <input
-              ref={searchInputRef}
-              type="text"
-              value={pickerSearch}
-              onChange={(e) => setPickerSearch(e.target.value)}
-              placeholder="Search aliases…"
-              className="composer-search ui-control ui-input"
-            />
+            <div className="input-with-action">
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={pickerSearch}
+                onChange={(e) => setPickerSearch(e.target.value)}
+                placeholder="Search aliases…"
+                className="composer-search ui-control ui-input"
+              />
+              <button
+                type="button"
+                className="input-action-btn"
+                onClick={() => setPickerSearch('')}
+                disabled={!pickerSearch}
+              >
+                Clear
+              </button>
+            </div>
             <select
               value={pickerCategory}
               onChange={(e) => setPickerCategory(e.target.value)}
@@ -747,6 +810,61 @@ export default function PromptComposer({
             )}
           </div>
 
+          <div className="composer-tag-collection-bar is-sticky">
+            <div>
+              <div className="composer-tag-collection-label">
+                {composerCollectedAliases.length ? `${composerCollectedAliases.length} selected` : 'No aliases selected'}
+              </div>
+              {aliasCollectionStatus ? (
+                <div className="composer-tag-collection-status">{aliasCollectionStatus}</div>
+              ) : null}
+            </div>
+            <div className="composer-tag-collection-actions">
+              <button
+                type="button"
+                className="composer-tag-collection-btn"
+                onClick={clearComposerAliases}
+                disabled={!composerCollectedAliases.length}
+              >
+                Clear
+              </button>
+              <button
+                type="button"
+                className="composer-tag-collection-btn is-primary"
+                onClick={applyComposerAliases}
+                disabled={!composerCollectedAliases.length}
+              >
+                Apply
+              </button>
+            </div>
+          </div>
+          {composerCollectedAliases.length ? (
+            <div className="composer-collection-inline" role="list">
+              {composerCollectedAliases.slice(0, 3).map((token) => {
+                const entry = aliasByToken.get(token.toLowerCase());
+                const display = entry?.displayName || token;
+                return (
+                  <button
+                    key={token}
+                    type="button"
+                    className="collected-tag-chip"
+                    onClick={() => removeComposerAlias(token)}
+                    aria-label={`Remove ${token}`}
+                    title={`$${token}$`}
+                  >
+                    <code className="collected-tag-code">{display}</code>
+                    <span aria-hidden="true">×</span>
+                  </button>
+                );
+              })}
+              {composerCollectedAliases.length > 3 ? (
+                <div className="collected-tag-chip tag-overflow-chip" aria-hidden="true">
+                  +{composerCollectedAliases.length - 3} more
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
           <div className="composer-alias-list">
             {filteredAliases.length === 0 ? (
               <div className="composer-alias-empty">No aliases found.</div>
@@ -756,8 +874,10 @@ export default function PromptComposer({
                   <button
                     key={entry.key}
                     type="button"
-                    onClick={() => handleInsertAlias(entry.token)}
-                    className="composer-alias-item"
+                    onClick={() => toggleComposerAlias(entry.token)}
+                    className={`composer-alias-item ${composerCollectedAliases.some(
+                      (t) => t.toLowerCase() === entry.token.toLowerCase()
+                    ) ? 'is-collected' : ''}`}
                   >
                     <div className="composer-alias-header">
                       <div className="composer-alias-name">
@@ -784,15 +904,25 @@ export default function PromptComposer({
           onClick={(e) => e.stopPropagation()}
         >
           <div className="composer-filters">
-            <input
-              ref={tagSearchRef}
-              type="search"
-              value={tagQuery}
-              onChange={(e) => setTagQuery(e.target.value)}
-              placeholder="Search tags… (e.g. smile, city, sword)"
-              className="composer-search ui-control ui-input"
-              aria-label="Search tags"
-            />
+            <div className="input-with-action">
+              <input
+                ref={tagSearchRef}
+                type="search"
+                value={tagQuery}
+                onChange={(e) => setTagQuery(e.target.value)}
+                placeholder="Search tags… (e.g. smile, city, sword)"
+                className="composer-search ui-control ui-input"
+                aria-label="Search tags"
+              />
+              <button
+                type="button"
+                className="input-action-btn"
+                onClick={() => setTagQuery('')}
+                disabled={!tagQuery}
+              >
+                Clear
+              </button>
+            </div>
             <select
               value={tagCategory}
               onChange={(e) => setTagCategory(e.target.value)}
@@ -819,60 +949,58 @@ export default function PromptComposer({
 
           <div className="composer-tags-header">
             <div className="composer-tags-hint">
-              <span className="inline-flex items-center gap-2">
-                <IconTag size={14} />
-                Tap a tag to insert into prompt
-              </span>
               <span className="ml-3 opacity-80">{tagTotalLabel}</span>
             </div>
-            <button
-              type="button"
-              className="ui-button is-tiny is-primary"
-              onClick={(e) => {
-                e.stopPropagation();
-                setActiveTab('compose');
-              }}
-            >
-              Done
-            </button>
           </div>
           <div className="composer-tag-collection-bar is-sticky">
             <div>
               <div className="composer-tag-collection-label">
-                {composerCollectedTags.length ? `${composerCollectedTags.length} tags collected` : 'No tags collected'}
+                {composerCollectedTags.length ? `${composerCollectedTags.length} selected` : 'No tags selected'}
               </div>
               {collectionStatus ? (
                 <div className="composer-tag-collection-status">{collectionStatus}</div>
               ) : null}
             </div>
-            <button
-              type="button"
-              className="composer-tag-collection-btn"
-              onClick={handleOpenCollectionSheet}
-              disabled={!composerCollectedTags.length}
-            >
-              Manage
-            </button>
+            <div className="composer-tag-collection-actions">
+              <button
+                type="button"
+                className="composer-tag-collection-btn"
+                onClick={clearComposerCollection}
+                disabled={!composerCollectedTags.length}
+              >
+                Clear
+              </button>
+              <button
+                type="button"
+                className="composer-tag-collection-btn is-primary"
+                onClick={applyComposerCollection}
+                disabled={!composerCollectedTags.length}
+              >
+                Apply
+              </button>
+            </div>
           </div>
-          <div className="composer-tag-collection-bar">
-            <div>
-              <div className="composer-tag-collection-label">
-                {composerCollectedTags.length ? `${composerCollectedTags.length} tags ready` : 'No tags collected yet'}
-              </div>
-              {collectionStatus ? (
-                <div className="composer-tag-collection-status">{collectionStatus}</div>
+          {composerCollectedTags.length ? (
+            <div className="composer-collection-inline" role="list">
+              {composerCollectedTags.slice(0, 3).map((tag) => (
+                <button
+                  key={tag}
+                  type="button"
+                  className="collected-tag-chip"
+                  onClick={() => removeComposerTag(tag)}
+                  aria-label={`Remove ${tag}`}
+                >
+                  <code className="collected-tag-code">{tag}</code>
+                  <span aria-hidden="true">×</span>
+                </button>
+              ))}
+              {composerCollectedTags.length > 3 ? (
+                <div className="collected-tag-chip tag-overflow-chip" aria-hidden="true">
+                  +{composerCollectedTags.length - 3} more
+                </div>
               ) : null}
             </div>
-            <button
-              type="button"
-              className="composer-tag-collection-btn"
-              onClick={handleOpenCollectionSheet}
-              disabled={!composerCollectedTags.length}
-            >
-              Manage
-            </button>
-          </div>
-          {tagStatus ? <div className="composer-tags-status">{tagStatus}</div> : null}
+          ) : null}
           {tagError ? <div className="composer-tags-error">{tagError}</div> : null}
 
           <div className="composer-alias-list composer-tags-grid" role="list">
@@ -893,7 +1021,7 @@ export default function PromptComposer({
                       className={`composer-alias-item composer-tag-item ${isCollected ? 'is-collected' : ''}`}
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleInsertTag(t.tag);
+                        toggleComposerTag(t.tag);
                       }}
                     >
                     <div className="composer-alias-header">
@@ -921,95 +1049,78 @@ export default function PromptComposer({
           </div>
         </div>
       </div>
+  );
 
-      <BottomSheet
-        open={collectionSheetOpen}
-        onClose={() => setCollectionSheetOpen(false)}
-        title="Collected tags"
-        variant="sheet"
-        shouldCloseOnOverlayClick
-      >
-        <div className="sheet-stack">
-          <div className="sheet-section">
-            <div className="sheet-label">Tags ({composerCollectedTags.length})</div>
-            <div className="composer-collection-chips" role="list">
-              {composerCollectedTags.length ? (
-                composerCollectedTags.map((tag) => (
-                  <button
-                    key={tag}
-                    type="button"
-                    className="collected-tag-chip"
-                    onClick={() => removeComposerTag(tag)}
-                    aria-label={`Remove ${tag}`}
-                  >
-                    <code className="collected-tag-code">{tag}</code>
-                    <span aria-hidden="true">×</span>
-                  </button>
-                ))
-              ) : (
-                <div className="sheet-hint">No tags collected yet.</div>
-              )}
-            </div>
-          </div>
-          <div className="sheet-section flex gap-2">
-            <button
-              type="button"
-              className="ui-button is-muted w-full"
-              onClick={() => setCollectionSheetOpen(false)}
-            >
-              Close
-            </button>
-            <button
-              type="button"
-              className="ui-button is-ghost w-full"
-              onClick={clearComposerCollection}
-              disabled={!composerCollectedTags.length}
-            >
-              Clear
-            </button>
-            <button
-              type="button"
-              className="ui-button is-primary w-full"
-              onClick={copyComposerCollection}
-              disabled={!composerCollectedTags.length}
-            >
-              Copy
-            </button>
-            <textarea
-              ref={composerCollectionTextareaRef}
-              readOnly
-              className="sr-only"
-              aria-label="Collected tags"
-            />
-          </div>
+  const strengthSheet = (
+    <TokenStrengthSheet
+      open={strengthOpen}
+      onClose={() => setStrengthOpen(false)}
+      title={strengthToken?.element?.type === 'alias' ? 'Alias strength' : 'Tag strength'}
+      tokenLabel={
+        strengthToken
+          ? strengthToken.element?.type === 'alias'
+            ? `${strengthToken.displayName} • $${strengthToken.element?.text}$`
+            : strengthToken.displayName
+          : ''
+      }
+      weight={strengthToken?.weight ?? 1}
+      onApply={(w) => {
+        if (!strengthToken?.element) return;
+        updatePromptValue((prev) => setElementWeight(prev || '', strengthToken.element, w));
+      }}
+      onRemoveWeight={() => {
+        if (!strengthToken?.element) return;
+        updatePromptValue((prev) => setElementWeight(prev || '', strengthToken.element, null));
+      }}
+      onDeleteToken={() => {
+        if (!strengthToken?.element) return;
+        handleRemoveElement(strengthToken.element);
+      }}
+    />
+  );
+
+  const pageHeader = (
+    <div className="page-bar composer-bar">
+      <h1 className="page-bar-title">{fieldLabel || 'Prompt'}</h1>
+    </div>
+  );
+
+
+  if (isPage) {
+    return (
+      <>
+        <div className="page-shell page-stack">
+          {pageHeader}
+          {composerShell}
         </div>
-      </BottomSheet>
+        {strengthSheet}
+      </>
+    );
+  }
 
-      <TokenStrengthSheet
-        open={strengthOpen}
-        onClose={() => setStrengthOpen(false)}
-        title={strengthToken?.element?.type === 'alias' ? 'Alias strength' : 'Tag strength'}
-        tokenLabel={
-          strengthToken
-            ? strengthToken.element?.type === 'alias'
-              ? `${strengthToken.displayName} • $${strengthToken.element?.text}$`
-              : strengthToken.displayName
-            : ''
-        }
-        weight={strengthToken?.weight ?? 1}
-        onApply={(w) => {
-          if (!strengthToken?.element) return;
-          setLocalValue((prev) => setElementWeight(prev || '', strengthToken.element, w));
-        }}
-        onRemoveWeight={() => {
-          if (!strengthToken?.element) return;
-          setLocalValue((prev) => setElementWeight(prev || '', strengthToken.element, null));
-        }}
-        onDeleteToken={() => {
-          if (!strengthToken?.element) return;
-          handleRemoveElement(strengthToken.element);
-        }}
-      />
-    </BottomSheet>
+  return (
+    <>
+      <BottomSheet
+        open={open}
+        onClose={handleCancel}
+        title="Composer"
+        variant="fullscreen"
+        shouldCloseOnOverlayClick={false}
+        shouldCloseOnEsc={false}
+        footer={(
+          <div className="flex gap-2">
+            <button type="button" className="ui-button is-muted w-full" onClick={handleCancel}>
+              Cancel
+            </button>
+            <button type="button" className="ui-button is-primary w-full" onClick={handleSave}>
+              Apply
+            </button>
+          </div>
+        )}
+      >
+        {composerShell}
+      </BottomSheet>
+      {strengthSheet}
+    </>
   );
 }

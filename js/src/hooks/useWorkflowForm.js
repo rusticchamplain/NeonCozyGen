@@ -98,7 +98,10 @@ export function useWorkflowForm(selectedWorkflow) {
 
               if (choiceType) {
                 try {
-                  const choicesData = await getChoices(choiceType, { signal: controller.signal });
+                  const choicesData = await getChoices(choiceType, {
+                    signal: controller.signal,
+                    refresh: choiceType === 'loras',
+                  });
                   input.inputs.choices = choicesData.choices || [];
                 } catch (err) {
                   if (err?.name !== 'AbortError') {

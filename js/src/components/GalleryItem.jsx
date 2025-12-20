@@ -105,6 +105,12 @@ function GalleryItem({
   const filename = item.filename || '';
   const subfolder = item.subfolder || '';
   const displayName = filename || subfolder || 'Unknown';
+  const hasMeta = Boolean(
+    item?.meta &&
+      (item.meta.model ||
+        item.meta.prompt ||
+        (Array.isArray(item.meta.loras) && item.meta.loras.length))
+  );
 
   const handleClick = () => {
     if (!onSelect) return;
@@ -174,6 +180,16 @@ function GalleryItem({
           onClick={handleClick}
           className="gallery-feed-media"
         >
+          {hasMeta ? (
+            <span
+              className="gallery-meta-badge"
+              role="img"
+              aria-label="Metadata available"
+              title="Metadata available"
+            >
+              i
+            </span>
+          ) : null}
           <div className="relative w-full flex items-center justify-center bg-[#020312]">
             {isVideo ? (
               <FeedVideoPlayer src={mediaSrc} poster={thumbSrc} autoPlay={autoPlay} />
@@ -222,6 +238,16 @@ function GalleryItem({
       style={tileVisibilityStyles}
     >
       <div className="gallery-tile-media">
+        {hasMeta ? (
+          <span
+            className="gallery-meta-badge"
+            role="img"
+            aria-label="Metadata available"
+            title="Metadata available"
+          >
+            i
+          </span>
+        ) : null}
         {thumbSrc ? (
           <img
             src={thumbSrc}

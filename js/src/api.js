@@ -45,7 +45,17 @@ export async function getWorkflow(filename, options = {}) {
   return jget(`/cozygen/workflows/${encodeURIComponent(filename)}`, options);
 }
 export async function getChoices(type, options = {}) {
-  return jget(`/cozygen/get_choices?type=${encodeURIComponent(type)}`, options);
+  const { refresh = false, cacheBust = '', ...fetchOptions } = options || {};
+  const qs = new URLSearchParams({
+    type: String(type || ''),
+  });
+  if (refresh) {
+    qs.set('refresh', '1');
+  }
+  if (cacheBust) {
+    qs.set('cache_bust', String(cacheBust));
+  }
+  return jget(`/cozygen/get_choices?${qs.toString()}`, fetchOptions);
 }
 export async function queuePrompt(body) {
   const res = await fetch('/prompt', {
@@ -79,16 +89,20 @@ export async function getGallery(
   cacheBust = '',
   options = {}
 ) {
+  const { includeMeta = false, ...fetchOptions } = options || {};
   const qs = new URLSearchParams({
     subfolder, page: String(page), per_page: String(perPage),
     show_hidden: showHidden ? '1' : '0',
     recursive: recursive ? '1' : '0',
     kind,
   });
+  if (includeMeta) {
+    qs.set('include_meta', '1');
+  }
   if (cacheBust) {
     qs.set('cache_bust', String(cacheBust));
   }
-  return jget(`/cozygen/api/gallery?${qs.toString()}`, options);
+  return jget(`/cozygen/api/gallery?${qs.toString()}`, fetchOptions);
 }
 
 /* ---- Prompt aliases ---- */

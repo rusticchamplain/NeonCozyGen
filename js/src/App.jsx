@@ -4,7 +4,6 @@ import { HashRouter, Routes, Route, Navigate, useLocation, Outlet, useNavigate }
 import TopBar from './components/TopBar';
 import BottomNav from './components/BottomNav';
 import { AuthProvider, useAuth } from './hooks/useAuth';
-import useMediaQuery from './hooks/useMediaQuery';
 
 import MainPage from './pages/MainPage';
 import StudioLanding from './pages/StudioLanding';
@@ -58,9 +57,8 @@ function App() {
   const { defaultCreds, authed } = useAuth();
   const isLogin = pathname === '/login';
   const contentRef = useRef(null);
-  const isNarrow = useMediaQuery('(max-width: 767px)');
-  const isCoarse = useMediaQuery('(pointer: coarse)');
-  const showBottomNav = !isLogin && (isNarrow || isCoarse);
+  const isMobileAlignedNav = !isLogin;
+  const showBottomNav = isMobileAlignedNav;
 
   useEffect(() => {
     if (!authed) return undefined;
@@ -75,7 +73,7 @@ function App() {
 
   return (
     <div className="app-shell">
-      {!isLogin && <TopBar />}
+      {!isLogin && <TopBar isMobileAlignedNav={isMobileAlignedNav} />}
       {!isLogin && authed && defaultCreds && (
         <div className="flex-shrink-0 bg-amber-500/10 text-amber-200 border-b border-amber-400/50 px-4 py-2 text-sm text-center">
           Default CozyGen credentials are still in use. Change <code className="font-mono">COZYGEN_AUTH_USER</code> /
@@ -83,36 +81,38 @@ function App() {
         </div>
       )}
       <ScrollToTop containerRef={contentRef} />
-      <main
-        ref={contentRef}
-        className={isLogin ? 'app-content is-login' : 'app-content'}
-      >
-        <Routes>
-          <Route path="/login" element={<Login />} />
+      <div className="app-body">
+        <main
+          ref={contentRef}
+          className={isLogin ? 'app-content is-login' : 'app-content'}
+        >
+          <Routes>
+            <Route path="/login" element={<Login />} />
 
-          <Route
-            element={
-              <RequireAuth>
-                <StudioProvider>
-                  <Outlet />
-                </StudioProvider>
-              </RequireAuth>
-            }
-          >
-            <Route path="/" element={<Navigate to="/studio" replace />} />
-            <Route path="/studio" element={<StudioLanding />} />
-            <Route path="/controls" element={<MainPage />} />
-            <Route path="/compose" element={<ComposerPage />} />
-            <Route path="/gallery" element={<Gallery />} />
-            <Route path="/aliases" element={<Aliases />} />
-            <Route path="/tags" element={<TagLibrary />} />
-          </Route>
+            <Route
+              element={
+                <RequireAuth>
+                  <StudioProvider>
+                    <Outlet />
+                  </StudioProvider>
+                </RequireAuth>
+              }
+            >
+              <Route path="/" element={<Navigate to="/studio" replace />} />
+              <Route path="/studio" element={<StudioLanding />} />
+              <Route path="/controls" element={<MainPage />} />
+              <Route path="/compose" element={<ComposerPage />} />
+              <Route path="/gallery" element={<Gallery />} />
+              <Route path="/aliases" element={<Aliases />} />
+              <Route path="/tags" element={<TagLibrary />} />
+            </Route>
 
-          {/* Fallback */}
-          <Route path="*" element={<Navigate to="/studio" replace />} />
-        </Routes>
-      </main>
-      {showBottomNav ? <BottomNav /> : null}
+            {/* Fallback */}
+            <Route path="*" element={<Navigate to="/studio" replace />} />
+          </Routes>
+        </main>
+        {showBottomNav ? <BottomNav /> : null}
+      </div>
     </div>
   );
 }

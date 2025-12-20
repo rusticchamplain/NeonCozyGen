@@ -1,5 +1,5 @@
 // js/src/components/MediaViewerModal.jsx
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 const isVideo = (name = '') => /\.(mp4|webm|mov|mkv)$/i.test(name);
@@ -29,6 +29,7 @@ export default function MediaViewerModal({
 }) {
   const overlayPointerDownRef = useRef(false);
   const closeButtonRef = useRef(null);
+  const [metaOpen, setMetaOpen] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return undefined;
@@ -46,6 +47,11 @@ export default function MediaViewerModal({
     closeButtonRef.current?.focus?.();
   }, [isOpen]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    setMetaOpen(false);
+  }, [isOpen, media]);
+
   if (!media) return null;
   if (!isOpen) return null;
   if (typeof document === 'undefined') return null;
@@ -54,6 +60,14 @@ export default function MediaViewerModal({
   const locationLabel = media.subfolder || 'Gallery';
   const isClip = isVideo(media.filename);
   const showNav = total > 1;
+  const meta = media?.meta || {};
+  const metaRows = [
+    meta?.model ? { label: 'Model', value: meta.model } : null,
+    meta?.prompt ? { label: 'Prompt', value: meta.prompt, isPrompt: true } : null,
+    Array.isArray(meta?.loras) && meta.loras.length
+      ? { label: 'LoRAs', value: meta.loras.join(', ') }
+      : null,
+  ].filter(Boolean);
 
   return (
     createPortal(
@@ -90,6 +104,17 @@ export default function MediaViewerModal({
                 </div>
               </div>
               <div className="media-viewer-actions">
+                {metaRows.length ? (
+                  <button
+                    type="button"
+                    className="media-btn ghost"
+                    onClick={() => setMetaOpen((prev) => !prev)}
+                    aria-expanded={metaOpen}
+                    aria-label={metaOpen ? 'Hide metadata' : 'Show metadata'}
+                  >
+                    {metaOpen ? 'Hide metadata' : 'Metadata'}
+                  </button>
+                ) : null}
                 <a href={url} target="_blank" rel="noreferrer" className="media-btn">
                   Open
                 </a>
@@ -103,6 +128,19 @@ export default function MediaViewerModal({
                 </button>
               </div>
             </header>
+
+            {metaOpen && metaRows.length ? (
+              <div className="media-viewer-info" aria-label="Generation metadata">
+                {metaRows.map((row) => (
+                  <div key={row.label} className="media-info-row">
+                    <span className="media-info-label">{row.label}</span>
+                    <span className={`media-info-value ${row.isPrompt ? 'is-prompt' : ''}`}>
+                      {row.value}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
 
             <div className="media-viewer-stage">
               {showNav ? (

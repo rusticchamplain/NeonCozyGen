@@ -316,7 +316,16 @@ def _kind_allowed(name: str, kind: str) -> bool:
     return True
 
 
-def _gallery_cache_key(subfolder: str, show_hidden: bool, recursive: bool, kind: str, page: int, per_page: int, bust: str):
+def _gallery_cache_key(
+    subfolder: str,
+    show_hidden: bool,
+    recursive: bool,
+    kind: str,
+    page: int,
+    per_page: int,
+    bust: str,
+    include_meta: bool,
+):
     return (
         subfolder or "",
         bool(show_hidden),
@@ -325,7 +334,240 @@ def _gallery_cache_key(subfolder: str, show_hidden: bool, recursive: bool, kind:
         int(page),
         int(per_page),
         bust or "",
+        bool(include_meta),
     )
+
+
+def _safe_json_loads(raw):
+    if raw is None:
+        return None
+    if isinstance(raw, (bytes, bytearray)):
+        try:
+            raw = raw.decode("utf-8", errors="ignore")
+        except Exception:
+            return None
+    if isinstance(raw, (dict, list)):
+        return raw
+    if not isinstance(raw, str):
+        return None
+    raw = raw.strip()
+    if not raw:
+        return None
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+
+
+def _clean_text(value):
+    if not isinstance(value, str):
+        return None
+    cleaned = value.strip()
+    if not cleaned:
+        return None
+    if cleaned.lower() == "none":
+        return None
+    return cleaned
+
+
+def _looks_numeric(value: str) -> bool:
+    if not isinstance(value, str):
+        return False
+    try:
+        float(value.strip())
+    except ValueError:
+        return False
+    return True
+
+
+def _resolve_prompt_value(prompt_data: dict, value):
+    cleaned = _clean_text(value)
+    if cleaned:
+        return cleaned
+    if isinstance(value, (list, tuple)) and value:
+        node_id = str(value[0])
+        node = prompt_data.get(node_id) if isinstance(prompt_data, dict) else None
+        if isinstance(node, dict):
+            inputs = node.get("inputs") or {}
+            if isinstance(inputs, dict):
+                for key in ("value", "default_value", "text", "prompt", "text_g", "text_l", "string"):
+                    resolved = _clean_text(inputs.get(key))
+                    if resolved:
+                        return resolved
+    return None
+
+
+def _first_string(prompt_data, inputs, keys):
+    if not isinstance(inputs, dict):
+        return None
+    for key in keys:
+        value = inputs.get(key)
+        resolved = _resolve_prompt_value(prompt_data, value)
+        if resolved:
+            return resolved
+    return None
+
+
+def _collect_prompt_texts(prompt_data, inputs):
+    if not isinstance(inputs, dict):
+        return []
+    parts = []
+    text = _resolve_prompt_value(prompt_data, inputs.get("text"))
+    if text:
+        parts.append(text)
+    text_g = _resolve_prompt_value(prompt_data, inputs.get("text_g"))
+    text_l = _resolve_prompt_value(prompt_data, inputs.get("text_l"))
+    if text_g or text_l:
+        combined = " / ".join([p for p in (text_g, text_l) if p])
+        if combined:
+            parts.append(combined)
+    prompt = _resolve_prompt_value(prompt_data, inputs.get("prompt"))
+    if prompt:
+        parts.append(prompt)
+    return parts
+
+
+def _collect_dynamic_inputs(prompt_data):
+    if not isinstance(prompt_data, dict):
+        return []
+    targets = (
+        "cozygendynamicinput",
+        "cozygenchoiceinput",
+        "cozygenstringinput",
+        "cozygenfloatinput",
+        "cozygenintinput",
+    )
+    results = []
+    for node in prompt_data.values():
+        if not isinstance(node, dict):
+            continue
+        class_type = node.get("class_type") or ""
+        class_lower = str(class_type).lower()
+        if class_lower not in targets:
+            continue
+        inputs = node.get("inputs") or {}
+        if not isinstance(inputs, dict):
+            continue
+        param_name = _clean_text(inputs.get("param_name"))
+        if not param_name:
+            continue
+        value = _resolve_prompt_value(prompt_data, inputs.get("value"))
+        if not value:
+            value = _resolve_prompt_value(prompt_data, inputs.get("default_value"))
+        results.append((param_name.lower(), value))
+    return results
+
+
+def _summarize_prompt(prompt_data: dict):
+    if not isinstance(prompt_data, dict):
+        return None
+
+    model_name = None
+    prompt_candidates = []
+    lora_names = []
+
+    for node in prompt_data.values():
+        if not isinstance(node, dict):
+            continue
+        class_type = node.get("class_type") or ""
+        class_lower = str(class_type).lower()
+        inputs = node.get("inputs") or {}
+        if not isinstance(inputs, dict):
+            continue
+
+        if model_name is None and ("checkpoint" in class_lower or "ckpt" in class_lower):
+            model_name = _first_string(
+                prompt_data,
+                inputs,
+                ("ckpt_name", "checkpoint", "model_name", "ckpt", "base_model"),
+            )
+
+        if "lora" in class_lower:
+            lora_name = _first_string(
+                prompt_data,
+                inputs,
+                ("lora_name", "lora", "lora_1", "lora_2", "lora_a", "lora_b"),
+            )
+            if lora_name:
+                lora_names.append(lora_name)
+
+        if "cliptextencode" in class_lower:
+            prompt_candidates.extend(_collect_prompt_texts(prompt_data, inputs))
+
+    if prompt_data:
+        for param_name, value in _collect_dynamic_inputs(prompt_data):
+            if not value:
+                continue
+            if model_name is None and ("checkpoint" in param_name or "ckpt" in param_name):
+                model_name = value
+            if "prompt" in param_name:
+                prompt_candidates.append(value)
+            if "lora" in param_name:
+                if "strength" in param_name or "weight" in param_name or "scale" in param_name:
+                    continue
+                if _looks_numeric(value):
+                    continue
+                lora_names.append(value)
+
+    prompt_text = None
+    if prompt_candidates:
+        prompt_text = max(prompt_candidates, key=len)
+
+    lora_unique = []
+    seen = set()
+    for name in lora_names:
+        if name in seen:
+            continue
+        seen.add(name)
+        lora_unique.append(name)
+
+    if not (model_name or prompt_text or lora_unique):
+        return None
+
+    return {
+        "model": model_name,
+        "prompt": prompt_text,
+        "loras": lora_unique,
+    }
+
+
+def _read_media_meta(base: str, item: dict):
+    if not item or item.get("type") == "directory":
+        return None
+    filename = item.get("filename") or ""
+    if not filename.lower().endswith(".png"):
+        return None
+    if _type_for(filename) != "image":
+        return None
+    subfolder = item.get("subfolder") or ""
+    path = os.path.normpath(os.path.join(base, subfolder, filename))
+    if not path.startswith(base):
+        return None
+    try:
+        with Image.open(path) as im:
+            info = im.info or {}
+    except Exception:
+        return None
+    prompt_data = _safe_json_loads(info.get("prompt"))
+    if not prompt_data:
+        return None
+    return _summarize_prompt(prompt_data)
+
+
+def _attach_media_meta(items, base: str):
+    if not items:
+        return items
+    enriched = []
+    for item in items:
+        if not isinstance(item, dict) or item.get("type") == "directory":
+            enriched.append(item)
+            continue
+        meta = _read_media_meta(base, item)
+        if meta:
+            enriched.append({**item, "meta": meta})
+        else:
+            enriched.append(item)
+    return enriched
 
 
 def _gallery_cache_get(key):
@@ -489,6 +731,7 @@ async def gallery_list(request: web.Request):
     show_hidden = request.rel_url.query.get("show_hidden", "0") in ("1", "true", "True")
     recursive = request.rel_url.query.get("recursive", "0") in ("1", "true", "True")
     kind = (request.rel_url.query.get("kind", "all") or "all").lower()
+    include_meta = request.rel_url.query.get("include_meta", "0") in ("1", "true", "True")
     try:
         page = max(1, int(request.rel_url.query.get("page", "1")))
         per_page = int(request.rel_url.query.get("per_page", "20"))
@@ -504,7 +747,16 @@ async def gallery_list(request: web.Request):
         return web.json_response({"error": "not found"}, status=404)
 
     cache_bust = request.rel_url.query.get("cache_bust", "")
-    cache_key = _gallery_cache_key(subfolder, show_hidden, recursive, kind, page, per_page, cache_bust)
+    cache_key = _gallery_cache_key(
+        subfolder,
+        show_hidden,
+        recursive,
+        kind,
+        page,
+        per_page,
+        cache_bust,
+        include_meta,
+    )
     cached = _gallery_cache_get(cache_key)
     if cached:
         return web.json_response(cached)
@@ -512,6 +764,8 @@ async def gallery_list(request: web.Request):
     dirs, files_sorted, files_total = await _load_gallery(path, subfolder, base, show_hidden, recursive, kind, page, per_page)
 
     items_page, total = _slice_items(dirs, files_sorted, files_total, page, per_page)
+    if include_meta:
+        items_page = _attach_media_meta(items_page, base)
     total_pages = (total + per_page - 1) // per_page if per_page > 0 else 1
     data = {
         "items": items_page,
@@ -660,6 +914,10 @@ async def get_choices(request: web.Request):
     if not kind:
         return web.json_response({"error": "missing type"}, status=400)
     kind = _alias.get(kind, kind)
+    refresh = request.rel_url.query.get("refresh", "0") in ("1", "true", "True")
+    cache_bust = request.rel_url.query.get("cache_bust", "")
+    if refresh or cache_bust:
+        folder_paths.filename_list_cache.pop(kind, None)
     if kind == "scheduler":
         return web.json_response({"choices": comfy.samplers.KSampler.SCHEDULERS})
     if kind == "sampler":

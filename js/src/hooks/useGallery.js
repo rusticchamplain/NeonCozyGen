@@ -71,7 +71,7 @@ export function useGallery() {
           recursive,
           kind,
           reloadKey,
-          { signal: controller.signal }
+          { signal: controller.signal, includeMeta: true }
         );
         if (cancelled) return;
         if (data && data.items) {

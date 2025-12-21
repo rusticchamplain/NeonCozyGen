@@ -5,6 +5,8 @@ import GalleryItem from '../components/GalleryItem';
 import MediaViewerModal from '../components/MediaViewerModal';
 import BottomSheet from '../components/ui/BottomSheet';
 import SegmentedTabs from '../components/ui/SegmentedTabs';
+import Button from '../components/ui/Button';
+import Select from '../components/ui/Select';
 import { useGallery } from '../hooks/useGallery';
 import { useMediaViewer } from '../hooks/useMediaViewer';
 import {
@@ -159,6 +161,7 @@ export default function Gallery() {
     kind,
     showHidden,
     recursive,
+    error,
     crumbs,
     dirChips,
     filtered,
@@ -282,6 +285,7 @@ export default function Gallery() {
   const isRefreshing = loading && hasLoaded;
   const summaryCount = `${filtered.length} items`;
   const summaryMeta = isInitialLoading ? 'Loading…' : summaryCount;
+  const hasError = Boolean(error);
   const { containerRef, visibleItems, topSpacer, bottomSpacer, virtualized } =
     useVirtualGrid(filtered, isGrid);
 
@@ -301,13 +305,13 @@ export default function Gallery() {
                 size="sm"
                 items={viewItems}
               />
-              <button
-                type="button"
-                className="page-bar-btn gallery-filter-btn"
+              <Button
+                size="xs"
+                className="gallery-filter-btn"
                 onClick={() => setFiltersOpen(true)}
               >
                 Filters
-              </button>
+              </Button>
             </div>
           </div>
 
@@ -336,40 +340,46 @@ export default function Gallery() {
 
             <div className="gallery-toolbar-right">
               <div className="gallery-options">
-                <button
-                  type="button"
-                  className={`gallery-option-btn ${recursive ? 'is-active' : ''}`}
+                <Button
+                  size="icon"
+                  active={recursive}
+                  pressed={recursive}
                   onClick={() => setRecursive((prev) => !prev)}
                   title={recursive ? 'Showing subfolders' : 'This folder only'}
+                  aria-label="Toggle subfolders"
                 >
                   {recursive ? <IconFolderOpen size={16} /> : <IconFolder size={16} />}
-                </button>
-                <button
-                  type="button"
-                  className={`gallery-option-btn ${showHidden ? 'is-active' : ''}`}
+                </Button>
+                <Button
+                  size="icon"
+                  active={showHidden}
+                  pressed={showHidden}
                   onClick={() => setShowHidden((prev) => !prev)}
                   title={showHidden ? 'Showing hidden' : 'Hiding hidden'}
+                  aria-label="Toggle hidden items"
                 >
                   {showHidden ? <IconEye size={16} /> : <IconEyeOff size={16} />}
-                </button>
+                </Button>
                 {viewMode === 'feed' && (
-                  <button
-                    type="button"
-                    className={`gallery-option-btn ${feedAutoplay ? 'is-active' : ''}`}
+                  <Button
+                    size="icon"
+                    active={feedAutoplay}
+                    pressed={feedAutoplay}
                     onClick={() => setFeedAutoplay((prev) => !prev)}
                     title={feedAutoplay ? 'Autoplay on' : 'Autoplay off'}
+                    aria-label="Toggle autoplay"
                   >
                     {feedAutoplay ? <IconPlay size={16} /> : <IconPause size={16} />}
-                  </button>
+                  </Button>
                 )}
-                <button
-                  type="button"
-                  className="gallery-option-btn"
+                <Button
+                  size="icon"
                   onClick={refresh}
                   title="Refresh"
+                  aria-label="Refresh gallery"
                 >
                   <IconRefresh size={16} />
-                </button>
+                </Button>
               </div>
             </div>
           </div>
@@ -401,17 +411,14 @@ export default function Gallery() {
               >
                 <IconChevronRight size={16} />
               </button>
-              <select
+              <Select
                 value={perPage}
-                onChange={(e) => setPerPage(parseInt(e.target.value, 10) || 30)}
+                onChange={(value) => setPerPage(parseInt(value, 10) || 30)}
                 className="gallery-page-size"
                 aria-label="Items per page"
-              >
-                <option value={15}>15</option>
-                <option value={30}>30</option>
-                <option value={60}>60</option>
-                <option value={120}>120</option>
-              </select>
+                size="sm"
+                options={[15, 30, 60, 120]}
+              />
             </div>
           </div>
         </div>
@@ -426,6 +433,19 @@ export default function Gallery() {
               <div className="gallery-skeleton-label skeleton skeleton-text" />
             </div>
           ))}
+        </div>
+      ) : hasError && filtered.length === 0 ? (
+        <div className="gallery-empty" role="alert">
+          <div className="gallery-empty-icon"><IconEmpty size={48} /></div>
+          <div className="gallery-empty-title">Gallery unavailable</div>
+          <div className="gallery-empty-desc">{error}</div>
+          <button
+            type="button"
+            className="ui-button is-primary is-compact mt-4"
+            onClick={refresh}
+          >
+            Retry
+          </button>
         </div>
       ) : filtered.length === 0 ? (
         <div className="gallery-empty">
@@ -563,17 +583,14 @@ export default function Gallery() {
 
           <div className="sheet-section">
             <div className="sheet-label">Page size</div>
-            <select
+            <Select
               value={perPage}
-              onChange={(e) => setPerPage(parseInt(e.target.value, 10) || 30)}
-              className="sheet-select ui-control ui-select"
+              onChange={(value) => setPerPage(parseInt(value, 10) || 30)}
+              className="sheet-select"
               aria-label="Items per page"
-            >
-              <option value={15}>15</option>
-              <option value={30}>30</option>
-              <option value={60}>60</option>
-              <option value={120}>120</option>
-            </select>
+              size="sm"
+              options={[15, 30, 60, 120]}
+            />
             <div className="sheet-hint">
               {isRefreshing ? <span className="loading-spinner" aria-hidden="true" /> : null}
               <span>{summaryMeta} • Page {page} of {totalPages}</span>

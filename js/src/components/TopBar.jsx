@@ -60,7 +60,8 @@ export default function TopBar({ isMobileAlignedNav = false }) {
   const requestRender = async () => {
     if (renderActive) return;
     const isControls = pathname === '/controls';
-    if (isControls) {
+    const isComposer = pathname === '/compose';
+    if (isControls || isComposer) {
       try {
         window.dispatchEvent(new Event('cozygen:request-render'));
       } catch {

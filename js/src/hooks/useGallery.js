@@ -29,6 +29,7 @@ export function useGallery() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [hasLoaded, setHasLoaded] = useState(false);
+  const [error, setError] = useState('');
 
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -55,6 +56,7 @@ export function useGallery() {
 
     const load = async () => {
       setLoading(true);
+      setError('');
       try {
         if (typeof performance !== 'undefined' && performance.mark) {
           performance.mark('cozygen:gallery:fetch');
@@ -77,6 +79,7 @@ export function useGallery() {
         if (data && data.items) {
           setItems(data.items);
           setTotalPages(data.total_pages || 1);
+          setError('');
         } else {
           setItems([]);
           setTotalPages(1);
@@ -98,6 +101,9 @@ export function useGallery() {
           return;
         }
         console.error('Failed to load gallery', err);
+        if (!cancelled) {
+          setError('Unable to load gallery right now.');
+        }
         if (!cancelled) {
           setItems([]);
           setTotalPages(1);
@@ -301,6 +307,7 @@ export function useGallery() {
     items,
     loading,
     hasLoaded,
+    error,
     page,
     totalPages,
     perPage,

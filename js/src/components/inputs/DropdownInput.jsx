@@ -1,4 +1,5 @@
 import { memo, useEffect, useMemo, useState } from 'react';
+import Select from '../ui/Select';
 import { formatModelDisplayName, isModelFileLike, splitModelDisplayName } from '../../utils/modelDisplay';
 import { loadDropdownFolder, saveDropdownFolder } from '../../utils/storage';
 
@@ -93,32 +94,26 @@ function DropdownInput({
     return filteredOptions.some((opt) => String(opt.value) === String(valueStr));
   }, [filteredOptions, valueStr]);
 
-  const handleChange = (e) => {
-    onChange?.(e.target.value);
+  const handleChange = (next) => {
+    const value = next && next.target ? next.target.value : next;
+    onChange?.(value);
   };
 
   return (
     <div className="w-full space-y-2">
       <div className="relative w-full">
-        <select
+        <Select
           value={selectedFolder}
-          onChange={(e) => setSelectedFolder(e.target.value)}
+          onChange={setSelectedFolder}
           disabled={disabled}
-          className={
-            'ui-control ui-select is-compact'
-          }
           aria-label={`Choose folder for ${label || name}`}
-        >
-          {folders.map((folder) => (
-            <option key={folder} value={folder}>
-              {folder}
-            </option>
-          ))}
-        </select>
+          size="sm"
+          options={folders.map((folder) => ({ value: folder, label: folder }))}
+        />
       </div>
 
       <div className="relative w-full">
-        <select
+        <Select
           key={`${name || 'field'}:${selectedFolder}`}
           id={name}
           name={name}
@@ -127,23 +122,15 @@ function DropdownInput({
           disabled={disabled}
           aria-label={label || name}
           aria-describedby={description ? `${name}-description` : undefined}
-          className={
-            'ui-control ui-select'
-          }
-        >
-          {!hasValueInFiltered && valueStr !== '' && (
-            <option value={valueStr}>{formatModelDisplayName(String(valueStr))}</option>
-          )}
-          {filteredOptions.length > 0 && (valueStr === undefined || valueStr === '') && (
-            <option value="">Select…</option>
-          )}
-          {filteredOptions.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-          {filteredOptions.length === 0 && <option value="">No matches</option>}
-        </select>
+          placeholder={filteredOptions.length > 0 && (valueStr === undefined || valueStr === '') ? 'Select...' : undefined}
+          emptyLabel="No matches"
+          options={[
+            ...(!hasValueInFiltered && valueStr !== ''
+              ? [{ value: valueStr, label: formatModelDisplayName(String(valueStr)) }]
+              : []),
+            ...filteredOptions,
+          ]}
+        />
       </div>
     </div>
   );

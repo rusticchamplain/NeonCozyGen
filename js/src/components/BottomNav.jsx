@@ -39,15 +39,17 @@ export default function BottomNav() {
 
   // Check if we're on the Studio page
   const isOnControls = location.pathname === '/controls';
+  const isOnComposer = location.pathname === '/compose';
 
   const requestRender = async () => {
     if (typeof window === 'undefined') return;
+    if (isRendering) return;
 
     setFlash(true);
     setTimeout(() => setFlash(false), 400);
 
-    if (isOnControls) {
-      // On Controls page: dispatch event for MainPage to handle
+    if (isOnControls || isOnComposer) {
+      // On Controls/Compose pages: dispatch event for render handler
       try {
         window.dispatchEvent(new CustomEvent('cozygen:request-render'));
       } catch {
@@ -149,6 +151,9 @@ export default function BottomNav() {
           className={`bottom-nav-link is-action ${flash ? 'is-flash' : ''} ${isRendering ? 'is-rendering' : ''}`}
           onClick={requestRender}
           aria-label="Render"
+          aria-busy={isRendering}
+          aria-disabled={isRendering}
+          disabled={isRendering}
         >
           <span className="bottom-nav-icon" aria-hidden="true">
             <IconRender size={20} />

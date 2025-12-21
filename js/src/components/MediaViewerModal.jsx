@@ -1,6 +1,8 @@
 // js/src/components/MediaViewerModal.jsx
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import Button from './ui/Button';
+import { IconChevronLeft, IconChevronRight, IconX } from './Icons';
 
 const isVideo = (name = '') => /\.(mp4|webm|mov|mkv)$/i.test(name);
 
@@ -30,6 +32,17 @@ export default function MediaViewerModal({
   const overlayPointerDownRef = useRef(false);
   const closeButtonRef = useRef(null);
   const [metaOpen, setMetaOpen] = useState(false);
+  const contentRef = useRef(null);
+  const lastFocusedRef = useRef(null);
+
+  const getFocusable = (root) => {
+    if (!root) return [];
+    return Array.from(
+      root.querySelectorAll(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      )
+    ).filter((el) => !el.hasAttribute('disabled') && el.getAttribute('aria-hidden') !== 'true');
+  };
 
   useEffect(() => {
     if (!isOpen) return undefined;
@@ -44,13 +57,53 @@ export default function MediaViewerModal({
 
   useEffect(() => {
     if (!isOpen) return;
-    closeButtonRef.current?.focus?.();
-  }, [isOpen]);
-
-  useEffect(() => {
-    if (!isOpen) return;
     setMetaOpen(false);
   }, [isOpen, media]);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    if (typeof document === 'undefined') return undefined;
+    const contentEl = contentRef.current;
+    lastFocusedRef.current = document.activeElement;
+
+    const focusInitial = () => {
+      const focusables = getFocusable(contentEl);
+      const target = closeButtonRef.current || focusables[0] || contentEl;
+      target?.focus?.();
+    };
+
+    const onKeyDown = (e) => {
+      if (e.key !== 'Tab') return;
+      if (!contentEl) return;
+      const focusables = getFocusable(contentEl);
+      if (!focusables.length) {
+        e.preventDefault();
+        contentEl.focus();
+        return;
+      }
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const active = document.activeElement;
+      if (e.shiftKey && active === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+
+    requestAnimationFrame(focusInitial);
+    contentEl?.addEventListener('keydown', onKeyDown);
+
+    return () => {
+      contentEl?.removeEventListener('keydown', onKeyDown);
+      const lastFocused = lastFocusedRef.current;
+      if (lastFocused && document.contains(lastFocused)) {
+        lastFocused.focus?.();
+      }
+    };
+  }, [isOpen]);
 
   if (!media) return null;
   if (!isOpen) return null;
@@ -85,47 +138,59 @@ export default function MediaViewerModal({
       >
         <div
           className="react-modal-content"
+          ref={contentRef}
           role="dialog"
           aria-modal="true"
           aria-label="Preview"
           onClick={(e) => e.stopPropagation()}
+          tabIndex={-1}
         >
           <div className="media-viewer-panel">
             <header className="media-viewer-head">
-              <div className="media-viewer-meta">
-                <div className="media-viewer-title" title={media.filename}>
-                  {media.filename}
+              <div className="media-viewer-head-bar bottom-sheet-head">
+                <div className="media-viewer-meta">
+                  <div className="media-viewer-title" title={media.filename}>
+                    {media.filename}
+                  </div>
+                  <div className="media-viewer-sub">
+                    <span className="media-chip">{locationLabel}</span>
+                    <span className={`media-chip ${isClip ? 'is-clip' : 'is-still'}`}>
+                      {isClip ? 'Video' : 'Image'}
+                    </span>
+                  </div>
                 </div>
-                <div className="media-viewer-sub">
-                  <span className="media-chip">{locationLabel}</span>
-                  <span className={`media-chip ${isClip ? 'is-clip' : 'is-still'}`}>
-                    {isClip ? 'Video' : 'Image'}
-                  </span>
-                </div>
+                <button
+                  ref={closeButtonRef}
+                  type="button"
+                  className="bottom-sheet-close media-viewer-close"
+                  onClick={onClose}
+                  aria-label="Close"
+                >
+                  <IconX size={16} />
+                </button>
               </div>
               <div className="media-viewer-actions">
                 {metaRows.length ? (
-                  <button
-                    type="button"
-                    className="media-btn ghost"
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={() => setMetaOpen((prev) => !prev)}
                     aria-expanded={metaOpen}
                     aria-label={metaOpen ? 'Hide metadata' : 'Show metadata'}
                   >
                     {metaOpen ? 'Hide metadata' : 'Metadata'}
-                  </button>
+                  </Button>
                 ) : null}
-                <a href={url} target="_blank" rel="noreferrer" className="media-btn">
-                  Open
-                </a>
-                <button
-                  ref={closeButtonRef}
-                  type="button"
-                  className="media-btn solid"
-                  onClick={onClose}
+                <Button
+                  as="a"
+                  href={url}
+                  target="_blank"
+                  rel="noreferrer"
+                  variant="ghost"
+                  size="sm"
                 >
-                  Close
-                </button>
+                  Open
+                </Button>
               </div>
             </header>
 
@@ -151,7 +216,7 @@ export default function MediaViewerModal({
                   aria-label="Previous"
                   disabled={!canPrev}
                 >
-                  ←
+                  <IconChevronLeft size={18} />
                 </button>
               ) : null}
               <div className="media-viewer-frame">
@@ -176,7 +241,7 @@ export default function MediaViewerModal({
                   aria-label="Next"
                   disabled={!canNext}
                 >
-                  →
+                  <IconChevronRight size={18} />
                 </button>
               ) : null}
             </div>

@@ -2,6 +2,7 @@ import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import BottomSheet from '../ui/BottomSheet';
 import TextAreaSheet from '../ui/TextAreaSheet';
 import TokenStrengthSheet from '../ui/TokenStrengthSheet';
+import Select from '../ui/Select';
 import { IconEdit, IconGrip, IconTag, IconX } from '../Icons';
 import { formatCategoryLabel, formatSubcategoryLabel, presentAliasEntry } from '../../utils/aliasPresentation';
 import { formatTokenWeight, getTokenWeightRange, setTokenWeight } from '../../utils/tokenWeights';
@@ -394,31 +395,30 @@ function StringInput({
               onChange={(e) => setPickerSearch(e.target.value)}
               placeholder="Search aliases…"
               className="composer-search ui-control ui-input"
+              aria-label="Search aliases"
             />
-            <select
+            <Select
               value={pickerCategory}
-              onChange={(e) => setPickerCategory(e.target.value)}
-              className="composer-subcategory-select ui-control ui-select is-compact"
+              onChange={setPickerCategory}
+              className="composer-subcategory-select"
               aria-label="Filter by category"
-            >
-              {['All', ...categories.filter((c) => c !== 'All')].map((c) => (
-                <option key={`cat-${c}`} value={c}>
-                  {c === 'All' ? 'Category: All' : formatCategoryLabel(c)}
-                </option>
-              ))}
-            </select>
+              size="sm"
+              options={['All', ...categories.filter((c) => c !== 'All')].map((c) => ({
+                value: c,
+                label: c === 'All' ? 'Category: All' : formatCategoryLabel(c),
+              }))}
+            />
             {subcategories.length > 2 ? (
-              <select
+              <Select
                 value={pickerSubcategory}
-                onChange={(e) => setPickerSubcategory(e.target.value)}
-                className="composer-subcategory-select ui-control ui-select is-compact"
-              >
-                {subcategories.map((c) => (
-                  <option key={c} value={c}>
-                    {c === 'All' ? 'All subcategories' : formatSubcategoryLabel(c)}
-                  </option>
-                ))}
-              </select>
+                onChange={setPickerSubcategory}
+                className="composer-subcategory-select"
+                size="sm"
+                options={subcategories.map((c) => ({
+                  value: c,
+                  label: c === 'All' ? 'All subcategories' : formatSubcategoryLabel(c),
+                }))}
+              />
             ) : null}
           </div>
         </div>
@@ -742,6 +742,7 @@ function StringInput({
           className="stringinput-trailing ui-button is-ghost is-compact"
           onClick={() => onOpenComposer ? onOpenComposer(name) : openPicker()}
           title={onOpenComposer ? "Open prompt composer" : "Insert alias"}
+          aria-label={onOpenComposer ? 'Open prompt composer' : 'Insert alias'}
         >
           {onOpenComposer ? <IconEdit size={16} /> : <IconTag size={16} />}
         </button>

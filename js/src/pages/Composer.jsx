@@ -6,8 +6,17 @@ import { useStudioContext } from '../contexts/StudioContext';
 export default function ComposerPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { formData, handleFormChange, aliasOptions, aliasCatalog, promptFieldName } =
-    useStudioContext();
+  const {
+    formData,
+    handleFormChange,
+    aliasOptions,
+    aliasCatalog,
+    promptFieldName,
+    handleGenerate,
+    workflowData,
+    selectedWorkflow,
+    isLoading,
+  } = useStudioContext();
 
   const requestedField = searchParams.get('field');
   const composerField = requestedField || promptFieldName || 'prompt';
@@ -22,6 +31,15 @@ export default function ComposerPage() {
       document.documentElement.classList.remove('no-pull-refresh');
     };
   }, []);
+
+  useEffect(() => {
+    const handler = () => {
+      if (!workflowData || !selectedWorkflow || isLoading) return;
+      handleGenerate();
+    };
+    window.addEventListener('cozygen:request-render', handler);
+    return () => window.removeEventListener('cozygen:request-render', handler);
+  }, [handleGenerate, isLoading, selectedWorkflow, workflowData]);
 
   return (
     <PromptComposer

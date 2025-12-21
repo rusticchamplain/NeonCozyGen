@@ -7,31 +7,59 @@ import FieldSpotlight from '../components/FieldSpotlight';
 import WorkflowFormLayout from '../components/workflow/WorkflowFormLayout';
 import CollapsibleSection from '../components/CollapsibleSection';
 import RunLogsSheet from '../components/RunLogsSheet';
+import BottomSheet from '../components/ui/BottomSheet';
+import Button from '../components/ui/Button';
+import Select from '../components/ui/Select';
 import { IconControls, IconImages, IconArrowUp } from '../components/Icons';
 import { loadLastEditedParam, saveFormState, saveLastEditedParam } from '../utils/storage';
 import { useStudioContext } from '../contexts/StudioContext';
 import { deleteWorkflowPreset, getWorkflowPresets, saveWorkflowPreset } from '../api';
+import useMediaQuery from '../hooks/useMediaQuery';
 
 const WorkflowSelectorBar = memo(function WorkflowSelectorBar({
-  workflows,
+  workflows = [],
   selectedWorkflow,
   onWorkflowChange,
   workflowData,
-  presets,
-  presetName,
+  presets = [],
+  presetName = '',
   onPresetNameChange,
-  selectedPresetId,
+  selectedPresetId = '',
   onPresetSelect,
   onPresetSave,
-  onPresetApply,
   onPresetDelete,
   presetStatus,
 }) {
-  const presetCount = presets.length;
+  const safeWorkflows = Array.isArray(workflows) ? workflows : [];
+  const safePresets = Array.isArray(presets) ? presets : [];
+  const presetCount = safePresets.length;
   const presetLabel = presetCount ? `${presetCount} saved` : 'No presets yet';
+  const isDesktop = useMediaQuery('(min-width: 768px)');
   const [menuOpen, setMenuOpen] = useState(false);
-  const toggleMenu = () => setMenuOpen((v) => !v);
-  const closeMenu = () => setMenuOpen(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  useEffect(() => {
+    setMenuOpen(false);
+    setSheetOpen(false);
+  }, [isDesktop]);
+  const closeMenus = () => {
+    setMenuOpen(false);
+    setSheetOpen(false);
+  };
+  const toggleMenu = () => {
+    if (!isDesktop) {
+      setSheetOpen(true);
+      return;
+    }
+    setMenuOpen((v) => !v);
+  };
+  const handleSave = () => {
+    onPresetSave();
+    closeMenus();
+  };
+  const handleDelete = () => {
+    onPresetDelete();
+    closeMenus();
+  };
   return (
     <div className="controls-context">
       <div className="controls-context-row">
@@ -39,64 +67,53 @@ const WorkflowSelectorBar = memo(function WorkflowSelectorBar({
           <label className="controls-context-label" htmlFor="workflow-select">
             Workflow
           </label>
-          <select
+          <Select
             id="workflow-select"
             value={selectedWorkflow || ''}
-            onChange={(e) => onWorkflowChange(e.target.value)}
+            onChange={onWorkflowChange}
             className="controls-context-select"
             aria-label="Workflow"
-          >
-            <option value="">Select workflow…</option>
-            {workflows.map((wf) => (
-              <option key={wf} value={wf}>{wf}</option>
-            ))}
-          </select>
+            size="sm"
+            placeholder="Select workflow..."
+            options={safeWorkflows.map((wf) => ({ value: wf, label: wf }))}
+          />
         </div>
         <div className="controls-context-field">
           <label className="controls-context-label" htmlFor="preset-select">
             Preset
           </label>
-          <select
+          <Select
             id="preset-select"
             value={selectedPresetId || ''}
-            onChange={(e) => onPresetSelect(e.target.value)}
+            onChange={onPresetSelect}
             className="controls-context-select"
             aria-label="Workflow preset"
             disabled={!workflowData}
-          >
-            <option value="">Presets…</option>
-            {presets.map((preset) => (
-              <option key={preset.id} value={preset.id}>{preset.name}</option>
-            ))}
-          </select>
+            size="sm"
+            placeholder="Presets..."
+            options={safePresets.map((preset) => ({ value: preset.id, label: preset.name }))}
+          />
         </div>
         <div className="controls-context-actions">
-          <button
-            type="button"
-            className="controls-context-btn is-primary"
-            onClick={onPresetApply}
-            disabled={!workflowData || !selectedPresetId}
-          >
-            Apply
-          </button>
           <div className="controls-context-menu">
-            <button
-              type="button"
-              className="controls-context-btn is-ghost"
+            <Button
+              variant="ghost"
+              size="xs"
               onClick={toggleMenu}
-              aria-haspopup="true"
-              aria-expanded={menuOpen}
+              aria-haspopup={isDesktop ? 'menu' : 'dialog'}
+              aria-expanded={isDesktop ? menuOpen : sheetOpen}
+              aria-label="Manage presets"
             >
-              ⋯
-            </button>
-            {menuOpen ? (
+              Manage presets
+            </Button>
+            {isDesktop && menuOpen ? (
               <div className="controls-context-menu-items" role="menu">
                 <div className="controls-context-menu-row">
                   <input
                     type="text"
                     value={presetName}
                     onChange={(e) => onPresetNameChange(e.target.value)}
-                    className="controls-context-input"
+                    className="controls-context-input ui-control ui-input is-compact"
                     placeholder="Preset name"
                     aria-label="Preset name"
                     disabled={!workflowData}
@@ -104,7 +121,7 @@ const WorkflowSelectorBar = memo(function WorkflowSelectorBar({
                   <button
                     type="button"
                     className="controls-context-menu-btn"
-                    onClick={() => { onPresetSave(); closeMenu(); }}
+                    onClick={handleSave}
                     disabled={!workflowData || !presetName.trim()}
                     role="menuitem"
                   >
@@ -114,7 +131,7 @@ const WorkflowSelectorBar = memo(function WorkflowSelectorBar({
                 <button
                   type="button"
                   className="controls-context-menu-btn is-danger"
-                  onClick={() => { onPresetDelete(); closeMenu(); }}
+                  onClick={handleDelete}
                   disabled={!workflowData || !selectedPresetId}
                   role="menuitem"
                 >
@@ -129,6 +146,66 @@ const WorkflowSelectorBar = memo(function WorkflowSelectorBar({
         <span>{presetLabel}</span>
         {presetStatus ? <span className="controls-context-status">{presetStatus}</span> : null}
       </div>
+      {!isDesktop && sheetOpen ? (
+        <BottomSheet
+          open={sheetOpen}
+          onClose={closeMenus}
+          title="Manage presets"
+        >
+          <div className="sheet-stack">
+            <div className="sheet-section">
+              <div className="sheet-label">Preset</div>
+              <Select
+                value={selectedPresetId || ''}
+                onChange={handlePresetSelect}
+                className="sheet-select"
+                aria-label="Select preset"
+                size="sm"
+                options={[
+                  { value: '', label: 'New preset' },
+                  ...safePresets.map((preset) => ({
+                    value: preset.id,
+                    label: preset.name,
+                  })),
+                ]}
+              />
+            </div>
+            <div className="sheet-section">
+              <div className="sheet-label">Preset name</div>
+              <input
+                type="text"
+                value={presetName}
+                onChange={(e) => onPresetNameChange(e.target.value)}
+                className="sheet-input ui-control ui-input"
+                placeholder="Preset name"
+                aria-label="Preset name"
+                disabled={!workflowData}
+              />
+            </div>
+            <div className="sheet-section">
+              <div className="sheet-label">Actions</div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="ui-button is-primary w-full"
+                  onClick={handleSave}
+                  disabled={!workflowData || !presetName.trim()}
+                >
+                  Save
+                </button>
+                <button
+                  type="button"
+                  className="ui-button is-muted w-full"
+                  onClick={handleDelete}
+                  disabled={!workflowData || !selectedPresetId}
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        </BottomSheet>
+      ) : null}
     </div>
   );
 });
@@ -181,19 +258,6 @@ function MainPage() {
     [navigate, promptFieldName]
   );
 
-  useEffect(() => {
-    if (statusPhase === 'finished') {
-      if (typeof window !== 'undefined') {
-        try {
-          window.localStorage.setItem('cozygen_gallery_pending', '1');
-        } catch {
-          // ignore
-        }
-        window.dispatchEvent(new Event('cozygen:gallery-pending'));
-      }
-    }
-  }, [statusPhase]);
-
   const handleWorkflowSelect = useCallback((name) => {
     if (!name || name === selectedWorkflow) return;
     if (selectedWorkflow) {
@@ -205,11 +269,36 @@ function MainPage() {
     selectWorkflow(name);
   }, [formData, selectedWorkflow, selectWorkflow]);
 
+  const availablePresetKeys = useMemo(() => {
+    const inputs = [...(orderedDynamicInputs || []), ...(imageInputs || [])];
+    const keys = inputs
+      .map((input) => input?.inputs?.param_name)
+      .filter((key) => key && typeof key === 'string');
+    return new Set(keys);
+  }, [orderedDynamicInputs, imageInputs]);
+
   const handlePresetSelect = useCallback((id) => {
     setSelectedPresetId(id);
     const preset = presets.find((entry) => entry.id === id);
     setPresetName(preset?.name || '');
-  }, [presets]);
+    if (!id || !preset?.values || !selectedWorkflow) {
+      if (!id) setPresetStatus('');
+      return;
+    }
+    const allowedKeys = availablePresetKeys;
+    const nextValues = {};
+    Object.entries(preset.values).forEach(([key, value]) => {
+      if (!allowedKeys.size || allowedKeys.has(key)) {
+        nextValues[key] = value;
+      }
+    });
+    setFormData((prev) => {
+      const next = { ...prev, ...nextValues };
+      saveFormState(selectedWorkflow, next, { immediate: true });
+      return next;
+    });
+    setPresetStatus(`Applied "${preset.name}".`);
+  }, [availablePresetKeys, presets, selectedWorkflow, setFormData]);
 
   // Apply user-defined ordering + hiding
   const safeImageInputs = imageInputs || [];
@@ -268,14 +357,6 @@ function MainPage() {
     setSpotlight(buildSpotlightState(payload.name, payload));
   }, [buildSpotlightState]);
 
-  const availablePresetKeys = useMemo(() => {
-    const inputs = [...(orderedDynamicInputs || []), ...(imageInputs || [])];
-    const keys = inputs
-      .map((input) => input?.inputs?.param_name)
-      .filter((key) => key && typeof key === 'string');
-    return new Set(keys);
-  }, [orderedDynamicInputs, imageInputs]);
-
   const loadPresets = useCallback(async (workflowName) => {
     if (!workflowName) {
       setPresets([]);
@@ -287,7 +368,6 @@ function MainPage() {
       const next = Array.isArray(data?.presets) ? data.presets : [];
       setPresets(next);
       setSelectedPresetId((prev) => (prev && next.some((p) => p.id === prev) ? prev : ''));
-      setPresetMenuOpen(false);
     } catch (err) {
       console.error('Failed to load workflow presets', err);
       setPresets([]);
@@ -336,25 +416,6 @@ function MainPage() {
     }
   }, [availablePresetKeys, formData, presetName, presets, selectedPresetId, selectedWorkflow]);
 
-  const handlePresetApply = useCallback(() => {
-    if (!selectedWorkflow || !selectedPresetId) return;
-    const preset = presets.find((p) => p.id === selectedPresetId);
-    if (!preset?.values) return;
-    const allowedKeys = availablePresetKeys;
-    const nextValues = {};
-    Object.entries(preset.values).forEach(([key, value]) => {
-      if (!allowedKeys.size || allowedKeys.has(key)) {
-        nextValues[key] = value;
-      }
-    });
-    setFormData((prev) => {
-      const next = { ...prev, ...nextValues };
-      saveFormState(selectedWorkflow, next, { immediate: true });
-      return next;
-    });
-    setPresetStatus(`Applied "${preset.name}".`);
-  }, [availablePresetKeys, presets, selectedPresetId, selectedWorkflow, setFormData]);
-
   const handlePresetDelete = useCallback(async () => {
     if (!selectedWorkflow || !selectedPresetId) return;
     try {
@@ -382,22 +443,6 @@ function MainPage() {
     window.addEventListener('cozygen:request-render', handler);
     return () => window.removeEventListener('cozygen:request-render', handler);
   }, [handleGenerate, hasWorkflowLoaded, isLoading]);
-
-  useEffect(() => {
-    const active =
-      statusPhase === 'queued' ||
-      statusPhase === 'running' ||
-      isLoading;
-    try {
-      window.dispatchEvent(
-        new CustomEvent('cozygen:render-state', {
-          detail: { active },
-        })
-      );
-    } catch {
-      // ignore
-    }
-  }, [statusPhase, isLoading]);
 
   if (!workflows || workflows.length === 0) {
     return (
@@ -440,7 +485,6 @@ function MainPage() {
             selectedPresetId={selectedPresetId}
             onPresetSelect={handlePresetSelect}
             onPresetSave={handlePresetSave}
-            onPresetApply={handlePresetApply}
             onPresetDelete={handlePresetDelete}
             presetStatus={presetStatus}
           />

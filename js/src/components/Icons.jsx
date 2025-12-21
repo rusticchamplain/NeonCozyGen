@@ -265,3 +265,20 @@ export const IconArrowUp = (props) => (
     <polyline points="5 12 12 5 19 12" />
   </Icon>
 );
+
+// More - horizontal dots
+export const IconDots = (props) => (
+  <Icon {...props}>
+    <circle cx="6" cy="12" r="1.6" fill="currentColor" stroke="none" />
+    <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none" />
+    <circle cx="18" cy="12" r="1.6" fill="currentColor" stroke="none" />
+  </Icon>
+);
+
+// Copy - overlapping squares
+export const IconCopy = (props) => (
+  <Icon {...props}>
+    <rect x="9" y="9" width="10" height="10" rx="2" />
+    <path d="M7 15H6a2 2 0 01-2-2V6a2 2 0 012-2h7" />
+  </Icon>
+);

@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo } from 'react';
+import { createContext, useContext, useEffect, useMemo } from 'react';
 import { applyFieldOrder } from '../utils/fieldOrder';
 import { resolveConfig } from '../components/DynamicForm';
 import { isModelFileLike } from '../utils/modelDisplay';
@@ -127,6 +127,34 @@ export function StudioProvider({ children }) {
     setFormData,
     promptAliases: aliasState.aliasLookup,
   });
+
+  useEffect(() => {
+    if (statusPhase !== 'finished') return;
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem('cozygen_gallery_pending', '1');
+    } catch {
+      // ignore
+    }
+    window.dispatchEvent(new Event('cozygen:gallery-pending'));
+  }, [statusPhase]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const active =
+      statusPhase === 'queued' ||
+      statusPhase === 'running' ||
+      isLoading;
+    try {
+      window.dispatchEvent(
+        new CustomEvent('cozygen:render-state', {
+          detail: { active },
+        })
+      );
+    } catch {
+      // ignore
+    }
+  }, [statusPhase, isLoading]);
 
   const value = useMemo(
     () => ({

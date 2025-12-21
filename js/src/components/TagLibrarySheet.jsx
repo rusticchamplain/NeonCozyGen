@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import BottomSheet from './ui/BottomSheet';
+import Select from './ui/Select';
 import { getDanbooruTagCategories, searchDanbooruTags } from '../api';
-import { IconGrip, IconRefresh, IconTag } from './Icons';
+import { IconCopy, IconDots, IconGrip, IconRefresh, IconTag, IconX } from './Icons';
 import { formatSubcategoryLabel } from '../utils/aliasPresentation';
 
 function safeCopy(text) {
@@ -381,28 +382,31 @@ export default function TagLibrarySheet({
               Clear
             </button>
           </div>
-          <select
+          <Select
             value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            className="composer-subcategory-select ui-control ui-select is-compact"
+            onChange={setCategory}
+            className="composer-subcategory-select"
             aria-label="Filter by category"
-          >
-            <option value="">Category: All</option>
-            {categories.map((c) => (
-              <option key={c.key} value={c.key}>
-                {formatSubcategoryLabel(c.key)} ({Number(c.actual || c.count || 0).toLocaleString()})
-              </option>
-            ))}
-          </select>
-          <select
+            size="sm"
+            options={[
+              { value: '', label: 'Category: All' },
+              ...categories.map((c) => ({
+                value: c.key,
+                label: `${formatSubcategoryLabel(c.key)} (${Number(c.actual || c.count || 0).toLocaleString()})`,
+              })),
+            ]}
+          />
+          <Select
             value={sort}
-            onChange={(e) => setSort(e.target.value)}
-            className="composer-subcategory-select ui-control ui-select is-compact"
+            onChange={setSort}
+            className="composer-subcategory-select"
             aria-label="Sort tags"
-          >
-            <option value="count">Sort: Popular</option>
-            <option value="alpha">Sort: A–Z</option>
-          </select>
+            size="sm"
+            options={[
+              { value: 'count', label: 'Sort: Popular' },
+              { value: 'alpha', label: 'Sort: A–Z' },
+            ]}
+          />
         </div>
         {status ? <div className="text-xs text-[#9DA3FFCC]">{status}</div> : null}
         {error ? <div className="text-xs text-[#FF8F70]">{error}</div> : null}
@@ -484,7 +488,7 @@ export default function TagLibrarySheet({
               onClick={() => setCollectionManagerOpen(true)}
               aria-label="Manage collected tags"
             >
-              ⋯
+              <IconDots size={16} />
             </button>
             <textarea
               ref={collectedTextareaRef}
@@ -533,7 +537,7 @@ export default function TagLibrarySheet({
                     disabled={collectedTags.length === 0}
                     aria-label="Copy collected tags"
                   >
-                    ⧉
+                    <IconCopy size={16} />
                   </button>
                   <textarea
                     ref={collectedTextareaRef}
@@ -550,6 +554,15 @@ export default function TagLibrarySheet({
                         key={`${tag}-${idx}`}
                         className="collected-tag-chip"
                         onClick={() => removeFromCollection(tag)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.target !== e.currentTarget) return;
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            removeFromCollection(tag);
+                          }
+                        }}
                       >
                         <code className="collected-tag-code">{tag}</code>
                         <button
@@ -561,7 +574,7 @@ export default function TagLibrarySheet({
                             removeFromCollection(tag);
                           }}
                         >
-                          ×
+                          <IconX size={12} />
                         </button>
                       </span>
                     ))}

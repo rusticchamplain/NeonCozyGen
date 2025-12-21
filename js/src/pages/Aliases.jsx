@@ -5,7 +5,9 @@ import usePromptAliases from '../hooks/usePromptAliases';
 import { normalizeAliasMap } from '../utils/promptAliases';
 import { validateDanbooruTags } from '../api';
 import BottomSheet from '../components/ui/BottomSheet';
-import { IconTag } from '../components/Icons';
+import Button from '../components/ui/Button';
+import Select from '../components/ui/Select';
+import { IconTag, IconX } from '../components/Icons';
 import useMediaQuery from '../hooks/useMediaQuery';
 import {
   deriveAliasSubcategory,
@@ -611,21 +613,22 @@ export default function Aliases() {
 
       <div className="sheet-section">
         <div className="sheet-label">Category</div>
-        <select
+        <Select
           value={selectedRow.category || ''}
-          onChange={(e) => {
+          onChange={(value) => {
             const idx = rows.findIndex((r) => r.id === selectedRow.id);
-            if (idx !== -1) updateRow(idx, 'category', e.target.value);
+            if (idx !== -1) updateRow(idx, 'category', value);
           }}
-          className="sheet-select ui-control ui-select"
-        >
-          <option value="">Uncategorized</option>
-          {availableCategories.map((cat) => (
-            <option key={cat || 'uncat'} value={cat}>
-              {cat ? formatCategoryLabel(cat) : 'Uncategorized'}
-            </option>
-          ))}
-        </select>
+          className="sheet-select"
+          size="sm"
+          options={[
+            { value: '', label: 'Uncategorized' },
+            ...availableCategories.filter(Boolean).map((cat) => ({
+              value: cat,
+              label: formatCategoryLabel(cat),
+            })),
+          ]}
+        />
         <button
           type="button"
           className="ui-button is-tiny is-muted"
@@ -724,7 +727,7 @@ export default function Aliases() {
                     aria-label={`Remove ${t}`}
                     title="Remove"
                   >
-                    ×
+                    <IconX size={12} />
                   </button>
                 </span>
               );
@@ -815,21 +818,20 @@ export default function Aliases() {
         <div className="page-bar">
           <h1 className="page-bar-title">Aliases</h1>
           <div className="page-bar-actions">
-            <button
-              type="button"
-              className="page-bar-btn"
+            <Button
+              size="xs"
               onClick={() => openTagLibrary({ query: query || '', targetId: '' })}
               title="Browse danbooru tags"
             >
               Tags
-            </button>
-            <button
-              type="button"
-              className="page-bar-btn is-primary"
+            </Button>
+            <Button
+              size="xs"
+              variant="primary"
               onClick={addRow}
             >
               Add
-            </button>
+            </Button>
           </div>
         </div>
         <div className="library-toolbar screen-sticky">
@@ -854,33 +856,35 @@ export default function Aliases() {
                   Clear
                 </button>
               </div>
-              <select
-                className="composer-subcategory-select ui-control ui-select is-compact"
+              <Select
+                className="composer-subcategory-select"
                 value={categoryFilter}
-                onChange={(e) => setCategoryFilter(e.target.value)}
+                onChange={setCategoryFilter}
                 aria-label="Filter by category"
-              >
-                <option value="All">Category: All</option>
-                <option value="">Uncategorized</option>
-                {availableCategories.map((cat) => (
-                  <option key={cat || 'uncat'} value={cat}>
-                    {cat ? formatCategoryLabel(cat) : 'Uncategorized'}
-                  </option>
-                ))}
-              </select>
-              <select
-                className="composer-subcategory-select ui-control ui-select is-compact"
+                size="sm"
+                options={[
+                  { value: 'All', label: 'Category: All' },
+                  { value: '', label: 'Uncategorized' },
+                  ...availableCategories.filter(Boolean).map((cat) => ({
+                    value: cat,
+                    label: formatCategoryLabel(cat),
+                  })),
+                ]}
+              />
+              <Select
+                className="composer-subcategory-select"
                 value={subcategoryFilter}
-                onChange={(e) => setSubcategoryFilter(e.target.value)}
+                onChange={setSubcategoryFilter}
                 aria-label="Filter by subcategory"
-              >
-                <option value="All">Subcategory: All</option>
-                {availableSubcategories.map((sub) => (
-                  <option key={sub} value={sub}>
-                    {formatSubcategoryLabel(sub)}
-                  </option>
-                ))}
-              </select>
+                size="sm"
+                options={[
+                  { value: 'All', label: 'Subcategory: All' },
+                  ...availableSubcategories.map((sub) => ({
+                    value: sub,
+                    label: formatSubcategoryLabel(sub),
+                  })),
+                ]}
+              />
               {dirty ? (
                 <button
                   type="button"
@@ -1007,23 +1011,21 @@ export default function Aliases() {
             {availableCategories.length === 0 ? (
               <div className="sheet-hint">No categories yet.</div>
             ) : (
-              <select
-                className="sheet-select ui-control ui-select"
-                defaultValue=""
-                onChange={(e) => {
-                  const next = e.target.value;
-                  if (!next) return;
-                  setCategoryFilter(next);
+              <Select
+                className="sheet-select"
+                value=""
+                onChange={(value) => {
+                  if (!value) return;
+                  setCategoryFilter(value);
                   setCategoriesOpen(false);
                 }}
-              >
-                <option value="">Select a category…</option>
-                {availableCategories.map((cat) => (
-                  <option key={cat} value={cat}>
-                    {formatCategoryLabel(cat)}
-                  </option>
-                ))}
-              </select>
+                size="sm"
+                placeholder="Select a category…"
+                options={availableCategories.filter(Boolean).map((cat) => ({
+                  value: cat,
+                  label: formatCategoryLabel(cat),
+                }))}
+              />
             )}
           </div>
         </div>

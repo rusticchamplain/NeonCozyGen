@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import TagLibrarySheet from '../components/TagLibrarySheet';
+import Button from '../components/ui/Button';
 
 export default function TagLibrary() {
   const navigate = useNavigate();
@@ -16,20 +17,18 @@ export default function TagLibrary() {
       <div className="page-bar">
         <h1 className="page-bar-title">{pageTitle}</h1>
         <div className="page-bar-actions">
-          <button
-            type="button"
-            className="page-bar-btn"
+          <Button
+            size="xs"
             onClick={() => navigate('/aliases')}
           >
             Aliases
-          </button>
-          <button
-            type="button"
-            className="page-bar-btn"
+          </Button>
+          <Button
+            size="xs"
             onClick={() => navigate('/compose')}
           >
             Composer
-          </button>
+          </Button>
         </div>
       </div>
 

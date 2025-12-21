@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import BottomSheet from './ui/BottomSheet';
 import SegmentedTabs from './ui/SegmentedTabs';
 import TokenStrengthSheet from './ui/TokenStrengthSheet';
+import Select from './ui/Select';
 import { IconGrip, IconX, IconTag, IconAlias, IconEdit } from './Icons';
 import { formatCategoryLabel, formatSubcategoryLabel, presentAliasEntry } from '../utils/aliasPresentation';
 
@@ -638,6 +639,7 @@ export default function PromptComposer({
                 }}
                 className="composer-input ui-control ui-input is-compact"
                 placeholder="Add prompt text"
+                aria-label="Add prompt text"
               />
               <button
                 type="button"
@@ -680,6 +682,8 @@ export default function PromptComposer({
                       key={`${el.type}-${el.text}-${el.start}`}
                       className={`composer-token composer-token-draggable ${el.type === 'alias' ? 'is-alias' : 'is-tag'} ${isDragging ? 'is-dragging' : ''} ${isDropTarget ? 'is-drop-target' : ''} ${selectedTokenIndex === idx ? 'is-selected' : ''}`}
                       title={el.type === 'alias' ? `Alias: $${el.text}$` : `Tag: ${el.text}`}
+                      role="button"
+                      tabIndex={0}
                       draggable
                       onDragStart={(e) => handleDragStart(e, idx)}
                       onDragEnd={handleDragEnd}
@@ -693,6 +697,15 @@ export default function PromptComposer({
                         if (dragIndex !== null) return;
                         setSelectedTokenIndex(idx);
                         openStrengthFor(el);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.target !== e.currentTarget) return;
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          if (dragIndex !== null) return;
+                          setSelectedTokenIndex(idx);
+                          openStrengthFor(el);
+                        }
                       }}
                     >
                       <span className="composer-token-order">{idx + 1}</span>
@@ -773,6 +786,7 @@ export default function PromptComposer({
                 onChange={(e) => setPickerSearch(e.target.value)}
                 placeholder="Search aliases…"
                 className="composer-search ui-control ui-input"
+                aria-label="Search aliases"
               />
               <button
                 type="button"
@@ -783,30 +797,28 @@ export default function PromptComposer({
                 Clear
               </button>
             </div>
-            <select
+            <Select
               value={pickerCategory}
-              onChange={(e) => setPickerCategory(e.target.value)}
-              className="composer-subcategory-select ui-control ui-select is-compact"
+              onChange={setPickerCategory}
+              className="composer-subcategory-select"
               aria-label="Filter by category"
-            >
-              {categoryOptions.map((c) => (
-                <option key={`cat-${c}`} value={c}>
-                  {c === 'All' ? 'Category: All' : formatCategoryLabel(c)}
-                </option>
-              ))}
-            </select>
+              size="sm"
+              options={categoryOptions.map((c) => ({
+                value: c,
+                label: c === 'All' ? 'Category: All' : formatCategoryLabel(c),
+              }))}
+            />
             {subcategoryOptions.length > 2 && (
-              <select
+              <Select
                 value={pickerSubcategory}
-                onChange={(e) => setPickerSubcategory(e.target.value)}
-                className="composer-subcategory-select ui-control ui-select is-compact"
-              >
-                {subcategoryOptions.map((c) => (
-                  <option key={c} value={c}>
-                    {c === 'All' ? 'All subcategories' : formatSubcategoryLabel(c)}
-                  </option>
-                ))}
-              </select>
+                onChange={setPickerSubcategory}
+                className="composer-subcategory-select"
+                size="sm"
+                options={subcategoryOptions.map((c) => ({
+                  value: c,
+                  label: c === 'All' ? 'All subcategories' : formatSubcategoryLabel(c),
+                }))}
+              />
             )}
           </div>
 
@@ -853,7 +865,7 @@ export default function PromptComposer({
                     title={`$${token}$`}
                   >
                     <code className="collected-tag-code">{display}</code>
-                    <span aria-hidden="true">×</span>
+                    <IconX size={12} />
                   </button>
                 );
               })}
@@ -923,28 +935,31 @@ export default function PromptComposer({
                 Clear
               </button>
             </div>
-            <select
+            <Select
               value={tagCategory}
-              onChange={(e) => setTagCategory(e.target.value)}
-              className="composer-subcategory-select ui-control ui-select is-compact"
+              onChange={setTagCategory}
+              className="composer-subcategory-select"
               aria-label="Filter by category"
-            >
-              <option value="">Category: All</option>
-              {tagCategories.map((c) => (
-                <option key={c.key} value={c.key}>
-                  {formatSubcategoryLabel(c.key)} ({Number(c.actual || c.count || 0).toLocaleString()})
-                </option>
-              ))}
-            </select>
-            <select
+              size="sm"
+              options={[
+                { value: '', label: 'Category: All' },
+                ...tagCategories.map((c) => ({
+                  value: c.key,
+                  label: `${formatSubcategoryLabel(c.key)} (${Number(c.actual || c.count || 0).toLocaleString()})`,
+                })),
+              ]}
+            />
+            <Select
               value={tagSort}
-              onChange={(e) => setTagSort(e.target.value)}
-              className="composer-subcategory-select ui-control ui-select is-compact"
+              onChange={setTagSort}
+              className="composer-subcategory-select"
               aria-label="Sort tags"
-            >
-              <option value="count">Sort: Popular</option>
-              <option value="alpha">Sort: A–Z</option>
-            </select>
+              size="sm"
+              options={[
+                { value: 'count', label: 'Sort: Popular' },
+                { value: 'alpha', label: 'Sort: A–Z' },
+              ]}
+            />
           </div>
 
           <div className="composer-tags-header">
@@ -991,7 +1006,7 @@ export default function PromptComposer({
                   aria-label={`Remove ${tag}`}
                 >
                   <code className="collected-tag-code">{tag}</code>
-                  <span aria-hidden="true">×</span>
+                  <IconX size={12} />
                 </button>
               ))}
               {composerCollectedTags.length > 3 ? (

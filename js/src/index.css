@@ -2219,14 +2219,14 @@ body::before {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 36px;
+  height: 36px;
   font-size: 1rem;
   font-weight: 600;
   color: var(--ink-muted);
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 0.4rem;
+  border-radius: 0.55rem;
   transition: all 0.15s ease;
 }
 
@@ -2250,20 +2250,8 @@ body::before {
 }
 
 .gallery-page-size {
-  height: 28px;
-  padding: 0 0.5rem;
-  font-size: 0.72rem;
-  color: var(--ink-muted);
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 0.4rem;
-  appearance: none;
-  -webkit-appearance: none;
-  -moz-appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 12 12'%3E%3Cpath fill='%239fb2d7' d='M3 4.5L6 8l3-3.5H3z'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 0.35rem center;
-  padding-right: 1.25rem;
+  min-width: 72px;
+  width: auto;
 }
 
 /* Empty state */
@@ -2449,6 +2437,10 @@ body::before {
 }
 
 .ui-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
   border-radius: var(--radius-md);
   border: 1px solid rgba(255, 255, 255, 0.16);
   padding: 0.45rem 1.35rem;
@@ -2505,6 +2497,32 @@ body::before {
 .ui-button.is-danger:hover:not(:disabled) {
   border-color: rgba(255, 143, 112, 0.75);
   background: rgba(255, 143, 112, 0.18);
+}
+
+.ui-button.is-icon {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 0.7rem;
+  font-size: 0.9rem;
+  letter-spacing: 0;
+  text-transform: none;
+  background: rgba(255, 255, 255, 0.02);
+  border-color: rgba(255, 255, 255, 0.06);
+  color: rgba(159, 178, 215, 0.88);
+}
+
+.ui-button.is-icon:hover:not(:disabled) {
+  color: rgba(237, 242, 255, 0.96);
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.ui-button.is-icon.is-active,
+.ui-button.is-icon[aria-pressed="true"] {
+  color: rgba(237, 242, 255, 0.98);
+  border-color: rgba(68, 225, 197, 0.5);
+  background: linear-gradient(180deg, rgba(68, 225, 197, 0.18), rgba(109, 139, 255, 0.12));
 }
 
 .controls-toolbar {
@@ -3864,16 +3882,14 @@ body::before {
   color: rgba(159, 178, 215, 0.7);
 }
 
-.controls-context-select,
-.controls-context-input {
-  border-radius: var(--radius-sm);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(6, 10, 22, 0.85);
-  color: var(--text-strong);
-  padding: 0.3rem 0.5rem;
-  font-size: 0.74rem;
+.controls-context-select {
   min-width: 0;
-  text-align: left;
+  width: 100%;
+}
+
+.controls-context-input {
+  min-width: 0;
+  width: 100%;
 }
 
 .controls-context-actions {
@@ -5088,6 +5104,11 @@ body::before {
 .ui-control:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.ui-control.gallery-page-size {
+  width: auto;
+  min-width: 72px;
 }
 
 .ui-input::placeholder,
@@ -6587,6 +6608,9 @@ textarea {
   color: var(--ink-strong);
   font-size: 1.4rem;
   line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .bottom-sheet-close:hover {
@@ -7008,9 +7032,9 @@ textarea {
 }
 
 .tag-chip-remove {
-  width: 18px;
-  height: 18px;
-  border-radius: 6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
   border: 1px solid rgba(255, 255, 255, 0.16);
   background: transparent;
   color: rgba(255, 200, 190, 0.92);
@@ -7383,8 +7407,8 @@ textarea {
   position: absolute;
   top: 0.55rem;
   right: 0.55rem;
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   border-radius: var(--radius-md);
   border: 1px solid var(--stroke-soft);
   background: rgba(255, 255, 255, 0.05);
@@ -7429,8 +7453,8 @@ textarea {
   background: rgba(255, 255, 255, 0.05);
   color: var(--ink-strong);
   border-radius: var(--radius-md);
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
@@ -7467,7 +7491,7 @@ textarea {
   display: inline-flex;
   align-items: center;
   gap: 0.15rem;
-  padding: 0.15rem 0.3rem;
+  padding: 0.2rem 0.4rem;
   border-radius: 0.35rem;
   border: 1px solid rgba(94, 241, 212, 0.4);
   background: rgba(94, 241, 212, 0.08);
@@ -7475,6 +7499,7 @@ textarea {
   cursor: grab;
   user-select: none;
   transition: transform 120ms ease, opacity 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+  min-height: 28px;
 }
 
 .collected-tag-chip:hover {
@@ -7522,8 +7547,8 @@ textarea {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 14px;
-  height: 14px;
+  width: 20px;
+  height: 20px;
   margin-left: 0.1rem;
   border: none;
   border-radius: 50%;
@@ -7812,13 +7837,12 @@ textarea {
 
 .media-viewer-head {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.9rem 1rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(5, 7, 22, 0.82);
-  backdrop-filter: blur(18px) saturate(150%);
+  flex-direction: column;
+  gap: 0;
+}
+
+.media-viewer-head-bar.bottom-sheet-head {
+  border-bottom: none;
 }
 
 .media-viewer-meta {
@@ -7863,9 +7887,19 @@ textarea {
 }
 
 .media-viewer-actions {
-  display: inline-flex;
+  display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 0.4rem;
+  padding: 0.6rem 1rem 0.85rem;
+  background: rgba(5, 7, 22, 0.82);
+  backdrop-filter: blur(18px) saturate(150%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.media-viewer-actions .ui-button {
+  min-height: 36px;
+  line-height: 1;
 }
 
 .media-btn {
@@ -7975,6 +8009,11 @@ textarea {
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
+  min-width: 40px;
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 1px solid rgba(255, 255, 255, 0.14);
   background: rgba(8, 12, 24, 0.82);
   color: rgba(237, 242, 255, 0.9);
@@ -8012,10 +8051,6 @@ textarea {
 }
 
 @media (max-width: 640px) {
-  .media-viewer-head {
-    align-items: flex-start;
-    flex-direction: column;
-  }
   .media-viewer-actions {
     width: 100%;
     justify-content: flex-start;

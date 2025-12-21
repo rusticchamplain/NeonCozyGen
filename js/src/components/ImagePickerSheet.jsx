@@ -2,6 +2,7 @@
 import { inputFileUrl, outputFileUrl } from '../hooks/useImagePicker';
 import BottomSheet from './ui/BottomSheet';
 import SegmentedTabs from './ui/SegmentedTabs';
+import Select from './ui/Select';
 
 export default function ImagePickerSheet({
   open,
@@ -149,21 +150,20 @@ export default function ImagePickerSheet({
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search files…"
               className="sheet-input ui-control ui-input"
+              aria-label="Search files"
             />
-            <select
-              className="sheet-select ui-control ui-select"
+            <Select
+              className="sheet-select"
               value={perPage}
-              onChange={(e) => {
-                const n = parseInt(e.target.value, 10) || 50;
+              onChange={(value) => {
+                const n = parseInt(value, 10) || 50;
                 setPerPage(n);
                 setPage(1);
               }}
               aria-label="Items per page"
-            >
-              <option value={25}>25</option>
-              <option value={50}>50</option>
-              <option value={100}>100</option>
-            </select>
+              size="sm"
+              options={[25, 50, 100]}
+            />
           </div>
         </div>
 

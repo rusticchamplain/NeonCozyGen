@@ -290,7 +290,12 @@ export default function MediaViewerModal({
                     playsInline
                   />
                 ) : (
-                  <img src={url} alt={media.filename} className="media-viewer-media" />
+                  <img
+                    src={url}
+                    alt={media.filename}
+                    className="media-viewer-media"
+                    decoding="async"
+                  />
                 )}
               </div>
               {showNav ? (

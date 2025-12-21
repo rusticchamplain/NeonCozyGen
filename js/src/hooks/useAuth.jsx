@@ -1,4 +1,4 @@
-import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { authStatus, login as loginRequest } from '../api';
 import { AUTH_EXPIRED_EVENT, clearToken, getToken, setToken } from '../utils/auth';
 import { IDLE_FLAG_KEY, IDLE_TIMEOUT_MS } from './useAuthConstants';
@@ -8,7 +8,7 @@ function AuthProviderInner({ children }) {
   const [ready, setReady] = useState(false);
   const [user, setUser] = useState(null);
   const [defaultCreds, setDefaultCreds] = useState(false);
-  const [idleTimer, setIdleTimer] = useState(null);
+  const idleTimerRef = useRef(null);
 
   const refresh = useCallback(async () => {
     const token = getToken();
@@ -70,7 +70,7 @@ function AuthProviderInner({ children }) {
     if (!ready) return;
 
     const resetTimer = () => {
-      if (idleTimer) clearTimeout(idleTimer);
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
       const t = setTimeout(() => {
         clearToken();
         setUser(null);
@@ -83,7 +83,7 @@ function AuthProviderInner({ children }) {
         // Redirect to login; HashRouter friendly
         window.location.hash = '#/login';
       }, IDLE_TIMEOUT_MS);
-      setIdleTimer(t);
+      idleTimerRef.current = t;
     };
 
     resetTimer();
@@ -92,10 +92,13 @@ function AuthProviderInner({ children }) {
     events.forEach((ev) => window.addEventListener(ev, resetTimer, { passive: true }));
 
     return () => {
-      if (idleTimer) clearTimeout(idleTimer);
+      if (idleTimerRef.current) {
+        clearTimeout(idleTimerRef.current);
+        idleTimerRef.current = null;
+      }
       events.forEach((ev) => window.removeEventListener(ev, resetTimer));
     };
-  }, [ready, idleTimer]);
+  }, [ready]);
 
   const value = useMemo(
     () => ({

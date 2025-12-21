@@ -1,11 +1,13 @@
 // js/src/components/GalleryItem.jsx
 import { memo, useEffect, useRef } from 'react';
+import { usePageVisibility } from '../hooks/usePageVisibility';
 
 const looksLikeVideo = (name = '') =>
   /\.(mp4|webm|mov|mkv)$/i.test(name);
 
 const FeedVideoPlayer = ({ src, poster, autoPlay }) => {
   const videoRef = useRef(null);
+  const isVisible = usePageVisibility();
 
   useEffect(() => {
     const el = videoRef.current;
@@ -34,7 +36,12 @@ const FeedVideoPlayer = ({ src, poster, autoPlay }) => {
       el.pause();
     };
 
-    if (autoPlay) {
+    if (!autoPlay) {
+      pauseVideo();
+      el.currentTime = 0;
+    } else if (!isVisible) {
+      pauseVideo();
+    } else {
       const supportsObserver =
         typeof window !== 'undefined' && 'IntersectionObserver' in window;
 
@@ -55,16 +62,13 @@ const FeedVideoPlayer = ({ src, poster, autoPlay }) => {
       } else {
         attemptPlay();
       }
-    } else {
-      pauseVideo();
-      el.currentTime = 0;
     }
 
     return () => {
       if (observer) observer.disconnect();
       pauseVideo();
     };
-  }, [autoPlay, src]);
+  }, [autoPlay, src, isVisible]);
 
   if (!src) {
     return (
@@ -82,7 +86,7 @@ const FeedVideoPlayer = ({ src, poster, autoPlay }) => {
       muted
       playsInline
       loop
-      preload="metadata"
+      preload={autoPlay ? 'metadata' : 'none'}
       className="w-full h-auto max-h-[80vh] rounded-2xl object-contain bg-black/40"
     />
   );
@@ -120,11 +124,20 @@ function GalleryItem({
   // Build thumbnail URL based on the CozyGen API contract:
   // /cozygen/thumb?type=output&subfolder=...&filename=...&w=...
   const thumbSize = variant === 'feed' ? 768 : 384;
-  const thumbSrc = !isDir && filename
+  const thumbBase = !isDir && filename
     ? `/cozygen/thumb?type=output&subfolder=${encodeURIComponent(
         subfolder
-      )}&filename=${encodeURIComponent(filename)}&w=${thumbSize}`
+      )}&filename=${encodeURIComponent(filename)}&w=`
     : null;
+  const thumbSrc = thumbBase ? `${thumbBase}${thumbSize}` : null;
+  const thumbSrcSet = thumbBase
+    ? variant === 'feed'
+      ? `${thumbBase}384 384w, ${thumbBase}768 768w`
+      : `${thumbBase}192 192w, ${thumbBase}384 384w`
+    : null;
+  const thumbSizes = variant === 'feed'
+    ? '(max-width: 768px) 92vw, 768px'
+    : '(max-width: 640px) 45vw, (max-width: 1024px) 30vw, 240px';
 
   const mediaSrc =
     !isDir && filename
@@ -196,6 +209,8 @@ function GalleryItem({
             ) : thumbSrc ? (
               <img
                 src={thumbSrc}
+                srcSet={thumbSrcSet || undefined}
+                sizes={thumbSizes}
                 alt={displayName}
                 className="w-full h-auto max-h-[80vh] rounded-2xl object-contain bg-black/40"
                 loading="lazy"
@@ -251,6 +266,8 @@ function GalleryItem({
         {thumbSrc ? (
           <img
             src={thumbSrc}
+            srcSet={thumbSrcSet || undefined}
+            sizes={thumbSizes}
             alt={displayName}
             className="gallery-tile-img"
             loading="lazy"

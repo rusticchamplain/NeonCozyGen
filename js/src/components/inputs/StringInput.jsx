@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import BottomSheet from '../ui/BottomSheet';
 import TextAreaSheet from '../ui/TextAreaSheet';
 import TokenStrengthSheet from '../ui/TokenStrengthSheet';
@@ -6,6 +6,11 @@ import Select from '../ui/Select';
 import { IconEdit, IconGrip, IconTag, IconX } from '../Icons';
 import { formatCategoryLabel, formatSubcategoryLabel, presentAliasEntry } from '../../utils/aliasPresentation';
 import { formatTokenWeight, getTokenWeightRange, setTokenWeight } from '../../utils/tokenWeights';
+
+const listItemVisibilityStyles = {
+  contentVisibility: 'auto',
+  containIntrinsicSize: '240px 120px',
+};
 
 function StringInput({
   name,
@@ -29,6 +34,7 @@ function StringInput({
   const [dropIndex, setDropIndex] = useState(null);
   const [showPicker, setShowPicker] = useState(false);
   const [pickerSearch, setPickerSearch] = useState('');
+  const deferredPickerSearch = useDeferredValue(pickerSearch);
   const [pickerCategory, setPickerCategory] = useState('All');
   const [pickerSubcategory, setPickerSubcategory] = useState('All');
   const [recent] = useState([]);
@@ -133,7 +139,7 @@ function StringInput({
   };
 
   const filteredAliases = useMemo(() => {
-    const term = pickerSearch.trim().toLowerCase();
+    const term = deferredPickerSearch.trim().toLowerCase();
     return withSubcategory
       .filter((e) => {
         if (pickerCategory !== 'All' && (e.category || '') !== pickerCategory) return false;
@@ -153,7 +159,7 @@ function StringInput({
         if (subA !== subB) return subA.localeCompare(subB);
         return a.token.localeCompare(b.token);
       });
-  }, [withSubcategory, pickerCategory, pickerSubcategory, pickerSearch]);
+  }, [withSubcategory, pickerCategory, pickerSubcategory, deferredPickerSearch]);
 
   const [visibleCount, setVisibleCount] = useState(30);
   const visibleAliases = useMemo(() => filteredAliases.slice(0, visibleCount), [filteredAliases, visibleCount]);
@@ -436,6 +442,7 @@ function StringInput({
                     type="button"
                     onClick={() => handleInsertAlias(entry.token, { closeAfter: !isPromptLike })}
                     className="composer-alias-item"
+                    style={listItemVisibilityStyles}
                   >
                     <div className="composer-alias-header">
                       <div className="composer-alias-name">

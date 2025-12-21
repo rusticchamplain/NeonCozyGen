@@ -1,7 +1,8 @@
 // js/src/hooks/useGallery.js
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { getGallery } from '../api';
+import { usePageVisibility } from './usePageVisibility';
 
 const isHidden = (name = '') => name.startsWith('.');
 const isImage = (name = '') =>
@@ -9,6 +10,7 @@ const isImage = (name = '') =>
 const isVideo = (name = '') => /\.(mp4|webm|mov|mkv)$/i.test(name);
 
 export function useGallery() {
+  const isVisible = usePageVisibility();
   const safeGet = (key, fallback = '') => {
     try {
       return typeof window !== 'undefined' ? localStorage.getItem(key) || fallback : fallback;
@@ -228,6 +230,15 @@ export function useGallery() {
     setReloadKey((prev) => prev + 1);
   }, []);
 
+  const refreshTimerRef = useRef(null);
+  const enqueueRefresh = useCallback(() => {
+    if (refreshTimerRef.current) return;
+    refreshTimerRef.current = window.setTimeout(() => {
+      refreshTimerRef.current = null;
+      refresh();
+    }, 400);
+  }, [refresh]);
+
   // Refresh when a generation finishes (event emitted by useExecutionQueue).
   useEffect(() => {
     const handler = () => refresh();
@@ -244,10 +255,12 @@ export function useGallery() {
   // Auto-refresh when new outputs land: prefer SSE, fall back to polling.
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
+    if (!isVisible) return undefined;
 
     let stopped = false;
     let es;
     let pollTimer;
+    let pollDelay = 8000;
 
     const stopTimers = () => {
       if (pollTimer) {
@@ -260,8 +273,8 @@ export function useGallery() {
       stopTimers();
       pollTimer = window.setTimeout(() => {
         if (stopped) return;
-        refresh();
-        schedulePoll(8000);
+        enqueueRefresh();
+        schedulePoll(pollDelay);
       }, delay);
     };
 
@@ -278,13 +291,14 @@ export function useGallery() {
       es = new EventSource(`/cozygen/api/gallery/stream?${qs.toString()}`);
       es.onmessage = () => {
         if (stopped) return;
-        refresh();
+        enqueueRefresh();
       };
       es.onerror = () => {
         if (es) {
           es.close();
           es = null;
         }
+        pollDelay = Math.min(Math.ceil(pollDelay * 1.4), 20000);
         schedulePoll();
       };
     };
@@ -294,12 +308,21 @@ export function useGallery() {
     return () => {
       stopped = true;
       stopTimers();
+      if (refreshTimerRef.current) {
+        clearTimeout(refreshTimerRef.current);
+        refreshTimerRef.current = null;
+      }
       if (es) {
         es.close();
         es = null;
       }
     };
-  }, [path, recursive, showHidden, refresh]);
+  }, [path, recursive, showHidden, enqueueRefresh, isVisible]);
+
+  useEffect(() => {
+    if (!isVisible) return;
+    refresh();
+  }, [isVisible, refresh]);
 
   return {
     // raw state

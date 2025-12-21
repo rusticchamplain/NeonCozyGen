@@ -7,6 +7,7 @@ import { saveLastRenderPayload } from '../utils/globalRender';
 import { applyAliasesToForm, applyPromptAliases } from '../utils/promptAliases';
 import { saveFormState } from '../utils/storage';
 import { injectFormValues } from '../utils/workflowGraph';
+import { usePageVisibility } from './usePageVisibility';
 
 /**
  * Handles:
@@ -31,6 +32,7 @@ export function useExecutionQueue({
   setFormData,
   promptAliases = null,
 }) {
+  const isVisible = usePageVisibility();
   const [isLoading, setIsLoading] = useState(false);
   const [hasActiveJob, setHasActiveJob] = useState(false);
 
@@ -41,8 +43,11 @@ export function useExecutionQueue({
 
   const [logEntries, setLogEntries] = useState([]);
   const lastProgressLogRef = useRef({ ts: 0, value: 0, max: 0 });
+  const progressFrameRef = useRef(null);
+  const progressPendingRef = useRef({ value: 0, max: 0 });
 
   const websocketRef = useRef(null);
+  const reconnectTimerRef = useRef(null);
   const workflowDataRef = useRef(workflowData);
   const formDataRef = useRef(formData);
 
@@ -90,6 +95,20 @@ export function useExecutionQueue({
     if (idleTimerRef.current) {
       clearTimeout(idleTimerRef.current);
       idleTimerRef.current = null;
+    }
+  };
+
+  const clearReconnectTimer = () => {
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+  };
+
+  const clearProgressFrame = () => {
+    if (progressFrameRef.current) {
+      cancelAnimationFrame(progressFrameRef.current);
+      progressFrameRef.current = null;
     }
   };
 
@@ -190,7 +209,15 @@ export function useExecutionQueue({
 
   // WebSocket setup for progress + status
   useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    if (!isVisible && !hasActiveJob) return undefined;
+
+    let stopped = false;
+    let reconnectDelay = 1000;
+
     const connectWebSocket = () => {
+      if (stopped) return;
+      if (!isVisible && !hasActiveJobRef.current) return;
       const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
       const host = window.location.host;
       const token = getToken();
@@ -198,6 +225,10 @@ export function useExecutionQueue({
 
       const ws = new WebSocket(wsUrl);
       websocketRef.current = ws;
+
+      ws.onopen = () => {
+        reconnectDelay = 1000;
+      };
 
       ws.onmessage = (event) => {
         if (typeof event.data !== 'string') return;
@@ -280,8 +311,15 @@ export function useExecutionQueue({
           // Standard ComfyUI progress event
           const v = msg.data?.value ?? 0;
           const max = msg.data?.max ?? 0;
-          setProgressValue(v);
-          setProgressMax(max);
+          progressPendingRef.current = { value: v, max };
+          if (!progressFrameRef.current) {
+            progressFrameRef.current = window.requestAnimationFrame(() => {
+              progressFrameRef.current = null;
+              const next = progressPendingRef.current;
+              setProgressValue(next.value);
+              setProgressMax(next.max);
+            });
+          }
 
           // Throttle progress logging to avoid excessive renders.
           const now = Date.now();
@@ -301,22 +339,28 @@ export function useExecutionQueue({
       };
 
       ws.onclose = () => {
-        // simple reconnect; no backoff for now
-        setTimeout(connectWebSocket, 1000);
+        if (stopped) return;
+        if (!isVisible && !hasActiveJobRef.current) return;
+        clearReconnectTimer();
+        reconnectTimerRef.current = setTimeout(connectWebSocket, reconnectDelay);
+        reconnectDelay = Math.min(Math.ceil(reconnectDelay * 1.6), 15000);
       };
     };
 
     connectWebSocket();
 
     return () => {
+      stopped = true;
       clearFinishTimer();
       clearIdleTimer();
+      clearReconnectTimer();
+      clearProgressFrame();
       if (websocketRef.current) {
         websocketRef.current.onclose = null;
         websocketRef.current.close();
       }
     };
-  }, [appendLog, markError, markFinished]);
+  }, [appendLog, markError, markFinished, isVisible, hasActiveJob]);
 
   const handleGenerate = useCallback(async (options = {}) => {
     if (!workflowData) return;

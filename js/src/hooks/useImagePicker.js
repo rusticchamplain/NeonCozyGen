@@ -1,5 +1,5 @@
 // js/src/hooks/useImagePicker.js
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 
 import { getGallery, uploadImage } from '../api';
 
@@ -18,6 +18,7 @@ async function getInputItems({
   page = 1,
   perPage = 50,
   exts = DEFAULT_EXTS, // '' -> show all files
+  signal,
 } = {}) {
   const params = new URLSearchParams({
     subfolder,
@@ -25,7 +26,7 @@ async function getInputItems({
     per_page: String(perPage),
     exts,
   });
-  const res = await fetch(`/cozygen/input?${params.toString()}`);
+  const res = await fetch(`/cozygen/input?${params.toString()}`, { signal });
   if (!res.ok) throw new Error(`Input list failed: ${res.status}`);
   return res.json();
 }
@@ -193,6 +194,7 @@ export function useImagePicker({ input, value, onFormChange }) {
   const [search, setSearch] = useState('');
   const [topDirs, setTopDirs] = useState([]);
   const [imagesOnly, setImagesOnly] = useState(true);
+  const loadAbortRef = useRef(null);
 
   // NEW: source toggle (inputs vs outputs)
   const [pickerSourceState, setPickerSourceState] = useState(() => {
@@ -333,13 +335,27 @@ export function useImagePicker({ input, value, onFormChange }) {
   useEffect(() => {
     if (!serverOpen) return;
     let cancelled = false;
+    if (loadAbortRef.current) {
+      loadAbortRef.current.abort();
+    }
+    const controller = new AbortController();
+    loadAbortRef.current = controller;
 
     async function load() {
       setLoading(true);
       try {
         if (pickerSource === 'outputs') {
           // Outputs: reuse the same gallery endpoint as the Gallery page
-          const data = await getGallery(cwd, page, perPage);
+          const data = await getGallery(
+            cwd,
+            page,
+            perPage,
+            false,
+            false,
+            'all',
+            '',
+            { signal: controller.signal }
+          );
           if (cancelled) return;
 
           const mapped = mapOutputEntries((data && data.items) || []);
@@ -356,6 +372,7 @@ export function useImagePicker({ input, value, onFormChange }) {
             page,
             perPage,
             exts,
+            signal: controller.signal,
           });
 
           const hasFile = (resp.items || []).some((it) => !it.is_dir);
@@ -367,6 +384,7 @@ export function useImagePicker({ input, value, onFormChange }) {
               page,
               perPage,
               exts: '',
+              signal: controller.signal,
             });
             if (!cancelled) {
               setEntries(mapInputEntries(broad.items || []));
@@ -382,6 +400,7 @@ export function useImagePicker({ input, value, onFormChange }) {
           }
         }
       } catch (err) {
+        if (err?.name === 'AbortError') return;
         console.error(
           pickerSource === 'outputs'
             ? 'Failed to load output directory'
@@ -400,12 +419,17 @@ export function useImagePicker({ input, value, onFormChange }) {
     load();
     return () => {
       cancelled = true;
+      if (loadAbortRef.current === controller) {
+        loadAbortRef.current = null;
+      }
+      controller.abort();
     };
   }, [serverOpen, cwd, page, perPage, imagesOnly, pickerSource]);
 
   // filtered view for the sheet
+  const deferredSearch = useDeferredValue(search);
   const shownEntries = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = deferredSearch.trim().toLowerCase();
 
     let list = entries;
 
@@ -425,7 +449,7 @@ export function useImagePicker({ input, value, onFormChange }) {
         (it.name || it.filename || it.rel_path || '').toLowerCase();
       return name.includes(q);
     });
-  }, [entries, search, imagesOnly]);
+  }, [entries, deferredSearch, imagesOnly]);
 
   const selectServer = useCallback(
     (entryOrPath) => {

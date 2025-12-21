@@ -5,6 +5,11 @@ import { getDanbooruTagCategories, searchDanbooruTags } from '../api';
 import { IconCopy, IconDots, IconGrip, IconRefresh, IconTag, IconX } from './Icons';
 import { formatSubcategoryLabel } from '../utils/aliasPresentation';
 
+const listItemVisibilityStyles = {
+  contentVisibility: 'auto',
+  containIntrinsicSize: '240px 120px',
+};
+
 function safeCopy(text) {
   const value = String(text || '');
   if (!value) return false;
@@ -39,6 +44,8 @@ export default function TagLibrarySheet({
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
+  const searchAbortRef = useRef(null);
+  const loadAbortRef = useRef(null);
   const [collectedTags, setCollectedTags] = useState([]);
   const [collectionManagerOpen, setCollectionManagerOpen] = useState(false);
   const [dragIndex, setDragIndex] = useState(null);
@@ -209,16 +216,30 @@ export default function TagLibrarySheet({
     setError('');
     setStatus('');
     setOffset(0);
+    if (searchAbortRef.current) {
+      searchAbortRef.current.abort();
+    }
+    const controller = new AbortController();
+    searchAbortRef.current = controller;
     try {
-      const res = await searchDanbooruTags({ q, category: c, sort: s, limit: 80, offset: 0 });
+      const res = await searchDanbooruTags(
+        { q, category: c, sort: s, limit: 80, offset: 0 },
+        { signal: controller.signal }
+      );
       setItems(res?.items || []);
       setTotal(Number(res?.total || 0));
     } catch (e) {
+      if (e?.name === 'AbortError') {
+        return;
+      }
       console.error('Failed to search tags', e);
       setError('Unable to load tags right now.');
       setItems([]);
       setTotal(0);
     } finally {
+      if (searchAbortRef.current === controller) {
+        searchAbortRef.current = null;
+      }
       setLoading(false);
     }
   }, [category, query, sort]);
@@ -229,16 +250,30 @@ export default function TagLibrarySheet({
     const nextOffset = offset + 80;
     setLoadingMore(true);
     setError('');
+    if (loadAbortRef.current) {
+      loadAbortRef.current.abort();
+    }
+    const controller = new AbortController();
+    loadAbortRef.current = controller;
     try {
-      const res = await searchDanbooruTags({ q: query, category, sort, limit: 80, offset: nextOffset });
+      const res = await searchDanbooruTags(
+        { q: query, category, sort, limit: 80, offset: nextOffset },
+        { signal: controller.signal }
+      );
       const nextItems = res?.items || [];
       setItems((prev) => [...prev, ...nextItems]);
       setTotal(Number(res?.total || 0));
       setOffset(nextOffset);
     } catch (e) {
+      if (e?.name === 'AbortError') {
+        return;
+      }
       console.error('Failed to load more tags', e);
       setError('Unable to load more tags.');
     } finally {
+      if (loadAbortRef.current === controller) {
+        loadAbortRef.current = null;
+      }
       setLoadingMore(false);
     }
   }, [canLoadMore, category, loading, loadingMore, offset, query, sort]);
@@ -289,6 +324,17 @@ export default function TagLibrarySheet({
     }, 220);
     return () => window.clearTimeout(handle);
   }, [category, isActive, query, resetAndSearch, sort]);
+
+  useEffect(() => {
+    return () => {
+      if (searchAbortRef.current) {
+        searchAbortRef.current.abort();
+      }
+      if (loadAbortRef.current) {
+        loadAbortRef.current.abort();
+      }
+    };
+  }, []);
 
   // Infinite load sentinel
   useEffect(() => {
@@ -420,7 +466,12 @@ export default function TagLibrarySheet({
         ) : (
           <>
             {items.map((t) => (
-              <div key={`${t.tag}-${t.category}`} className="tag-library-row" role="listitem">
+              <div
+                key={`${t.tag}-${t.category}`}
+                className="tag-library-row"
+                role="listitem"
+                style={listItemVisibilityStyles}
+              >
                 <button
                   type="button"
                   className={`composer-alias-item tag-library-item ${!onSelectTag && collectedSet.has(String(t.tag || '').toLowerCase()) ? 'is-collected' : ''}`}

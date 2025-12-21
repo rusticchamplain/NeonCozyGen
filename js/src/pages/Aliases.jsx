@@ -1,5 +1,5 @@
 // js/src/pages/Aliases.jsx
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import usePromptAliases from '../hooks/usePromptAliases';
 import { normalizeAliasMap } from '../utils/promptAliases';
@@ -17,6 +17,10 @@ import {
 } from '../utils/aliasPresentation';
 
 const DELIM = '::';
+const listItemVisibilityStyles = {
+  contentVisibility: 'auto',
+  containIntrinsicSize: '240px 120px',
+};
 
 function makeRowId() {
   return `alias-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
@@ -129,6 +133,7 @@ export default function Aliases() {
   const [categoryFilter, setCategoryFilter] = useState('All');
   const [subcategoryFilter, setSubcategoryFilter] = useState('All');
   const [query, setQuery] = useState('');
+  const deferredQuery = useDeferredValue(query);
 
   const [selectedId, setSelectedId] = useState('');
   const [editorOpen, setEditorOpen] = useState(false);
@@ -269,7 +274,7 @@ export default function Aliases() {
   };
 
   const filteredRows = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = deferredQuery.trim().toLowerCase();
     const base = rows.filter((row) => {
       const cat = (row.category || '').trim();
       if (categoryFilter === '' && cat) return false;
@@ -291,7 +296,7 @@ export default function Aliases() {
     const order = [...base];
     order.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     return order;
-  }, [rows, categoryFilter, subcategoryFilter, query]);
+  }, [rows, categoryFilter, subcategoryFilter, deferredQuery]);
 
   const selectedRow =
     filteredRows.find((r) => r.id === selectedId) ||
@@ -933,6 +938,7 @@ export default function Aliases() {
                       role="listitem"
                       className={`composer-alias-item ${selectedId === row.id ? 'is-selected' : ''}`}
                       onClick={() => openEditorForRow(row)}
+                      style={listItemVisibilityStyles}
                     >
                       <div className="composer-alias-header">
                         <div className="composer-alias-name">

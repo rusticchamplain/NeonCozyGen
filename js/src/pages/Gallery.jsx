@@ -485,9 +485,7 @@ export default function Gallery() {
         </div>
       ) : (
         <div className="flex flex-col gap-6 items-center">
-          {filtered
-            .filter((item) => item.type !== 'directory')
-            .map((item) => (
+          {mediaItems.map((item) => (
             <div key={itemKey(item)} className="w-full flex justify-center">
               <GalleryItem
                 item={item}

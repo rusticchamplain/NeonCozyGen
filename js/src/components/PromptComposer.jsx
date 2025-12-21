@@ -1,5 +1,5 @@
 // js/src/components/PromptComposer.jsx
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import BottomSheet from './ui/BottomSheet';
 import SegmentedTabs from './ui/SegmentedTabs';
 import TokenStrengthSheet from './ui/TokenStrengthSheet';
@@ -17,6 +17,11 @@ import {
 } from '../utils/tokenWeights';
 import { getDanbooruTagCategories, searchDanbooruTags } from '../api';
 
+const listItemVisibilityStyles = {
+  contentVisibility: 'auto',
+  containIntrinsicSize: '260px 140px',
+};
+
 export default function PromptComposer({
   open = false,
   onClose,
@@ -33,6 +38,7 @@ export default function PromptComposer({
   const tokensListRef = useRef(null);
   const [localValue, setLocalValue] = useState(value);
   const [pickerSearch, setPickerSearch] = useState('');
+  const deferredPickerSearch = useDeferredValue(pickerSearch);
   const [pickerCategory, setPickerCategory] = useState('All');
   const [pickerSubcategory, setPickerSubcategory] = useState('All');
   const [visibleCount, setVisibleCount] = useState(30);
@@ -60,6 +66,8 @@ export default function PromptComposer({
   const [tagLoading, setTagLoading] = useState(false);
   const [tagLoadingMore, setTagLoadingMore] = useState(false);
   const [tagError, setTagError] = useState('');
+  const tagSearchAbortRef = useRef(null);
+  const tagLoadAbortRef = useRef(null);
   const [composerCollectedTags, setComposerCollectedTags] = useState([]);
   const [collectionStatus, setCollectionStatus] = useState('');
   const [composerCollectedAliases, setComposerCollectedAliases] = useState([]);
@@ -210,7 +218,7 @@ export default function PromptComposer({
   );
 
   const filteredAliases = useMemo(() => {
-    const term = pickerSearch.trim().toLowerCase();
+    const term = deferredPickerSearch.trim().toLowerCase();
     return aliasEntries
       .filter((e) => {
         if (pickerCategory !== 'All' && (e.category || '') !== pickerCategory) return false;
@@ -230,7 +238,7 @@ export default function PromptComposer({
         if (subA !== subB) return subA.localeCompare(subB);
         return a.token.localeCompare(b.token);
       });
-  }, [aliasEntries, pickerCategory, pickerSubcategory, pickerSearch]);
+  }, [aliasEntries, pickerCategory, pickerSubcategory, deferredPickerSearch]);
 
   const visibleAliases = useMemo(
     () => filteredAliases.slice(0, visibleCount),
@@ -299,16 +307,30 @@ export default function PromptComposer({
     setTagLoading(true);
     setTagError('');
     setTagOffset(0);
+    if (tagSearchAbortRef.current) {
+      tagSearchAbortRef.current.abort();
+    }
+    const controller = new AbortController();
+    tagSearchAbortRef.current = controller;
     try {
-      const res = await searchDanbooruTags({ q, category: c, sort: s, limit: 80, offset: 0 });
+      const res = await searchDanbooruTags(
+        { q, category: c, sort: s, limit: 80, offset: 0 },
+        { signal: controller.signal }
+      );
       setTagItems(res?.items || []);
       setTagTotal(Number(res?.total || 0));
     } catch (e) {
+      if (e?.name === 'AbortError') {
+        return;
+      }
       console.error('Failed to search tags', e);
       setTagError('Unable to load tags right now.');
       setTagItems([]);
       setTagTotal(0);
     } finally {
+      if (tagSearchAbortRef.current === controller) {
+        tagSearchAbortRef.current = null;
+      }
       setTagLoading(false);
     }
   }, [tagCategory, tagQuery, tagSort]);
@@ -320,16 +342,30 @@ export default function PromptComposer({
     const nextOffset = tagOffset + 80;
     setTagLoadingMore(true);
     setTagError('');
+    if (tagLoadAbortRef.current) {
+      tagLoadAbortRef.current.abort();
+    }
+    const controller = new AbortController();
+    tagLoadAbortRef.current = controller;
     try {
-      const res = await searchDanbooruTags({ q: tagQuery, category: tagCategory, sort: tagSort, limit: 80, offset: nextOffset });
+      const res = await searchDanbooruTags(
+        { q: tagQuery, category: tagCategory, sort: tagSort, limit: 80, offset: nextOffset },
+        { signal: controller.signal }
+      );
       const nextItems = res?.items || [];
       setTagItems((prev) => [...prev, ...nextItems]);
       setTagTotal(Number(res?.total || 0));
       setTagOffset(nextOffset);
     } catch (e) {
+      if (e?.name === 'AbortError') {
+        return;
+      }
       console.error('Failed to load more tags', e);
       setTagError('Unable to load more tags.');
     } finally {
+      if (tagLoadAbortRef.current === controller) {
+        tagLoadAbortRef.current = null;
+      }
       setTagLoadingMore(false);
     }
   }, [tagCategory, tagLoading, tagLoadingMore, tagOffset, tagQuery, tagSort, tagItems.length, tagTotal]);
@@ -342,6 +378,17 @@ export default function PromptComposer({
     }, 220);
     return () => window.clearTimeout(handle);
   }, [open, activeTab, tagQuery, tagCategory, tagSort, searchTags]);
+
+  useEffect(() => {
+    return () => {
+      if (tagSearchAbortRef.current) {
+        tagSearchAbortRef.current.abort();
+      }
+      if (tagLoadAbortRef.current) {
+        tagLoadAbortRef.current.abort();
+      }
+    };
+  }, []);
 
   // Tag library: infinite scroll sentinel
   useEffect(() => {
@@ -940,6 +987,7 @@ export default function PromptComposer({
                     className={`composer-alias-item ${composerCollectedAliases.some(
                       (t) => t.toLowerCase() === entry.token.toLowerCase()
                     ) ? 'is-collected' : ''}`}
+                    style={listItemVisibilityStyles}
                   >
                     <div className="composer-alias-header">
                       <div className="composer-alias-name">
@@ -1088,6 +1136,7 @@ export default function PromptComposer({
                         e.stopPropagation();
                         toggleComposerTag(t.tag);
                       }}
+                      style={listItemVisibilityStyles}
                     >
                     <div className="composer-alias-header">
                       <div className="composer-alias-name composer-tag-name">

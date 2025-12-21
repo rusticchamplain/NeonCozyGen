@@ -1,4 +1,5 @@
 const TOKEN_KEY = 'cozygen_token';
+export const AUTH_EXPIRED_EVENT = 'cozygen:auth-expired';
 
 export function getToken() {
   try {
@@ -29,4 +30,14 @@ export function clearToken() {
 export function authHeaders() {
   const token = getToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+export function notifyAuthExpired(detail = {}) {
+  clearToken();
+  if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return;
+  try {
+    window.dispatchEvent(new CustomEvent(AUTH_EXPIRED_EVENT, { detail }));
+  } catch {
+    window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
+  }
 }

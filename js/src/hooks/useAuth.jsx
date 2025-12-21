@@ -1,6 +1,6 @@
 import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { authStatus, login as loginRequest } from '../api';
-import { clearToken, getToken, setToken } from '../utils/auth';
+import { AUTH_EXPIRED_EVENT, clearToken, getToken, setToken } from '../utils/auth';
 import { IDLE_FLAG_KEY, IDLE_TIMEOUT_MS } from './useAuthConstants';
 import AuthContext from './useAuthContext';
 
@@ -54,6 +54,16 @@ function AuthProviderInner({ children }) {
     setUser(null);
     setDefaultCreds(false);
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const handler = () => {
+      logout();
+      setReady(true);
+    };
+    window.addEventListener(AUTH_EXPIRED_EVENT, handler);
+    return () => window.removeEventListener(AUTH_EXPIRED_EVENT, handler);
+  }, [logout]);
 
   // Idle timeout: log out after inactivity window
   useEffect(() => {

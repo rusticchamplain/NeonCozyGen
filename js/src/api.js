@@ -1,7 +1,8 @@
-import { authHeaders } from './utils/auth';
+import { authHeaders, notifyAuthExpired } from './utils/auth';
 
 const handleResponse = async (url, res) => {
   if (res.status === 401) {
+    notifyAuthExpired({ url, status: res.status });
     const err = new Error('unauthorized');
     err.unauthorized = true;
     err.status = 401;

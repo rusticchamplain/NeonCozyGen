@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useState } from 'react';
 import Select from '../ui/Select';
-import { formatModelDisplayName, isModelFileLike, splitModelDisplayName } from '../../utils/modelDisplay';
+import { formatFileBaseName, isFilePathLike, splitFilePath } from '../../utils/modelDisplay';
 import { loadDropdownFolder, saveDropdownFolder } from '../../utils/storage';
 
 function DropdownInput({
@@ -40,54 +40,88 @@ function DropdownInput({
     [options]
   );
 
-  const getFolder = (label = '') => {
-    if (typeof label !== 'string') return 'Other';
-    if (!label.includes('/')) return 'root';
-    const parts = label.split('/');
-    return parts.slice(0, parts.length - 1).join('/') || 'root';
+  const getOptionPath = (opt) => {
+    const valueStr = typeof opt?.value === 'string' || typeof opt?.value === 'number'
+      ? String(opt.value)
+      : '';
+    const labelStr = typeof opt?.label === 'string' || typeof opt?.label === 'number'
+      ? String(opt.label)
+      : '';
+    if (isFilePathLike(valueStr)) return valueStr;
+    if (isFilePathLike(labelStr)) return labelStr;
+    return '';
   };
 
-  const folders = useMemo(() => {
+  const optionMeta = useMemo(
+    () =>
+      normalizedOptions.map((opt) => {
+        const path = getOptionPath(opt);
+        if (!path) {
+          return { opt, path: '', base: '', folderPath: '' };
+        }
+        const { folderPath, base } = splitFilePath(path);
+        return { opt, path, base, folderPath: folderPath || 'root' };
+      }),
+    [normalizedOptions]
+  );
+
+  const folderOptions = useMemo(() => {
     const set = new Set(['All']);
-    normalizedOptions.forEach((opt) => set.add(getFolder(opt.label)));
+    optionMeta.forEach(({ path, folderPath }) => {
+      if (path) set.add(folderPath || 'root');
+    });
     return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [normalizedOptions]);
+  }, [optionMeta]);
+  const showFolderFilter = folderOptions.length > 2;
 
   useEffect(() => {
-    if (!folders.includes(selectedFolder)) {
+    if (!showFolderFilter) {
+      if (selectedFolder !== 'All') {
+        setSelectedFolder('All');
+      }
+      return;
+    }
+    if (!folderOptions.includes(selectedFolder)) {
       setSelectedFolder('All');
     }
-  }, [folders, selectedFolder]);
+  }, [folderOptions, selectedFolder, showFolderFilter]);
 
   useEffect(() => {
     saveDropdownFolder(workflowName, name, selectedFolder);
   }, [workflowName, name, selectedFolder]);
 
-  const filteredOptions = useMemo(
-    () => {
-      const stripExt = (s) => s.replace(/\.[^.]+$/, '');
-      return normalizedOptions
-        .filter((opt) => {
-          const folder = getFolder(opt.label);
-          return selectedFolder === 'All' || folder === selectedFolder;
-        })
-        .map((opt) => {
-          const rawLabel = opt.label || '';
-          if (isModelFileLike(rawLabel)) {
-            const { base } = splitModelDisplayName(rawLabel);
-            const withFolder = formatModelDisplayName(rawLabel);
-            const nextLabel = selectedFolder === 'All' ? withFolder : (base || withFolder);
-            return { ...opt, label: nextLabel };
-          }
-          if (selectedFolder === 'All') return opt;
-          const parts = rawLabel.split('/');
-          const nameOnly = stripExt(parts[parts.length - 1] || rawLabel);
-          return { ...opt, label: nameOnly };
-        })
-        .sort((a, b) => a.label.localeCompare(b.label));
-    },
-    [normalizedOptions, selectedFolder]
-  );
+  const baseCounts = useMemo(() => {
+    const map = new Map();
+    optionMeta.forEach(({ base }) => {
+      if (!base) return;
+      const key = base.toLowerCase();
+      map.set(key, (map.get(key) || 0) + 1);
+    });
+    return map;
+  }, [optionMeta]);
+
+  const filteredOptions = useMemo(() => {
+    const items = [];
+    const disambiguate = showFolderFilter && selectedFolder === 'All';
+    optionMeta.forEach(({ opt, path, base, folderPath }) => {
+      if (!path) {
+        items.push(opt);
+        return;
+      }
+      const folder = folderPath || 'root';
+      if (showFolderFilter && selectedFolder !== 'All' && folder !== selectedFolder) return;
+      let label = base || formatFileBaseName(path) || opt.label;
+      if (disambiguate && base) {
+        const key = base.toLowerCase();
+        if (baseCounts.get(key) > 1) {
+          const folderLabel = folder === 'root' ? 'root' : folder.split('/').pop() || folder;
+          label = `${label} (${folderLabel})`;
+        }
+      }
+      items.push({ ...opt, label });
+    });
+    return items.sort((a, b) => String(a.label || '').localeCompare(String(b.label || '')));
+  }, [optionMeta, baseCounts, selectedFolder, showFolderFilter]);
 
   const hasValueInFiltered = useMemo(() => {
     if (valueStr === '' || valueStr === null || valueStr === undefined) return true;
@@ -101,16 +135,18 @@ function DropdownInput({
 
   return (
     <div className="w-full space-y-2">
-      <div className="relative w-full">
-        <Select
-          value={selectedFolder}
-          onChange={setSelectedFolder}
-          disabled={disabled}
-          aria-label={`Choose folder for ${label || name}`}
-          size="sm"
-          options={folders.map((folder) => ({ value: folder, label: folder }))}
-        />
-      </div>
+      {showFolderFilter ? (
+        <div className="relative w-full">
+          <Select
+            value={selectedFolder}
+            onChange={setSelectedFolder}
+            disabled={disabled}
+            aria-label={`Choose folder for ${label || name}`}
+            size="sm"
+            options={folderOptions.map((folder) => ({ value: folder, label: folder }))}
+          />
+        </div>
+      ) : null}
 
       <div className="relative w-full">
         <Select
@@ -126,7 +162,7 @@ function DropdownInput({
           emptyLabel="No matches"
           options={[
             ...(!hasValueInFiltered && valueStr !== ''
-              ? [{ value: valueStr, label: formatModelDisplayName(String(valueStr)) }]
+              ? [{ value: valueStr, label: formatFileBaseName(String(valueStr)) }]
               : []),
             ...filteredOptions,
           ]}

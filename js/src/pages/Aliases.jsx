@@ -1,5 +1,5 @@
 // js/src/pages/Aliases.jsx
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import usePromptAliases from '../hooks/usePromptAliases';
 import { normalizeAliasMap } from '../utils/promptAliases';
@@ -15,12 +15,50 @@ import {
   formatCategoryLabel,
   formatSubcategoryLabel,
 } from '../utils/aliasPresentation';
+import { useVirtualList } from '../hooks/useVirtualList';
 
 const DELIM = '::';
 const listItemVisibilityStyles = {
   contentVisibility: 'auto',
   containIntrinsicSize: '240px 120px',
 };
+
+const AliasRow = memo(function AliasRow({
+  id,
+  name,
+  category,
+  text,
+  isSelected,
+  onOpen,
+}) {
+  const handleClick = useCallback(() => {
+    onOpen(id);
+  }, [id, onOpen]);
+
+  const displayName = formatAliasFriendlyName({ name }) || name || 'Untitled';
+  const aliasToken = category ? `${category}:${name}` : name;
+  const short = `${(text || '').slice(0, 140)}${(text || '').length > 140 ? '…' : ''}`;
+
+  return (
+    <button
+      type="button"
+      role="listitem"
+      className={`composer-alias-item ${isSelected ? 'is-selected' : ''}`}
+      onClick={handleClick}
+      style={listItemVisibilityStyles}
+      data-virtual-row="true"
+    >
+      <div className="composer-alias-header">
+        <div className="composer-alias-name">
+          {displayName}
+        </div>
+        {category ? <span className="composer-alias-category">{formatCategoryLabel(category)}</span> : null}
+      </div>
+      <div className="composer-alias-token">${aliasToken || 'alias'}$</div>
+      <div className="composer-alias-text">{short || '—'}</div>
+    </button>
+  );
+});
 
 function makeRowId() {
   return `alias-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
@@ -297,6 +335,21 @@ export default function Aliases() {
     order.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     return order;
   }, [rows, categoryFilter, subcategoryFilter, deferredQuery]);
+  const {
+    containerRef: aliasListRef,
+    startIndex: aliasStart,
+    endIndex: aliasEnd,
+    topSpacer: aliasTopSpacer,
+    bottomSpacer: aliasBottomSpacer,
+    virtualized: aliasesVirtualized,
+  } = useVirtualList({
+    itemCount: filteredRows.length,
+    enabled: true,
+    estimateRowHeight: 86,
+    overscan: 8,
+    minItems: 120,
+  });
+  const visibleRows = aliasesVirtualized ? filteredRows.slice(aliasStart, aliasEnd) : filteredRows;
 
   const selectedRow =
     filteredRows.find((r) => r.id === selectedId) ||
@@ -461,12 +514,27 @@ export default function Aliases() {
     }
   };
 
-  const openEditorForRow = (row) => {
+  const openEditorForRow = useCallback((row) => {
     if (!row) return;
     setSelectedId(row.id);
     setEditorOpen(true);
     setStatus('');
-  };
+  }, []);
+
+  const rowById = useMemo(() => {
+    const map = new Map();
+    rows.forEach((row) => {
+      if (!row?.id) return;
+      map.set(row.id, row);
+    });
+    return map;
+  }, [rows]);
+
+  const handleOpenRow = useCallback((id) => {
+    const row = rowById.get(id);
+    if (!row) return;
+    openEditorForRow(row);
+  }, [openEditorForRow, rowById]);
 
   const closeEditor = () => {
     if (isDesktop) {
@@ -921,36 +989,29 @@ export default function Aliases() {
                 </p>
               </section>
             ) : (
-              <div className="composer-alias-list" role="list">
+              <div className="composer-alias-list" role="list" ref={aliasListRef}>
                 {filteredRows.length === 0 ? (
                   <div className="composer-alias-empty">
                     No aliases match your filters.
                   </div>
                 ) : null}
-                {filteredRows.map((row) => {
-                  const cat = (row.category || '').trim();
-                  const aliasToken = cat ? `${cat}:${row.name}` : row.name;
-                  const short = (row.text || '').slice(0, 140) + ((row.text || '').length > 140 ? '…' : '');
-                  return (
-                    <button
-                      key={row.id}
-                      type="button"
-                      role="listitem"
-                      className={`composer-alias-item ${selectedId === row.id ? 'is-selected' : ''}`}
-                      onClick={() => openEditorForRow(row)}
-                      style={listItemVisibilityStyles}
-                    >
-                      <div className="composer-alias-header">
-                        <div className="composer-alias-name">
-                          {formatAliasFriendlyName({ name: row.name }) || row.name || 'Untitled'}
-                        </div>
-                        {cat ? <span className="composer-alias-category">{formatCategoryLabel(cat)}</span> : null}
-                      </div>
-                      <div className="composer-alias-token">${aliasToken || 'alias'}$</div>
-                      <div className="composer-alias-text">{short || '—'}</div>
-                    </button>
-                  );
-                })}
+                {aliasesVirtualized && aliasTopSpacer > 0 ? (
+                  <div aria-hidden style={{ height: `${aliasTopSpacer}px` }} />
+                ) : null}
+                {visibleRows.map((row) => (
+                  <AliasRow
+                    key={row.id}
+                    id={row.id}
+                    name={row.name}
+                    category={(row.category || '').trim()}
+                    text={row.text || ''}
+                    isSelected={selectedId === row.id}
+                    onOpen={handleOpenRow}
+                  />
+                ))}
+                {aliasesVirtualized && aliasBottomSpacer > 0 ? (
+                  <div aria-hidden style={{ height: `${aliasBottomSpacer}px` }} />
+                ) : null}
               </div>
             )}
           </div>

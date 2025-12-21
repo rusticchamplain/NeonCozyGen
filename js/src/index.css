@@ -8323,7 +8323,9 @@ textarea {
   flex-direction: column;
   gap: 0.35rem;
   touch-action: pan-y;
-  max-height: 10rem;
+  --composer-elements: 0;
+  --composer-token-step: 2.1rem;
+  max-height: clamp(10rem, calc((var(--composer-elements) * var(--composer-token-step)) + 2rem), 45vh);
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   padding: 0.2rem;
@@ -8825,6 +8827,16 @@ textarea {
   margin-bottom: 0.4rem;
 }
 
+.composer-footer-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.composer-tag-collection-bar.is-footer {
+  margin-bottom: 0;
+}
+
 .composer-tag-collection-label {
   font-size: 0.78rem;
   color: var(--text-muted);
@@ -8857,21 +8869,6 @@ textarea {
   color: rgba(237, 242, 255, 0.95);
 }
 
-.composer-collection-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  margin-top: 0.6rem;
-}
-
-.composer-collection-inline {
-  display: flex;
-  gap: 0.35rem;
-  overflow-x: auto;
-  padding: 0.2rem 0.1rem 0.35rem;
-  scrollbar-width: thin;
-}
-
 .composer-tags-hint {
   flex: 1;
   display: flex;
@@ -8898,16 +8895,15 @@ textarea {
   gap: 0.4rem;
 }
 
-.composer-tag-collection-bar.is-sticky {
-  position: sticky;
-  bottom: 0;
-  margin-top: 0.8rem;
-  background: linear-gradient(180deg, rgba(7, 10, 22, 0.96), rgba(6, 10, 22, 0.9));
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.25);
-  padding-top: 0.45rem;
-  padding-bottom: 0.45rem;
-  z-index: 5;
+.composer-tag-collection-bar.is-floating {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(var(--composer-selection-offset, 0px) + env(safe-area-inset-bottom) + 0.75rem);
+  width: min(720px, calc(100vw - 2rem));
+  z-index: 1205;
+  backdrop-filter: blur(14px) saturate(150%);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
 }
 
 .composer-tag-item {

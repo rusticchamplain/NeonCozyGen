@@ -111,7 +111,20 @@ export async function getGalleryPrompt({ filename = '', subfolder = '' } = {}, o
     filename: String(filename || ''),
     subfolder: String(subfolder || ''),
   });
-  return jget(`/cozygen/api/gallery/prompt?${qs.toString()}`, options);
+  const res = await fetch(`/cozygen/api/gallery/prompt?${qs.toString()}`, {
+    headers: { ...authHeaders() },
+    credentials: 'include',
+    signal: options?.signal,
+  });
+  const contentType = res.headers.get('content-type') || '';
+  const payload = contentType.includes('application/json') ? await res.json() : await res.text();
+  if (!res.ok) {
+    const err = new Error(payload?.error || 'Prompt metadata not found');
+    err.status = res.status;
+    err.payload = payload;
+    throw err;
+  }
+  return payload;
 }
 
 /* ---- Prompt aliases ---- */

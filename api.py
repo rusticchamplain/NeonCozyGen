@@ -531,6 +531,18 @@ def _summarize_prompt(prompt_data: dict):
     }
 
 
+def _extract_prompt_data(info: dict):
+    prompt_data = _safe_json_loads(info.get("prompt"))
+    if prompt_data:
+        return prompt_data
+    extra = _safe_json_loads(info.get("extra_pnginfo"))
+    if isinstance(extra, dict):
+        prompt_data = _safe_json_loads(extra.get("prompt"))
+        if prompt_data:
+            return prompt_data
+    return None
+
+
 def _read_media_meta(base: str, item: dict):
     if not item or item.get("type") == "directory":
         return None
@@ -548,7 +560,7 @@ def _read_media_meta(base: str, item: dict):
             info = im.info or {}
     except Exception:
         return None
-    prompt_data = _safe_json_loads(info.get("prompt"))
+    prompt_data = _extract_prompt_data(info)
     if not prompt_data:
         return None
     summary = _summarize_prompt(prompt_data) or {}
@@ -566,7 +578,7 @@ def _read_prompt_payload(base: str, subfolder: str, filename: str):
             info = im.info or {}
     except Exception:
         return None
-    prompt_data = _safe_json_loads(info.get("prompt"))
+    prompt_data = _extract_prompt_data(info)
     if not prompt_data:
         return None
     return {"prompt": prompt_data}

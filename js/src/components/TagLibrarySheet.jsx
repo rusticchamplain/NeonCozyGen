@@ -1,14 +1,69 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import BottomSheet from './ui/BottomSheet';
 import Select from './ui/Select';
 import { getDanbooruTagCategories, searchDanbooruTags } from '../api';
 import { IconCopy, IconDots, IconGrip, IconRefresh, IconTag, IconX } from './Icons';
 import { formatSubcategoryLabel } from '../utils/aliasPresentation';
+import { useVirtualList } from '../hooks/useVirtualList';
 
 const listItemVisibilityStyles = {
   contentVisibility: 'auto',
   containIntrinsicSize: '240px 120px',
 };
+
+const TagLibraryRow = memo(function TagLibraryRow({
+  tag,
+  category,
+  count,
+  isCollected,
+  onSelectTag,
+  addToCollection,
+  removeFromCollection,
+  setStatus,
+}) {
+  const handleClick = useCallback(() => {
+    const tagStr = String(tag || '');
+    if (onSelectTag) {
+      onSelectTag(tagStr);
+      setStatus(`Added: ${tagStr}`);
+      return;
+    }
+    if (isCollected) {
+      removeFromCollection(tagStr);
+      setStatus(`Removed: ${tagStr}`);
+    } else {
+      addToCollection(tagStr);
+      setStatus(`Added: ${tagStr}`);
+    }
+  }, [addToCollection, isCollected, onSelectTag, removeFromCollection, setStatus, tag]);
+
+  return (
+    <div
+      className="tag-library-row"
+      role="listitem"
+      style={listItemVisibilityStyles}
+      data-virtual-row="true"
+    >
+      <button
+        type="button"
+        className={`composer-alias-item tag-library-item ${!onSelectTag && isCollected ? 'is-collected' : ''}`}
+        onClick={handleClick}
+      >
+        <div className="composer-alias-header">
+          <div className="composer-alias-name tag-library-name">
+            <code className="tag-library-code">{tag}</code>
+          </div>
+          {category ? (
+            <span className="composer-alias-category">
+              {formatSubcategoryLabel(category)}
+            </span>
+          ) : null}
+        </div>
+        <div className="composer-alias-token">{Number(count || 0).toLocaleString()}</div>
+      </button>
+    </div>
+  );
+});
 
 function safeCopy(text) {
   const value = String(text || '');
@@ -46,6 +101,8 @@ export default function TagLibrarySheet({
   const [status, setStatus] = useState('');
   const searchAbortRef = useRef(null);
   const loadAbortRef = useRef(null);
+  const searchCacheRef = useRef(new Map());
+  const inflightRef = useRef(new Map());
   const [collectedTags, setCollectedTags] = useState([]);
   const [collectionManagerOpen, setCollectionManagerOpen] = useState(false);
   const [dragIndex, setDragIndex] = useState(null);
@@ -58,9 +115,36 @@ export default function TagLibrarySheet({
 
   const canLoadMore = items.length < total;
   const isActive = inline || open;
+  const {
+    containerRef: listRef,
+    startIndex,
+    endIndex,
+    topSpacer,
+    bottomSpacer,
+    virtualized,
+    isNearEnd,
+  } = useVirtualList({
+    itemCount: items.length,
+    enabled: isActive,
+    estimateRowHeight: 74,
+    overscan: 8,
+    minItems: 90,
+  });
+  const visibleItems = virtualized ? items.slice(startIndex, endIndex) : items;
 
   const collectedText = useMemo(() => collectedTags.join(', '), [collectedTags]);
   const collectedSet = useMemo(() => new Set(collectedTags.map((t) => t.toLowerCase())), [collectedTags]);
+  const cacheKey = useCallback((q, c, s, limit, offset) => {
+    return [q || '', c || '', s || '', String(limit || 0), String(offset || 0)].join('::');
+  }, []);
+
+  const trimCache = useCallback(() => {
+    const cache = searchCacheRef.current;
+    if (cache.size <= 50) return;
+    const entries = Array.from(cache.entries());
+    entries.sort((a, b) => (a[1]?.ts || 0) - (b[1]?.ts || 0));
+    entries.slice(0, Math.max(0, entries.length - 50)).forEach(([key]) => cache.delete(key));
+  }, []);
 
   const addToCollection = useCallback((tag) => {
     const normalized = String(tag || '').trim();
@@ -212,20 +296,50 @@ export default function TagLibrarySheet({
     const q = typeof nextQuery === 'string' ? nextQuery : query;
     const c = typeof nextCategory === 'string' ? nextCategory : category;
     const s = typeof nextSort === 'string' ? nextSort : sort;
+    const key = cacheKey(q, c, s, 80, 0);
+    const now = Date.now();
+    const cached = searchCacheRef.current.get(key);
+    if (cached && now - cached.ts < 5 * 60 * 1000) {
+      setItems(cached.items || []);
+      setTotal(Number(cached.total || 0));
+      setOffset(0);
+      setError('');
+      setStatus('');
+      setLoading(false);
+      return;
+    }
+    const inflight = inflightRef.current.get(key);
+    if (inflight) {
+      try {
+        const res = await inflight;
+        setItems(res?.items || []);
+        setTotal(Number(res?.total || 0));
+        setOffset(0);
+        setError('');
+        setStatus('');
+      } catch {
+        // errors handled by owner
+      }
+      return;
+    }
     setLoading(true);
     setError('');
     setStatus('');
     setOffset(0);
-    if (searchAbortRef.current) {
-      searchAbortRef.current.abort();
+    if (searchAbortRef.current && searchAbortRef.current.key !== key) {
+      searchAbortRef.current.controller.abort();
     }
     const controller = new AbortController();
-    searchAbortRef.current = controller;
+    searchAbortRef.current = { controller, key };
     try {
-      const res = await searchDanbooruTags(
+      const request = searchDanbooruTags(
         { q, category: c, sort: s, limit: 80, offset: 0 },
         { signal: controller.signal }
       );
+      inflightRef.current.set(key, request);
+      const res = await request;
+      searchCacheRef.current.set(key, { items: res?.items || [], total: Number(res?.total || 0), ts: Date.now() });
+      trimCache();
       setItems(res?.items || []);
       setTotal(Number(res?.total || 0));
     } catch (e) {
@@ -237,30 +351,58 @@ export default function TagLibrarySheet({
       setItems([]);
       setTotal(0);
     } finally {
-      if (searchAbortRef.current === controller) {
+      inflightRef.current.delete(key);
+      if (searchAbortRef.current?.key === key) {
         searchAbortRef.current = null;
       }
       setLoading(false);
     }
-  }, [category, query, sort]);
+  }, [cacheKey, category, query, sort, trimCache]);
 
   const loadMore = useCallback(async () => {
     if (loading || loadingMore) return;
     if (!canLoadMore) return;
     const nextOffset = offset + 80;
+    const key = cacheKey(query, category, sort, 80, nextOffset);
+    const now = Date.now();
+    const cached = searchCacheRef.current.get(key);
+    if (cached && now - cached.ts < 5 * 60 * 1000) {
+      setItems((prev) => [...prev, ...(cached.items || [])]);
+      setTotal(Number(cached.total || 0));
+      setOffset(nextOffset);
+      setLoadingMore(false);
+      return;
+    }
+    const inflight = inflightRef.current.get(key);
+    if (inflight) {
+      try {
+        const res = await inflight;
+        const nextItems = res?.items || [];
+        setItems((prev) => [...prev, ...nextItems]);
+        setTotal(Number(res?.total || 0));
+        setOffset(nextOffset);
+      } catch {
+        // errors handled by owner
+      }
+      return;
+    }
     setLoadingMore(true);
     setError('');
-    if (loadAbortRef.current) {
-      loadAbortRef.current.abort();
+    if (loadAbortRef.current && loadAbortRef.current.key !== key) {
+      loadAbortRef.current.controller.abort();
     }
     const controller = new AbortController();
-    loadAbortRef.current = controller;
+    loadAbortRef.current = { controller, key };
     try {
-      const res = await searchDanbooruTags(
+      const request = searchDanbooruTags(
         { q: query, category, sort, limit: 80, offset: nextOffset },
         { signal: controller.signal }
       );
+      inflightRef.current.set(key, request);
+      const res = await request;
       const nextItems = res?.items || [];
+      searchCacheRef.current.set(key, { items: nextItems, total: Number(res?.total || 0), ts: Date.now() });
+      trimCache();
       setItems((prev) => [...prev, ...nextItems]);
       setTotal(Number(res?.total || 0));
       setOffset(nextOffset);
@@ -271,12 +413,13 @@ export default function TagLibrarySheet({
       console.error('Failed to load more tags', e);
       setError('Unable to load more tags.');
     } finally {
-      if (loadAbortRef.current === controller) {
+      inflightRef.current.delete(key);
+      if (loadAbortRef.current?.key === key) {
         loadAbortRef.current = null;
       }
       setLoadingMore(false);
     }
-  }, [canLoadMore, category, loading, loadingMore, offset, query, sort]);
+  }, [cacheKey, canLoadMore, category, loading, loadingMore, offset, query, sort, trimCache]);
 
   // Load categories on open
   useEffect(() => {
@@ -328,10 +471,10 @@ export default function TagLibrarySheet({
   useEffect(() => {
     return () => {
       if (searchAbortRef.current) {
-        searchAbortRef.current.abort();
+        searchAbortRef.current.controller?.abort?.();
       }
       if (loadAbortRef.current) {
-        loadAbortRef.current.abort();
+        loadAbortRef.current.controller?.abort?.();
       }
     };
   }, []);
@@ -339,6 +482,7 @@ export default function TagLibrarySheet({
   // Infinite load sentinel
   useEffect(() => {
     if (!isActive) return undefined;
+    if (virtualized) return undefined;
     const el = sentinelRef.current;
     if (!el) return undefined;
     if (typeof IntersectionObserver === 'undefined') return undefined;
@@ -352,6 +496,12 @@ export default function TagLibrarySheet({
     obs.observe(el);
     return () => obs.disconnect();
   }, [isActive, loadMore]);
+
+  useEffect(() => {
+    if (!virtualized) return;
+    if (!canLoadMore || loading || loadingMore) return;
+    if (isNearEnd) loadMore();
+  }, [virtualized, canLoadMore, loading, loadingMore, isNearEnd, loadMore]);
 
   const footer = useMemo(() => {
     if (inline) return null;
@@ -458,55 +608,33 @@ export default function TagLibrarySheet({
         {error ? <div className="text-xs text-[#FF8F70]">{error}</div> : null}
       </div>
 
-      <div className="composer-alias-list tag-library-grid" role="list">
+      <div className="composer-alias-list tag-library-grid" role="list" ref={listRef}>
         {loading ? (
           <div className="composer-alias-empty">Loading tags…</div>
         ) : items.length === 0 ? (
           <div className="composer-alias-empty">No tags found.</div>
         ) : (
           <>
-            {items.map((t) => (
-              <div
+            {virtualized && topSpacer > 0 ? (
+              <div aria-hidden style={{ height: `${topSpacer}px` }} />
+            ) : null}
+            {visibleItems.map((t) => (
+              <TagLibraryRow
                 key={`${t.tag}-${t.category}`}
-                className="tag-library-row"
-                role="listitem"
-                style={listItemVisibilityStyles}
-              >
-                <button
-                  type="button"
-                  className={`composer-alias-item tag-library-item ${!onSelectTag && collectedSet.has(String(t.tag || '').toLowerCase()) ? 'is-collected' : ''}`}
-                  onClick={() => {
-                    if (onSelectTag) {
-                      onSelectTag(String(t.tag || ''));
-                      setStatus(`Added: ${t.tag}`);
-                      return;
-                    }
-                    // Standalone mode: add to collection
-                    const tagStr = String(t.tag || '');
-                    if (collectedSet.has(tagStr.toLowerCase())) {
-                      removeFromCollection(tagStr);
-                      setStatus(`Removed: ${t.tag}`);
-                    } else {
-                      addToCollection(tagStr);
-                      setStatus(`Added: ${t.tag}`);
-                    }
-                  }}
-                >
-                  <div className="composer-alias-header">
-                    <div className="composer-alias-name tag-library-name">
-                      <code className="tag-library-code">{t.tag}</code>
-                    </div>
-                    {t.category ? (
-                      <span className="composer-alias-category">
-                        {formatSubcategoryLabel(t.category)}
-                      </span>
-                    ) : null}
-                  </div>
-                  <div className="composer-alias-token">{Number(t.count || 0).toLocaleString()}</div>
-                </button>
-              </div>
+                tag={t.tag}
+                category={t.category}
+                count={t.count}
+                isCollected={collectedSet.has(String(t.tag || '').toLowerCase())}
+                onSelectTag={onSelectTag}
+                addToCollection={addToCollection}
+                removeFromCollection={removeFromCollection}
+                setStatus={setStatus}
+              />
             ))}
-            <div ref={sentinelRef} className="composer-sentinel" />
+            {virtualized && bottomSpacer > 0 ? (
+              <div aria-hidden style={{ height: `${bottomSpacer}px` }} />
+            ) : null}
+            {!virtualized ? <div ref={sentinelRef} className="composer-sentinel" /> : null}
             {loadingMore ? (
               <div className="composer-alias-empty">Loading more…</div>
             ) : null}

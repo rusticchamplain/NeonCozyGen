@@ -12,9 +12,16 @@ import Button from '../components/ui/Button';
 import Select from '../components/ui/Select';
 import { IconControls, IconImages, IconArrowUp } from '../components/Icons';
 import { loadLastEditedParam, saveFormState, saveLastEditedParam } from '../utils/storage';
+import { formatFileBaseName, isFilePathLike, splitFilePath } from '../utils/modelDisplay';
 import { useStudioContext } from '../contexts/StudioContext';
 import { deleteWorkflowPreset, getWorkflowPresets, saveWorkflowPreset } from '../api';
 import useMediaQuery from '../hooks/useMediaQuery';
+
+const getFolderLabel = (folderPath = '') => {
+  if (!folderPath || folderPath === 'root') return 'root';
+  const parts = folderPath.split('/').filter(Boolean);
+  return parts[parts.length - 1] || folderPath;
+};
 
 const WorkflowSelectorBar = memo(function WorkflowSelectorBar({
   workflows = [],
@@ -37,10 +44,87 @@ const WorkflowSelectorBar = memo(function WorkflowSelectorBar({
   const isDesktop = useMediaQuery('(min-width: 768px)');
   const [menuOpen, setMenuOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [workflowFolder, setWorkflowFolder] = useState('All');
   useEffect(() => {
     setMenuOpen(false);
     setSheetOpen(false);
   }, [isDesktop]);
+
+  const workflowMeta = useMemo(
+    () =>
+      safeWorkflows.map((wf) => {
+        const value = String(wf || '');
+        if (!isFilePathLike(value)) {
+          return { value, isFile: false, base: '', folderPath: '' };
+        }
+        const { folderPath, base } = splitFilePath(value);
+        return { value, isFile: true, base, folderPath: folderPath || 'root' };
+      }),
+    [safeWorkflows]
+  );
+
+  const workflowFolders = useMemo(() => {
+    const set = new Set(['All']);
+    workflowMeta.forEach((meta) => {
+      if (meta.isFile && meta.folderPath) set.add(meta.folderPath);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [workflowMeta]);
+  const showWorkflowFolder = workflowFolders.length > 2;
+
+  useEffect(() => {
+    if (!showWorkflowFolder) {
+      if (workflowFolder !== 'All') setWorkflowFolder('All');
+      return;
+    }
+    if (!workflowFolders.includes(workflowFolder)) {
+      setWorkflowFolder('All');
+    }
+  }, [showWorkflowFolder, workflowFolder, workflowFolders]);
+
+  const workflowBaseCounts = useMemo(() => {
+    const map = new Map();
+    workflowMeta.forEach((meta) => {
+      if (!meta.isFile || !meta.base) return;
+      const key = meta.base.toLowerCase();
+      map.set(key, (map.get(key) || 0) + 1);
+    });
+    return map;
+  }, [workflowMeta]);
+
+  const workflowOptions = useMemo(() => {
+    const items = [];
+    const disambiguate = showWorkflowFolder && workflowFolder === 'All';
+    workflowMeta.forEach((meta) => {
+      if (!meta.isFile) {
+        items.push({ value: meta.value, label: meta.value });
+        return;
+      }
+      if (showWorkflowFolder && workflowFolder !== 'All' && meta.folderPath !== workflowFolder) return;
+      let label = meta.base || formatFileBaseName(meta.value) || meta.value;
+      if (disambiguate && meta.base) {
+        const key = meta.base.toLowerCase();
+        if (workflowBaseCounts.get(key) > 1) {
+          label = `${label} (${getFolderLabel(meta.folderPath)})`;
+        }
+      }
+      items.push({ value: meta.value, label });
+    });
+    return items;
+  }, [workflowMeta, workflowFolder, workflowBaseCounts, showWorkflowFolder]);
+
+  const hasWorkflowInFiltered = useMemo(() => {
+    if (!selectedWorkflow) return true;
+    return workflowOptions.some((opt) => String(opt.value) === String(selectedWorkflow));
+  }, [workflowOptions, selectedWorkflow]);
+
+  const workflowOptionsWithValue = useMemo(() => {
+    if (!selectedWorkflow || hasWorkflowInFiltered) return workflowOptions;
+    return [
+      { value: selectedWorkflow, label: formatFileBaseName(String(selectedWorkflow)) },
+      ...workflowOptions,
+    ];
+  }, [hasWorkflowInFiltered, selectedWorkflow, workflowOptions]);
   const closeMenus = () => {
     setMenuOpen(false);
     setSheetOpen(false);
@@ -67,6 +151,16 @@ const WorkflowSelectorBar = memo(function WorkflowSelectorBar({
           <label className="controls-context-label" htmlFor="workflow-select">
             Workflow
           </label>
+          {showWorkflowFolder ? (
+            <Select
+              value={workflowFolder}
+              onChange={setWorkflowFolder}
+              className="controls-context-select mb-2"
+              aria-label="Workflow folder filter"
+              size="sm"
+              options={workflowFolders.map((folder) => ({ value: folder, label: folder }))}
+            />
+          ) : null}
           <Select
             id="workflow-select"
             value={selectedWorkflow || ''}
@@ -75,7 +169,7 @@ const WorkflowSelectorBar = memo(function WorkflowSelectorBar({
             aria-label="Workflow"
             size="sm"
             placeholder="Select workflow..."
-            options={safeWorkflows.map((wf) => ({ value: wf, label: wf }))}
+            options={workflowOptionsWithValue}
           />
         </div>
         <div className="controls-context-field">

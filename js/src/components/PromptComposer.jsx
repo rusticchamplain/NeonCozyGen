@@ -1,5 +1,5 @@
 // js/src/components/PromptComposer.jsx
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import BottomSheet from './ui/BottomSheet';
 import SegmentedTabs from './ui/SegmentedTabs';
 import TokenStrengthSheet from './ui/TokenStrengthSheet';
@@ -16,11 +16,47 @@ import {
   removeElement,
 } from '../utils/tokenWeights';
 import { getDanbooruTagCategories, searchDanbooruTags } from '../api';
+import { useVirtualList } from '../hooks/useVirtualList';
 
 const listItemVisibilityStyles = {
   contentVisibility: 'auto',
   containIntrinsicSize: '260px 140px',
 };
+
+const TagComposerRow = memo(function TagComposerRow({
+  tag,
+  category,
+  count,
+  isCollected,
+  onToggle,
+}) {
+  const handleClick = useCallback((e) => {
+    e.stopPropagation();
+    onToggle(tag);
+  }, [onToggle, tag]);
+
+  return (
+    <button
+      type="button"
+      className={`composer-alias-item composer-tag-item ${isCollected ? 'is-collected' : ''}`}
+      onClick={handleClick}
+      style={listItemVisibilityStyles}
+      data-virtual-row="true"
+    >
+      <div className="composer-alias-header">
+        <div className="composer-alias-name composer-tag-name">
+          <code className="composer-tag-code">{tag}</code>
+        </div>
+        {category ? (
+          <span className="composer-alias-category">
+            {formatSubcategoryLabel(category)}
+          </span>
+        ) : null}
+      </div>
+      <div className="composer-alias-token composer-tag-count">{Number(count || 0).toLocaleString()}</div>
+    </button>
+  );
+});
 
 export default function PromptComposer({
   open = false,
@@ -43,6 +79,8 @@ export default function PromptComposer({
   const [pickerSubcategory, setPickerSubcategory] = useState('All');
   const [visibleCount, setVisibleCount] = useState(30);
   const [activeTab, setActiveTab] = useState('compose'); // 'compose' | 'aliases'
+  const isPage = variant === 'page';
+  const isVisible = isPage || open;
 
   // Drag and drop state
   const [dragIndex, setDragIndex] = useState(null);
@@ -68,6 +106,8 @@ export default function PromptComposer({
   const [tagError, setTagError] = useState('');
   const tagSearchAbortRef = useRef(null);
   const tagLoadAbortRef = useRef(null);
+  const tagSearchCacheRef = useRef(new Map());
+  const tagInflightRef = useRef(new Map());
   const [composerCollectedTags, setComposerCollectedTags] = useState([]);
   const [collectionStatus, setCollectionStatus] = useState('');
   const [composerCollectedAliases, setComposerCollectedAliases] = useState([]);
@@ -299,24 +339,64 @@ export default function PromptComposer({
     return () => { cancelled = true; };
   }, [open, activeTab, tagCategories.length]);
 
+  const tagCacheKey = useCallback((q, c, s, limit, offset) => {
+    return [q || '', c || '', s || '', String(limit || 0), String(offset || 0)].join('::');
+  }, []);
+
+  const trimTagCache = useCallback(() => {
+    const cache = tagSearchCacheRef.current;
+    if (cache.size <= 50) return;
+    const entries = Array.from(cache.entries());
+    entries.sort((a, b) => (a[1]?.ts || 0) - (b[1]?.ts || 0));
+    entries.slice(0, Math.max(0, entries.length - 50)).forEach(([key]) => cache.delete(key));
+  }, []);
+
   // Tag library: search function
   const searchTags = useCallback(async ({ nextQuery, nextCategory, nextSort } = {}) => {
     const q = typeof nextQuery === 'string' ? nextQuery : tagQuery;
     const c = typeof nextCategory === 'string' ? nextCategory : tagCategory;
     const s = typeof nextSort === 'string' ? nextSort : tagSort;
+    const key = tagCacheKey(q, c, s, 80, 0);
+    const now = Date.now();
+    const cached = tagSearchCacheRef.current.get(key);
+    if (cached && now - cached.ts < 5 * 60 * 1000) {
+      setTagItems(cached.items || []);
+      setTagTotal(Number(cached.total || 0));
+      setTagOffset(0);
+      setTagError('');
+      setTagLoading(false);
+      return;
+    }
+    const inflight = tagInflightRef.current.get(key);
+    if (inflight) {
+      try {
+        const res = await inflight;
+        setTagItems(res?.items || []);
+        setTagTotal(Number(res?.total || 0));
+        setTagOffset(0);
+        setTagError('');
+      } catch {
+        // errors handled by owner
+      }
+      return;
+    }
     setTagLoading(true);
     setTagError('');
     setTagOffset(0);
-    if (tagSearchAbortRef.current) {
-      tagSearchAbortRef.current.abort();
+    if (tagSearchAbortRef.current && tagSearchAbortRef.current.key !== key) {
+      tagSearchAbortRef.current.controller.abort();
     }
     const controller = new AbortController();
-    tagSearchAbortRef.current = controller;
+    tagSearchAbortRef.current = { controller, key };
     try {
-      const res = await searchDanbooruTags(
+      const request = searchDanbooruTags(
         { q, category: c, sort: s, limit: 80, offset: 0 },
         { signal: controller.signal }
       );
+      tagInflightRef.current.set(key, request);
+      const res = await request;
+      tagSearchCacheRef.current.set(key, { items: res?.items || [], total: Number(res?.total || 0), ts: Date.now() });
+      trimTagCache();
       setTagItems(res?.items || []);
       setTagTotal(Number(res?.total || 0));
     } catch (e) {
@@ -328,31 +408,59 @@ export default function PromptComposer({
       setTagItems([]);
       setTagTotal(0);
     } finally {
-      if (tagSearchAbortRef.current === controller) {
+      tagInflightRef.current.delete(key);
+      if (tagSearchAbortRef.current?.key === key) {
         tagSearchAbortRef.current = null;
       }
       setTagLoading(false);
     }
-  }, [tagCategory, tagQuery, tagSort]);
+  }, [tagCacheKey, tagCategory, tagQuery, tagSort, trimTagCache]);
 
   // Tag library: load more function
   const loadMoreTags = useCallback(async () => {
     if (tagLoading || tagLoadingMore) return;
     if (tagItems.length >= tagTotal) return;
     const nextOffset = tagOffset + 80;
+    const key = tagCacheKey(tagQuery, tagCategory, tagSort, 80, nextOffset);
+    const now = Date.now();
+    const cached = tagSearchCacheRef.current.get(key);
+    if (cached && now - cached.ts < 5 * 60 * 1000) {
+      setTagItems((prev) => [...prev, ...(cached.items || [])]);
+      setTagTotal(Number(cached.total || 0));
+      setTagOffset(nextOffset);
+      setTagLoadingMore(false);
+      return;
+    }
+    const inflight = tagInflightRef.current.get(key);
+    if (inflight) {
+      try {
+        const res = await inflight;
+        const nextItems = res?.items || [];
+        setTagItems((prev) => [...prev, ...nextItems]);
+        setTagTotal(Number(res?.total || 0));
+        setTagOffset(nextOffset);
+      } catch {
+        // errors handled by owner
+      }
+      return;
+    }
     setTagLoadingMore(true);
     setTagError('');
-    if (tagLoadAbortRef.current) {
-      tagLoadAbortRef.current.abort();
+    if (tagLoadAbortRef.current && tagLoadAbortRef.current.key !== key) {
+      tagLoadAbortRef.current.controller.abort();
     }
     const controller = new AbortController();
-    tagLoadAbortRef.current = controller;
+    tagLoadAbortRef.current = { controller, key };
     try {
-      const res = await searchDanbooruTags(
+      const request = searchDanbooruTags(
         { q: tagQuery, category: tagCategory, sort: tagSort, limit: 80, offset: nextOffset },
         { signal: controller.signal }
       );
+      tagInflightRef.current.set(key, request);
+      const res = await request;
       const nextItems = res?.items || [];
+      tagSearchCacheRef.current.set(key, { items: nextItems, total: Number(res?.total || 0), ts: Date.now() });
+      trimTagCache();
       setTagItems((prev) => [...prev, ...nextItems]);
       setTagTotal(Number(res?.total || 0));
       setTagOffset(nextOffset);
@@ -363,12 +471,13 @@ export default function PromptComposer({
       console.error('Failed to load more tags', e);
       setTagError('Unable to load more tags.');
     } finally {
-      if (tagLoadAbortRef.current === controller) {
+      tagInflightRef.current.delete(key);
+      if (tagLoadAbortRef.current?.key === key) {
         tagLoadAbortRef.current = null;
       }
       setTagLoadingMore(false);
     }
-  }, [tagCategory, tagLoading, tagLoadingMore, tagOffset, tagQuery, tagSort, tagItems.length, tagTotal]);
+  }, [tagCacheKey, tagCategory, tagLoading, tagLoadingMore, tagOffset, tagQuery, tagSort, tagItems.length, tagTotal, trimTagCache]);
 
   // Tag library: debounced search when filters change
   useEffect(() => {
@@ -382,17 +491,35 @@ export default function PromptComposer({
   useEffect(() => {
     return () => {
       if (tagSearchAbortRef.current) {
-        tagSearchAbortRef.current.abort();
+        tagSearchAbortRef.current.controller?.abort?.();
       }
       if (tagLoadAbortRef.current) {
-        tagLoadAbortRef.current.abort();
+        tagLoadAbortRef.current.controller?.abort?.();
       }
     };
   }, []);
 
+  const {
+    containerRef: tagListRef,
+    startIndex: tagStart,
+    endIndex: tagEnd,
+    topSpacer: tagTopSpacer,
+    bottomSpacer: tagBottomSpacer,
+    virtualized: tagsVirtualized,
+    isNearEnd: tagsNearEnd,
+  } = useVirtualList({
+    itemCount: tagItems.length,
+    enabled: open && activeTab === 'tags',
+    estimateRowHeight: 70,
+    overscan: 8,
+    minItems: 90,
+  });
+  const visibleTags = tagsVirtualized ? tagItems.slice(tagStart, tagEnd) : tagItems;
+
   // Tag library: infinite scroll sentinel
   useEffect(() => {
     if (!open || activeTab !== 'tags') return;
+    if (tagsVirtualized) return;
     const el = tagSentinelRef.current;
     if (!el) return;
     if (typeof IntersectionObserver === 'undefined') return;
@@ -405,9 +532,14 @@ export default function PromptComposer({
     );
     obs.observe(el);
     return () => obs.disconnect();
-  }, [open, activeTab, loadMoreTags]);
+  }, [open, activeTab, tagsVirtualized, loadMoreTags]);
 
-  const tagTotalLabel = tagTotal ? `${tagItems.length.toLocaleString()} / ${tagTotal.toLocaleString()}` : `${tagItems.length.toLocaleString()}`;
+  useEffect(() => {
+    if (!tagsVirtualized) return;
+    if (tagLoading || tagLoadingMore) return;
+    if (tagItems.length >= tagTotal) return;
+    if (tagsNearEnd) loadMoreTags();
+  }, [tagsVirtualized, tagLoading, tagLoadingMore, tagItems.length, tagTotal, tagsNearEnd, loadMoreTags]);
 
   const updatePromptValue = useCallback((updater) => {
     setLocalValue((prev) => {
@@ -464,12 +596,6 @@ export default function PromptComposer({
     setCollectionStatus('Cleared collected tags.');
   }, []);
 
-  const removeComposerTag = useCallback((tag) => {
-    const target = String(tag || '').trim().toLowerCase();
-    if (!target) return;
-    setComposerCollectedTags((prev) => prev.filter((t) => t.toLowerCase() !== target));
-  }, []);
-
   const applyComposerCollection = useCallback(() => {
     if (!composerCollectedTags.length) {
       setCollectionStatus('No tags to apply.');
@@ -516,12 +642,6 @@ export default function PromptComposer({
     setAliasCollectionStatus('Cleared selected aliases.');
   }, []);
 
-  const removeComposerAlias = useCallback((token) => {
-    const target = String(token || '').trim().toLowerCase();
-    if (!target) return;
-    setComposerCollectedAliases((prev) => prev.filter((t) => t.toLowerCase() !== target));
-  }, []);
-
   const applyComposerAliases = useCallback(() => {
     if (!composerCollectedAliases.length) {
       setAliasCollectionStatus('No aliases to apply.');
@@ -535,6 +655,77 @@ export default function PromptComposer({
     setComposerCollectedAliases([]);
     setActiveTab('compose');
   }, [composerCollectedAliases, insertAtCursor]);
+
+  const activeSelection = activeTab === 'tags'
+    ? {
+        kind: 'tag',
+        count: composerCollectedTags.length,
+        status: collectionStatus,
+        onClear: clearComposerCollection,
+        onApply: applyComposerCollection,
+      }
+    : activeTab === 'aliases'
+      ? {
+          kind: 'alias',
+          count: composerCollectedAliases.length,
+          status: aliasCollectionStatus,
+          onClear: clearComposerAliases,
+          onApply: applyComposerAliases,
+        }
+      : null;
+  const activeSelectionCount = activeSelection?.count || 0;
+  const activeSelectionLabel = activeSelection
+    ? `${activeSelectionCount} ${
+        activeSelection.kind === 'alias'
+          ? (activeSelectionCount === 1 ? 'alias' : 'aliases')
+          : (activeSelectionCount === 1 ? activeSelection.kind : `${activeSelection.kind}s`)
+      } selected`
+    : '';
+  const showSelectionFooter = !isPage && activeSelectionCount > 0;
+  const showSelectionFloat = isPage && activeSelectionCount > 0;
+  const selectionFloatStyle = showSelectionFloat
+    ? { '--composer-selection-offset': 'var(--bottom-nav-height, 64px)' }
+    : undefined;
+
+  const renderSelectionBar = (className, applyLabel, style) => {
+    if (!activeSelection || activeSelectionCount === 0) return null;
+    return (
+      <div className={`composer-tag-collection-bar ${className || ''}`.trim()} style={style}>
+        <div>
+          <div className="composer-tag-collection-label">
+            {activeSelectionLabel}
+          </div>
+          {activeSelection.status ? (
+            <div className="composer-tag-collection-status">{activeSelection.status}</div>
+          ) : null}
+        </div>
+        <div className="composer-tag-collection-actions">
+          <button
+            type="button"
+            className="composer-tag-collection-btn"
+            onClick={activeSelection.onClear}
+            disabled={!activeSelectionCount}
+          >
+            Clear
+          </button>
+          <button
+            type="button"
+            className="composer-tag-collection-btn is-primary"
+            onClick={activeSelection.onApply}
+            disabled={!activeSelectionCount}
+          >
+            {applyLabel}
+          </button>
+        </div>
+      </div>
+    );
+  };
+  const selectionFooter = showSelectionFooter
+    ? renderSelectionBar('is-footer', 'Insert')
+    : null;
+  const selectionFloat = showSelectionFloat
+    ? renderSelectionBar('is-floating', 'Insert', selectionFloatStyle)
+    : null;
 
   const handleRemoveElement = (element) => {
     updatePromptValue((prev) => removeElement(prev || '', element));
@@ -691,8 +882,6 @@ export default function PromptComposer({
     onClose?.();
   };
 
-  const isPage = variant === 'page';
-  const isVisible = isPage || open;
   if (!isVisible) return null;
 
   const composerShell = (
@@ -750,6 +939,7 @@ export default function PromptComposer({
               <div
                 ref={tokensListRef}
                 className={`composer-tokens-list ${dragIndex !== null ? 'is-dragging' : ''}`}
+                style={{ '--composer-elements': elements.length }}
               >
                 {elements.map((el, idx) => {
                   let displayName = el.text;
@@ -919,61 +1109,6 @@ export default function PromptComposer({
             )}
           </div>
 
-          <div className="composer-tag-collection-bar is-sticky">
-            <div>
-              <div className="composer-tag-collection-label">
-                {composerCollectedAliases.length ? `${composerCollectedAliases.length} selected` : 'No aliases selected'}
-              </div>
-              {aliasCollectionStatus ? (
-                <div className="composer-tag-collection-status">{aliasCollectionStatus}</div>
-              ) : null}
-            </div>
-            <div className="composer-tag-collection-actions">
-              <button
-                type="button"
-                className="composer-tag-collection-btn"
-                onClick={clearComposerAliases}
-                disabled={!composerCollectedAliases.length}
-              >
-                Clear
-              </button>
-              <button
-                type="button"
-                className="composer-tag-collection-btn is-primary"
-                onClick={applyComposerAliases}
-                disabled={!composerCollectedAliases.length}
-              >
-                Apply
-              </button>
-            </div>
-          </div>
-          {composerCollectedAliases.length ? (
-            <div className="composer-collection-inline" role="list">
-              {composerCollectedAliases.slice(0, 3).map((token) => {
-                const entry = aliasByToken.get(token.toLowerCase());
-                const display = entry?.displayName || token;
-                return (
-                  <button
-                    key={token}
-                    type="button"
-                    className="collected-tag-chip"
-                    onClick={() => removeComposerAlias(token)}
-                    aria-label={`Remove ${token}`}
-                    title={`$${token}$`}
-                  >
-                    <code className="collected-tag-code">{display}</code>
-                    <IconX size={12} />
-                  </button>
-                );
-              })}
-              {composerCollectedAliases.length > 3 ? (
-                <div className="collected-tag-chip tag-overflow-chip" aria-hidden="true">
-                  +{composerCollectedAliases.length - 3} more
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-
           <div className="composer-alias-list">
             {filteredAliases.length === 0 ? (
               <div className="composer-alias-empty">No aliases found.</div>
@@ -1060,101 +1195,36 @@ export default function PromptComposer({
             />
           </div>
 
-          <div className="composer-tags-header">
-            <div className="composer-tags-hint">
-              <span className="ml-3 opacity-80">{tagTotalLabel}</span>
-            </div>
-          </div>
-          <div className="composer-tag-collection-bar is-sticky">
-            <div>
-              <div className="composer-tag-collection-label">
-                {composerCollectedTags.length ? `${composerCollectedTags.length} selected` : 'No tags selected'}
-              </div>
-              {collectionStatus ? (
-                <div className="composer-tag-collection-status">{collectionStatus}</div>
-              ) : null}
-            </div>
-            <div className="composer-tag-collection-actions">
-              <button
-                type="button"
-                className="composer-tag-collection-btn"
-                onClick={clearComposerCollection}
-                disabled={!composerCollectedTags.length}
-              >
-                Clear
-              </button>
-              <button
-                type="button"
-                className="composer-tag-collection-btn is-primary"
-                onClick={applyComposerCollection}
-                disabled={!composerCollectedTags.length}
-              >
-                Apply
-              </button>
-            </div>
-          </div>
-          {composerCollectedTags.length ? (
-            <div className="composer-collection-inline" role="list">
-              {composerCollectedTags.slice(0, 3).map((tag) => (
-                <button
-                  key={tag}
-                  type="button"
-                  className="collected-tag-chip"
-                  onClick={() => removeComposerTag(tag)}
-                  aria-label={`Remove ${tag}`}
-                >
-                  <code className="collected-tag-code">{tag}</code>
-                  <IconX size={12} />
-                </button>
-              ))}
-              {composerCollectedTags.length > 3 ? (
-                <div className="collected-tag-chip tag-overflow-chip" aria-hidden="true">
-                  +{composerCollectedTags.length - 3} more
-                </div>
-              ) : null}
-            </div>
-          ) : null}
           {tagError ? <div className="composer-tags-error">{tagError}</div> : null}
 
-          <div className="composer-alias-list composer-tags-grid" role="list">
+          <div className="composer-alias-list composer-tags-grid" role="list" ref={tagListRef}>
             {tagLoading ? (
               <div className="composer-alias-empty">Loading tags…</div>
             ) : tagItems.length === 0 ? (
               <div className="composer-alias-empty">No tags found.</div>
             ) : (
               <>
-                {tagItems.map((t) => {
-                  const isCollected = composerCollectedTags.some(
-                    (tag) => tag.toLowerCase() === String(t.tag || '').toLowerCase()
-                  );
-                  return (
-                    <button
-                      key={`${t.tag}-${t.category}`}
-                      type="button"
-                      className={`composer-alias-item composer-tag-item ${isCollected ? 'is-collected' : ''}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleComposerTag(t.tag);
-                      }}
-                      style={listItemVisibilityStyles}
-                    >
-                    <div className="composer-alias-header">
-                      <div className="composer-alias-name composer-tag-name">
-                        <code className="composer-tag-code">{t.tag}</code>
-                      </div>
-                      {t.category ? (
-                        <span className="composer-alias-category">
-                          {formatSubcategoryLabel(t.category)}
-                        </span>
-                      ) : null}
-                    </div>
-                    <div className="composer-alias-token composer-tag-count">{Number(t.count || 0).toLocaleString()}</div>
-                  </button>
-                  );
-                })}
-                {tagItems.length < tagTotal && (
+                {tagsVirtualized && tagTopSpacer > 0 ? (
+                  <div aria-hidden style={{ height: `${tagTopSpacer}px` }} />
+                ) : null}
+                {visibleTags.map((t) => (
+                  <TagComposerRow
+                    key={`${t.tag}-${t.category}`}
+                    tag={t.tag}
+                    category={t.category}
+                    count={t.count}
+                    isCollected={composerCollectedTags.some(
+                      (tag) => tag.toLowerCase() === String(t.tag || '').toLowerCase()
+                    )}
+                    onToggle={toggleComposerTag}
+                  />
+                ))}
+                {tagsVirtualized && tagBottomSpacer > 0 ? (
+                  <div aria-hidden style={{ height: `${tagBottomSpacer}px` }} />
+                ) : null}
+                {tagItems.length < tagTotal && !tagsVirtualized ? (
                   <div ref={tagSentinelRef} className="composer-sentinel" />
-                )}
+                ) : null}
                 {tagLoadingMore ? (
                   <div className="composer-alias-empty">Loading more…</div>
                 ) : null}
@@ -1207,6 +1277,7 @@ export default function PromptComposer({
           {pageHeader}
           {composerShell}
         </div>
+        {selectionFloat}
         {strengthSheet}
       </>
     );
@@ -1222,13 +1293,16 @@ export default function PromptComposer({
         shouldCloseOnOverlayClick={false}
         shouldCloseOnEsc={false}
         footer={(
-          <div className="flex gap-2">
-            <button type="button" className="ui-button is-muted w-full" onClick={handleCancel}>
-              Cancel
-            </button>
-            <button type="button" className="ui-button is-primary w-full" onClick={handleSave}>
-              Apply
-            </button>
+          <div className="composer-footer-stack">
+            {selectionFooter}
+            <div className="flex gap-2">
+              <button type="button" className="ui-button is-muted w-full" onClick={handleCancel}>
+                Cancel
+              </button>
+              <button type="button" className="ui-button is-primary w-full" onClick={handleSave}>
+                Apply
+              </button>
+            </div>
           </div>
         )}
       >

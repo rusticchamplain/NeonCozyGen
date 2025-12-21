@@ -551,7 +551,25 @@ def _read_media_meta(base: str, item: dict):
     prompt_data = _safe_json_loads(info.get("prompt"))
     if not prompt_data:
         return None
-    return _summarize_prompt(prompt_data)
+    summary = _summarize_prompt(prompt_data) or {}
+    return {**summary, "has_prompt": True}
+
+
+def _read_prompt_payload(base: str, subfolder: str, filename: str):
+    if not filename or not filename.lower().endswith(".png"):
+        return None
+    path = os.path.normpath(os.path.join(base, subfolder, filename))
+    if not path.startswith(base):
+        return None
+    try:
+        with Image.open(path) as im:
+            info = im.info or {}
+    except Exception:
+        return None
+    prompt_data = _safe_json_loads(info.get("prompt"))
+    if not prompt_data:
+        return None
+    return {"prompt": prompt_data}
 
 
 def _attach_media_meta(items, base: str):
@@ -776,6 +794,21 @@ async def gallery_list(request: web.Request):
     }
     _gallery_cache_set(cache_key, data)
     return web.json_response(data)
+
+
+@routes.get("/cozygen/api/gallery/prompt")
+async def gallery_prompt(request: web.Request):
+    filename = (request.rel_url.query.get("filename") or "").strip()
+    subfolder = (request.rel_url.query.get("subfolder") or "").strip()
+    if not filename:
+        return web.json_response({"error": "missing filename"}, status=400)
+
+    base = folder_paths.get_output_directory()
+    payload = _read_prompt_payload(base, subfolder, filename)
+    if not payload:
+        return web.json_response({"error": "prompt metadata not found"}, status=404)
+
+    return web.json_response(payload)
 
 
 def _latest_mtime(path: str, recursive: bool, show_hidden: bool) -> float:

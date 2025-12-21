@@ -1,8 +1,10 @@
 // js/src/components/MediaViewerModal.jsx
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { getGalleryPrompt, queuePrompt } from '../api';
 import Button from './ui/Button';
 import { IconChevronLeft, IconChevronRight, IconX } from './Icons';
+import { saveLastRenderPayload } from '../utils/globalRender';
 
 const isVideo = (name = '') => /\.(mp4|webm|mov|mkv)$/i.test(name);
 
@@ -32,6 +34,7 @@ export default function MediaViewerModal({
   const overlayPointerDownRef = useRef(false);
   const closeButtonRef = useRef(null);
   const [metaOpen, setMetaOpen] = useState(false);
+  const [rerunBusy, setRerunBusy] = useState(false);
   const contentRef = useRef(null);
   const lastFocusedRef = useRef(null);
 
@@ -121,6 +124,52 @@ export default function MediaViewerModal({
       ? { label: 'LoRAs', value: meta.loras.join(', ') }
       : null,
   ].filter(Boolean);
+  const hasPromptMeta = Boolean(media?.meta?.has_prompt || metaRows.length);
+  const isPng = typeof media?.filename === 'string' && media.filename.toLowerCase().endsWith('.png');
+  const canRerun = hasPromptMeta && isPng;
+
+  const emitRenderState = (active) => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.dispatchEvent(new CustomEvent('cozygen:render-state', { detail: { active } }));
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleRerun = async () => {
+    if (!media || rerunBusy || !canRerun) return;
+    setRerunBusy(true);
+    emitRenderState(true);
+    try {
+      const data = await getGalleryPrompt({
+        filename: media.filename,
+        subfolder: media.subfolder || '',
+      });
+      const prompt = data?.prompt;
+      if (!prompt) {
+        throw new Error('prompt_missing');
+      }
+
+      saveLastRenderPayload({
+        workflowName: media.filename || 'gallery',
+        workflow: prompt,
+        timestamp: Date.now(),
+      });
+
+      await queuePrompt({ prompt });
+      emitRenderState(false);
+    } catch (err) {
+      emitRenderState(false);
+      if (err?.unauthorized) {
+        window.location.hash = '#/login';
+        return;
+      }
+      alert('Unable to re-run this item. It may not include prompt metadata.');
+    } finally {
+      setRerunBusy(false);
+    }
+  };
 
   return (
     createPortal(
@@ -170,6 +219,17 @@ export default function MediaViewerModal({
                 </button>
               </div>
               <div className="media-viewer-actions">
+                {canRerun ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleRerun}
+                    disabled={rerunBusy}
+                    aria-label="Re-run generation"
+                  >
+                    {rerunBusy ? 'Re-running…' : 'Re-run'}
+                  </Button>
+                ) : null}
                 {metaRows.length ? (
                   <Button
                     variant="ghost"

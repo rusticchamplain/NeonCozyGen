@@ -64,6 +64,44 @@ export default function PromptComposer({
   const [collectionStatus, setCollectionStatus] = useState('');
   const [composerCollectedAliases, setComposerCollectedAliases] = useState([]);
   const [aliasCollectionStatus, setAliasCollectionStatus] = useState('');
+  const expandedPrompt = useMemo(() => {
+    if (!localValue) return { text: '', parts: [] };
+    const lookup = new Map();
+    (aliasCatalog || []).forEach((entry) => {
+      if (!entry) return;
+      const key = String(entry.token || '').trim().toLowerCase();
+      const text = typeof entry.text === 'string' ? entry.text.trim() : '';
+      if (!key || !text) return;
+      lookup.set(key, text);
+    });
+    if (!lookup.size || !localValue.includes('$')) {
+      return { text: localValue, parts: [{ text: localValue, isAlias: false }] };
+    }
+
+    const parts = [];
+    const regex = /\$([a-z0-9_:-]+)\$/gi;
+    let lastIndex = 0;
+    let match;
+    while ((match = regex.exec(localValue)) !== null) {
+      const start = match.index;
+      if (start > lastIndex) {
+        parts.push({ text: localValue.slice(lastIndex, start), isAlias: false });
+      }
+      const key = String(match[1] || '').toLowerCase();
+      const replacement = lookup.get(key);
+      if (typeof replacement === 'string') {
+        parts.push({ text: replacement, isAlias: true });
+      } else {
+        parts.push({ text: match[0], isAlias: false });
+      }
+      lastIndex = regex.lastIndex;
+    }
+    if (lastIndex < localValue.length) {
+      parts.push({ text: localValue.slice(lastIndex), isAlias: false });
+    }
+    const text = parts.map((part) => part.text).join('');
+    return { text, parts };
+  }, [aliasCatalog, localValue]);
 
   // Sync local value with prop when modal opens
   useEffect(() => {
@@ -767,11 +805,23 @@ export default function PromptComposer({
             <div className="composer-expanded-header">
               <span className="composer-expanded-label">Expanded prompt</span>
               <span className="composer-expanded-meta">
-                {localValue ? `${localValue.length} chars` : 'Empty'}
+                {expandedPrompt.text ? `${expandedPrompt.text.length} chars` : 'Empty'}
               </span>
             </div>
             <div className="composer-expanded-box" aria-label="Expanded prompt">
-              {localValue ? localValue : 'No prompt yet.'}
+              {expandedPrompt.text ? (
+                expandedPrompt.parts.map((part, idx) => (
+                  part.isAlias ? (
+                    <span key={`alias-${idx}`} className="composer-expanded-alias">
+                      {part.text}
+                    </span>
+                  ) : (
+                    <span key={`text-${idx}`}>{part.text}</span>
+                  )
+                ))
+              ) : (
+                'No prompt yet.'
+              )}
             </div>
           </div>
         </div>

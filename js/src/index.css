@@ -8398,6 +8398,15 @@ textarea {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
+.composer-expanded-alias {
+  display: inline;
+  padding: 0 0.18rem;
+  border-radius: 0.35rem;
+  background: rgba(62, 240, 255, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(62, 240, 255, 0.22);
+  color: rgba(235, 250, 255, 0.95);
+}
+
 .composer-token {
   display: inline-flex;
   align-items: center;

@@ -106,6 +106,14 @@ export async function getGallery(
   return jget(`/cozygen/api/gallery?${qs.toString()}`, fetchOptions);
 }
 
+export async function getGalleryPrompt({ filename = '', subfolder = '' } = {}, options = {}) {
+  const qs = new URLSearchParams({
+    filename: String(filename || ''),
+    subfolder: String(subfolder || ''),
+  });
+  return jget(`/cozygen/api/gallery/prompt?${qs.toString()}`, options);
+}
+
 /* ---- Prompt aliases ---- */
 export async function getPromptAliases() {
   return jget('/cozygen/api/aliases');

@@ -3,6 +3,11 @@
 ## Architecture Overview
 CozyGen is a ComfyUI custom node package that adds CozyGen nodes, a REST-style API, and an optional auth layer, then serves a React UI under `/cozygen`. The frontend (Vite + React) drives workflow selection, dynamic parameter forms, gallery browsing, tag and alias tooling, and queues prompts via `/prompt` and `/ws`. Data files in `data/` seed or persist aliases, workflow metadata, and tag catalogs, while `workflows/` holds ComfyUI graphs and `js/web/` adds ComfyUI UI widgets for CozyGen nodes.
 
+## Candidate Consolidations
+- `js/src/components/TagLibrarySheet.jsx` and `js/src/components/PromptComposer.jsx`: both implement tag-library browsing (query/category/sort, paging, and selection/collection) using the same `/cozygen/api/tags/*` endpoints; likely duplicate UX logic that could be shared or extracted.
+- `js/src/components/inputs/StringInput.jsx` and `js/src/components/PromptComposer.jsx`: both build alias pickers (category/subcategory filtering, token insertion, and strength controls) using `aliasPresentation` and `tokenWeights`; a shared alias-picker module could reduce repeated filtering and UI state code.
+- `js/src/utils/presets.js` and `js/src/pages/MainPage.jsx`: client-side preset helpers persist to localStorage, while the UI uses server-backed presets via `/cozygen/api/workflow_presets`; the localStorage preset utilities appear legacy and could be merged into, or removed in favor of, the server path.
+
 ## Navigation Index
 - [Repository Root](#repository-root)
 - [data/](#data)

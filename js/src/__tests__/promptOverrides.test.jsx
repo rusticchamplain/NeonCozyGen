@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { analyzePromptGraph, applyPromptOverrides } from '../utils/promptOverrides';
+import { analyzePromptGraph, applyPromptOverrides } from '../features/workflow/utils/promptOverrides';
 
 const buildPrompt = () => ({
   10: {
@@ -70,7 +70,8 @@ describe('promptOverrides', () => {
     expect(prompt[41].inputs.default_value).toBe(512);
     expect(prompt[42].inputs.default_value).toBe(768);
 
-    expect(next[24].inputs.seed).toBe(-1);
+    expect(Number.isInteger(next[24].inputs.seed)).toBe(true);
+    expect(next[24].inputs.seed).toBeGreaterThanOrEqual(0);
     expect(next[25].inputs.default_value).toBe('New.ckpt');
     expect(next[30].inputs.default_value).toBe('NewLoRA.safetensors');
     expect(next[41].inputs.default_value).toBe(1024);

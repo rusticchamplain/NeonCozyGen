@@ -1,0 +1,199 @@
+// js/src/components/BottomNav.jsx
+import React from 'react';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import useGalleryPending from '../../features/gallery/hooks/useGalleryPending';
+import useMediaQuery from '../../hooks/useMediaQuery';
+import { requeueLastRender, hasLastRenderPayload } from '../../features/workflow/utils/globalRender';
+import Button from '../primitives/Button';
+import { IconGallery, IconTag, IconAlias, IconEdit, IconControls, IconRender } from '../primitives/Icons';
+
+const navLinks = [
+  { to: '/controls', label: 'Controls', Icon: IconControls },
+  { to: '/compose', label: 'Compose', Icon: IconEdit },
+  { to: '/gallery', label: 'Gallery', Icon: IconGallery },
+];
+
+const desktopLibraryLinks = [
+  { to: '/aliases', label: 'Aliases', Icon: IconAlias },
+  { to: '/tags', label: 'Tags', Icon: IconTag },
+];
+
+const linkClass = ({ isActive }) =>
+  [
+    'bottom-nav-link',
+    isActive ? 'is-active' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+export default function BottomNav() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const galleryPending = useGalleryPending();
+  const [flash, setFlash] = React.useState(false);
+  const [isRendering, setIsRendering] = React.useState(false);
+  const [libraryOpen, setLibraryOpen] = React.useState(false);
+  const [popoverStyle, setPopoverStyle] = React.useState({});
+  const isDesktop = useMediaQuery('(min-width: 768px)');
+  const popoverRef = React.useRef(null);
+  const libraryButtonRef = React.useRef(null);
+
+  // Check if we're on the Studio page
+  const isOnControls = location.pathname === '/controls';
+  const isOnComposer = location.pathname === '/compose';
+
+  const requestRender = async () => {
+    if (typeof window === 'undefined') return;
+    if (isRendering) return;
+
+    setFlash(true);
+    setTimeout(() => setFlash(false), 400);
+
+    if (isOnControls || isOnComposer) {
+      // On Controls/Compose pages: dispatch event for render handler
+      try {
+        window.dispatchEvent(new CustomEvent('cozygen:request-render'));
+      } catch {
+        // ignore
+      }
+    } else {
+      // On other pages: re-queue the last render directly
+      if (!hasLastRenderPayload()) {
+        // No previous render available - could show a toast, but for now just flash
+        return;
+      }
+      const result = await requeueLastRender();
+      if (!result.success) {
+        console.warn('Requeue failed:', result.error);
+      }
+    }
+  };
+
+  React.useEffect(() => {
+    const handler = (evt) => {
+      const active = !!evt?.detail?.active;
+      setIsRendering(active);
+      if (active) {
+        setFlash(true);
+        setTimeout(() => setFlash(false), 400);
+      }
+    };
+    window.addEventListener('cozygen:render-state', handler);
+    return () => window.removeEventListener('cozygen:render-state', handler);
+  }, []);
+
+  React.useEffect(() => {
+    if (!libraryOpen || isDesktop) return undefined;
+    const handleClick = (event) => {
+      if (popoverRef.current && popoverRef.current.contains(event.target)) return;
+      if (libraryButtonRef.current && libraryButtonRef.current.contains(event.target)) return;
+      setLibraryOpen(false);
+    };
+    window.addEventListener('pointerdown', handleClick);
+    return () => window.removeEventListener('pointerdown', handleClick);
+  }, [libraryOpen, isDesktop]);
+
+  React.useEffect(() => {
+    if (!libraryOpen || isDesktop || !libraryButtonRef.current) return;
+    const rect = libraryButtonRef.current.getBoundingClientRect();
+    const left = rect.left + rect.width / 2;
+    const bottom = window.innerHeight - rect.top + 8;
+    setPopoverStyle({
+      left: `${Math.min(window.innerWidth - 80, Math.max(40, left))}px`,
+      bottom: `${bottom}px`,
+      top: 'auto',
+    });
+  }, [libraryOpen, isDesktop]);
+
+  React.useEffect(() => {
+    if (!isDesktop) return;
+    setLibraryOpen(false);
+  }, [isDesktop]);
+
+  const visibleLinks = isDesktop
+    ? [...navLinks, ...desktopLibraryLinks]
+    : navLinks;
+
+  return (
+    <>
+      <nav className="bottom-nav" aria-label="Bottom navigation">
+        {visibleLinks.map((link) => (
+          <NavLink key={link.to} to={link.to} end={link.end} className={linkClass}>
+            <span className="bottom-nav-icon" aria-hidden="true">
+              <link.Icon size={20} />
+            </span>
+            <span className="bottom-nav-label">
+              {link.label}
+              {link.to === '/gallery' && galleryPending ? (
+                <span className="badge-dot pulse" aria-hidden="true" />
+              ) : null}
+            </span>
+          </NavLink>
+        ))}
+        {!isDesktop ? (
+          <button
+            key="library"
+            ref={libraryButtonRef}
+            type="button"
+            className="bottom-nav-link"
+            onClick={() => setLibraryOpen((prev) => !prev)}
+            aria-expanded={libraryOpen}
+            aria-label="Open library"
+          >
+            <span className="bottom-nav-icon" aria-hidden="true">
+              <IconTag size={20} />
+            </span>
+            <span className="bottom-nav-label">Library</span>
+          </button>
+        ) : null}
+        <button
+          key="render"
+          type="button"
+          className={`bottom-nav-link is-action ${flash ? 'is-flash' : ''} ${isRendering ? 'is-rendering' : ''}`}
+          onClick={requestRender}
+          aria-label="Render"
+          aria-busy={isRendering}
+          aria-disabled={isRendering}
+          disabled={isRendering}
+        >
+          <span className="bottom-nav-icon" aria-hidden="true">
+            <IconRender size={20} />
+          </span>
+          <span className="bottom-nav-label">Render</span>
+        </button>
+      </nav>
+      {!isDesktop ? (
+        <div
+          ref={popoverRef}
+          className={`library-popover ${libraryOpen ? 'is-open' : ''}`}
+          style={popoverStyle}
+        >
+          <Button
+            size="sm"
+            variant="ghost"
+            className="w-[120px] flex-col gap-1"
+            onClick={() => {
+              setLibraryOpen(false);
+              navigate('/aliases');
+            }}
+          >
+            <IconAlias size={18} />
+            <span className="text-[0.65rem]">Aliases</span>
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="w-[120px] flex-col gap-1"
+            onClick={() => {
+              setLibraryOpen(false);
+              navigate('/tags');
+            }}
+          >
+            <IconTag size={18} />
+            <span className="text-[0.65rem]">Tags</span>
+          </Button>
+        </div>
+      ) : null}
+    </>
+  );
+}

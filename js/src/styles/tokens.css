@@ -1,0 +1,55 @@
+/* ---- Aurora-inspired theme tokens ---- */
+:root {
+  color-scheme: dark;
+  --bg-deep: #030711;
+  --bg-panel: rgba(8, 12, 24, 0.9);
+  --bg-panel-strong: rgba(10, 15, 28, 0.94);
+  --bg-frost: rgba(255, 255, 255, 0.05);
+  --glass: rgba(255, 255, 255, 0.06);
+
+  --ink-strong: #edf2ff;
+  --ink-muted: #9fb2d7;
+  --ink-softer: #7f91b6;
+
+  --accent-warm: #6d8bff;
+  --accent-cool: #44e1c5;
+  --accent-blue: #6d8bff;
+
+  --panel-soft: var(--bg-panel);
+  --panel-strong: var(--bg-panel-strong);
+  --stroke-soft: rgba(255, 255, 255, 0.08);
+  --stroke-strong: rgba(255, 255, 255, 0.14);
+  --text-strong: var(--ink-strong);
+  --text-muted: var(--ink-muted);
+  --accent: var(--accent-cool);
+  --accent-soft: rgba(68, 225, 197, 0.18);
+  --neon-pink: #ffb9d6;
+  --neon-cyan: #5ef1d4;
+  --neon-purple: #8fa2ff;
+  --radius-lg: 1.2rem;
+
+  --surface-1: #0b1226;
+  --surface-2: #0d1529;
+  --surface-3: #0c1324;
+  --nav-glass: rgba(5, 8, 17, 0.92);
+  --stroke-plain: rgba(255, 255, 255, 0.08);
+  --accent-gradient: linear-gradient(115deg, #ff8f70, #6d8bff, #44e1c5);
+
+  /* spacing + radius scale */
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+
+  --radius-sm: 0.65rem;
+  --radius-md: 0.9rem;
+  --radius-lg: 1.25rem;
+  --radius-xl: 1.5rem;
+
+  /* elevation tiers */
+  --shadow-1: 0 8px 18px rgba(2, 5, 12, 0.35);
+  --shadow-2: 0 12px 28px rgba(2, 5, 12, 0.45);
+  --shadow-3: 0 20px 52px rgba(4, 7, 16, 0.6);
+}
+

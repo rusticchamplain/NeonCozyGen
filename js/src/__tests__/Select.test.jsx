@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import Select from '../components/ui/Select';
+import Select from '../ui/primitives/Select';
 
 describe('Select', () => {
   it('calls onChange with the selected value', () => {

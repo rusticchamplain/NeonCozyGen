@@ -1,14 +1,14 @@
 import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import Gallery from '../pages/Gallery';
-import { useGallery } from '../hooks/useGallery';
-import { useMediaViewer } from '../hooks/useMediaViewer';
+import Gallery from '../features/gallery/pages/Gallery';
+import { useGallery } from '../features/gallery/hooks/useGallery';
+import { useMediaViewer } from '../features/gallery/hooks/useMediaViewer';
 
-vi.mock('../hooks/useGallery', () => ({
+vi.mock('../features/gallery/hooks/useGallery', () => ({
   useGallery: vi.fn(),
 }));
 
-vi.mock('../hooks/useMediaViewer', () => ({
+vi.mock('../features/gallery/hooks/useMediaViewer', () => ({
   useMediaViewer: vi.fn(),
 }));
 

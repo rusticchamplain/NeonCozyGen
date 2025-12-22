@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import MediaViewerModal from '../components/MediaViewerModal';
+import MediaViewerModal from '../features/gallery/components/MediaViewerModal';
 
 describe('MediaViewerModal', () => {
   it('toggles metadata and closes on escape', async () => {

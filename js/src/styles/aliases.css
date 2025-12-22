@@ -1,0 +1,120 @@
+/* ---- Alias manager layout ---- */
+.alias-page {
+  max-width: min(1320px, 100vw - 1.5rem);
+}
+
+.alias-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.alias-list {
+  min-width: 0;
+}
+
+.alias-editor-panel {
+  display: none;
+}
+
+.alias-editor-card {
+  width: 100%;
+  margin: 0;
+  max-width: none;
+  padding: 1.1rem;
+}
+
+.alias-editor-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+}
+
+.alias-editor-heading {
+  min-width: 0;
+}
+
+.alias-editor-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--ink-strong);
+}
+
+.alias-editor-meta {
+  margin-top: 0.2rem;
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.alias-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.alias-editor-footer {
+  margin-top: 1rem;
+}
+
+.alias-editor-empty {
+  padding: 1.4rem 0.75rem;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-muted, #A9B6D9);
+}
+
+.tag-quick-add {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.tag-quick-input {
+  flex: 1 1 180px;
+  min-width: 140px;
+}
+
+@media (min-width: 1024px) {
+  .alias-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+    gap: 1.75rem;
+    align-items: start;
+  }
+
+  .alias-editor-panel {
+    display: block;
+    position: sticky;
+    top: 1rem;
+    align-self: start;
+  }
+
+  .alias-editor-card {
+    padding: 1.35rem;
+  }
+}
+
+/* Mobile fix: Alias page header overlap */
+@media (max-width: 480px) {
+  .alias-page .screen-sticky header {
+    flex-wrap: wrap;
+    gap: 0.5rem 0.75rem;
+  }
+
+  .alias-page .screen-sticky header > div:first-child {
+    flex: 1 1 100%;
+    min-width: 100%;
+  }
+
+  .alias-page .screen-sticky header > div:last-child {
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+}
+

@@ -344,7 +344,7 @@ export function applyPromptOverrides(prompt, overrides = {}) {
   if (seedMode && seedMode !== 'keep') {
     const seed =
       seedMode === 'random'
-        ? -1
+        ? Math.floor(Math.random() * 4294967295)
         : resolveScalarSeed(seedValue);
     if (seed !== null) {
       updateSeedGraph(next, seed);

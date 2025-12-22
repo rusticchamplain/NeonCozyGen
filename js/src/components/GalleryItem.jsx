@@ -231,15 +231,6 @@ function GalleryItem({
             </div>
           )}
         </button>
-
-        <div className="gallery-feed-meta">
-          <div className="flex-1 min-w-0">
-            <div className="gallery-feed-title">{displayName}</div>
-            {subfolder && (
-              <div className="gallery-feed-subfolder">{subfolder}</div>
-            )}
-          </div>
-        </div>
       </div>
     );
   }
@@ -283,17 +274,6 @@ function GalleryItem({
             Video
           </div>
         )}
-      </div>
-
-      <div className="gallery-tile-caption">
-        <div className="flex items-center justify-between gap-2">
-          <div className="gallery-tile-title">{displayName}</div>
-          {isVideo && (
-            <span className="gallery-tile-flag">
-              Vid
-            </span>
-          )}
-        </div>
       </div>
     </button>
   );

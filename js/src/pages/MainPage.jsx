@@ -1,308 +1,17 @@
 // js/src/pages/MainPage.jsx
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import BottomBar from '../components/BottomBar';
 import ImageInput from '../components/ImageInput';
 import FieldSpotlight from '../components/FieldSpotlight';
+import WorkflowSelectorSection from '../components/WorkflowSelectorSection';
 import WorkflowFormLayout from '../components/workflow/WorkflowFormLayout';
 import CollapsibleSection from '../components/CollapsibleSection';
 import RunLogsSheet from '../components/RunLogsSheet';
-import BottomSheet from '../components/ui/BottomSheet';
-import Button from '../components/ui/Button';
-import Select from '../components/ui/Select';
 import { IconControls, IconImages, IconArrowUp } from '../components/Icons';
 import { loadLastEditedParam, saveFormState, saveLastEditedParam } from '../utils/storage';
-import { formatFileBaseName, isFilePathLike, splitFilePath } from '../utils/modelDisplay';
 import { useStudioContext } from '../contexts/StudioContext';
 import { deleteWorkflowPreset, getWorkflowPresets, saveWorkflowPreset } from '../api';
-import useMediaQuery from '../hooks/useMediaQuery';
-
-const getFolderLabel = (folderPath = '') => {
-  if (!folderPath || folderPath === 'root') return 'root';
-  const parts = folderPath.split('/').filter(Boolean);
-  return parts[parts.length - 1] || folderPath;
-};
-
-const WorkflowSelectorBar = memo(function WorkflowSelectorBar({
-  workflows = [],
-  selectedWorkflow,
-  onWorkflowChange,
-  workflowData,
-  presets = [],
-  presetName = '',
-  onPresetNameChange,
-  selectedPresetId = '',
-  onPresetSelect,
-  onPresetSave,
-  onPresetDelete,
-  presetStatus,
-}) {
-  const safeWorkflows = Array.isArray(workflows) ? workflows : [];
-  const safePresets = Array.isArray(presets) ? presets : [];
-  const presetCount = safePresets.length;
-  const presetLabel = presetCount ? `${presetCount} saved` : 'No presets yet';
-  const isDesktop = useMediaQuery('(min-width: 768px)');
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const [workflowFolder, setWorkflowFolder] = useState('All');
-  useEffect(() => {
-    setMenuOpen(false);
-    setSheetOpen(false);
-  }, [isDesktop]);
-
-  const workflowMeta = useMemo(
-    () =>
-      safeWorkflows.map((wf) => {
-        const value = String(wf || '');
-        if (!isFilePathLike(value)) {
-          return { value, isFile: false, base: '', folderPath: '' };
-        }
-        const { folderPath, base } = splitFilePath(value);
-        return { value, isFile: true, base, folderPath: folderPath || 'root' };
-      }),
-    [safeWorkflows]
-  );
-
-  const workflowFolders = useMemo(() => {
-    const set = new Set(['All']);
-    workflowMeta.forEach((meta) => {
-      if (meta.isFile && meta.folderPath) set.add(meta.folderPath);
-    });
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [workflowMeta]);
-  const showWorkflowFolder = workflowFolders.length > 2;
-
-  useEffect(() => {
-    if (!showWorkflowFolder) {
-      if (workflowFolder !== 'All') setWorkflowFolder('All');
-      return;
-    }
-    if (!workflowFolders.includes(workflowFolder)) {
-      setWorkflowFolder('All');
-    }
-  }, [showWorkflowFolder, workflowFolder, workflowFolders]);
-
-  const workflowBaseCounts = useMemo(() => {
-    const map = new Map();
-    workflowMeta.forEach((meta) => {
-      if (!meta.isFile || !meta.base) return;
-      const key = meta.base.toLowerCase();
-      map.set(key, (map.get(key) || 0) + 1);
-    });
-    return map;
-  }, [workflowMeta]);
-
-  const workflowOptions = useMemo(() => {
-    const items = [];
-    const disambiguate = showWorkflowFolder && workflowFolder === 'All';
-    workflowMeta.forEach((meta) => {
-      if (!meta.isFile) {
-        items.push({ value: meta.value, label: meta.value });
-        return;
-      }
-      if (showWorkflowFolder && workflowFolder !== 'All' && meta.folderPath !== workflowFolder) return;
-      let label = meta.base || formatFileBaseName(meta.value) || meta.value;
-      if (disambiguate && meta.base) {
-        const key = meta.base.toLowerCase();
-        if (workflowBaseCounts.get(key) > 1) {
-          label = `${label} (${getFolderLabel(meta.folderPath)})`;
-        }
-      }
-      items.push({ value: meta.value, label });
-    });
-    return items;
-  }, [workflowMeta, workflowFolder, workflowBaseCounts, showWorkflowFolder]);
-
-  const hasWorkflowInFiltered = useMemo(() => {
-    if (!selectedWorkflow) return true;
-    return workflowOptions.some((opt) => String(opt.value) === String(selectedWorkflow));
-  }, [workflowOptions, selectedWorkflow]);
-
-  const workflowOptionsWithValue = useMemo(() => {
-    if (!selectedWorkflow || hasWorkflowInFiltered) return workflowOptions;
-    return [
-      { value: selectedWorkflow, label: formatFileBaseName(String(selectedWorkflow)) },
-      ...workflowOptions,
-    ];
-  }, [hasWorkflowInFiltered, selectedWorkflow, workflowOptions]);
-  const closeMenus = () => {
-    setMenuOpen(false);
-    setSheetOpen(false);
-  };
-  const toggleMenu = () => {
-    if (!isDesktop) {
-      setSheetOpen(true);
-      return;
-    }
-    setMenuOpen((v) => !v);
-  };
-  const handleSave = () => {
-    onPresetSave();
-    closeMenus();
-  };
-  const handleDelete = () => {
-    onPresetDelete();
-    closeMenus();
-  };
-  return (
-    <div className="controls-context">
-      <div className="controls-context-row">
-        <div className="controls-context-field">
-          <label className="controls-context-label" htmlFor="workflow-select">
-            Workflow
-          </label>
-          {showWorkflowFolder ? (
-            <Select
-              value={workflowFolder}
-              onChange={setWorkflowFolder}
-              className="controls-context-select mb-2"
-              aria-label="Workflow folder filter"
-              size="sm"
-              options={workflowFolders.map((folder) => ({ value: folder, label: folder }))}
-            />
-          ) : null}
-          <Select
-            id="workflow-select"
-            value={selectedWorkflow || ''}
-            onChange={onWorkflowChange}
-            className="controls-context-select"
-            aria-label="Workflow"
-            size="sm"
-            placeholder="Select workflow..."
-            options={workflowOptionsWithValue}
-          />
-        </div>
-        <div className="controls-context-field">
-          <label className="controls-context-label" htmlFor="preset-select">
-            Preset
-          </label>
-          <Select
-            id="preset-select"
-            value={selectedPresetId || ''}
-            onChange={onPresetSelect}
-            className="controls-context-select"
-            aria-label="Workflow preset"
-            disabled={!workflowData}
-            size="sm"
-            placeholder="Presets..."
-            options={safePresets.map((preset) => ({ value: preset.id, label: preset.name }))}
-          />
-        </div>
-        <div className="controls-context-actions">
-          <div className="controls-context-menu">
-            <Button
-              variant="ghost"
-              size="xs"
-              onClick={toggleMenu}
-              aria-haspopup={isDesktop ? 'menu' : 'dialog'}
-              aria-expanded={isDesktop ? menuOpen : sheetOpen}
-              aria-label="Manage presets"
-            >
-              Manage presets
-            </Button>
-            {isDesktop && menuOpen ? (
-              <div className="controls-context-menu-items" role="menu">
-                <div className="controls-context-menu-row">
-                  <input
-                    type="text"
-                    value={presetName}
-                    onChange={(e) => onPresetNameChange(e.target.value)}
-                    className="controls-context-input ui-control ui-input is-compact"
-                    placeholder="Preset name"
-                    aria-label="Preset name"
-                    disabled={!workflowData}
-                  />
-                  <button
-                    type="button"
-                    className="controls-context-menu-btn"
-                    onClick={handleSave}
-                    disabled={!workflowData || !presetName.trim()}
-                    role="menuitem"
-                  >
-                    Save
-                  </button>
-                </div>
-                <button
-                  type="button"
-                  className="controls-context-menu-btn is-danger"
-                  onClick={handleDelete}
-                  disabled={!workflowData || !selectedPresetId}
-                  role="menuitem"
-                >
-                  Delete
-                </button>
-              </div>
-            ) : null}
-          </div>
-        </div>
-      </div>
-      <div className="controls-context-meta">
-        <span>{presetLabel}</span>
-        {presetStatus ? <span className="controls-context-status">{presetStatus}</span> : null}
-      </div>
-      {!isDesktop && sheetOpen ? (
-        <BottomSheet
-          open={sheetOpen}
-          onClose={closeMenus}
-          title="Manage presets"
-        >
-          <div className="sheet-stack">
-            <div className="sheet-section">
-              <div className="sheet-label">Preset</div>
-              <Select
-                value={selectedPresetId || ''}
-                onChange={handlePresetSelect}
-                className="sheet-select"
-                aria-label="Select preset"
-                size="sm"
-                options={[
-                  { value: '', label: 'New preset' },
-                  ...safePresets.map((preset) => ({
-                    value: preset.id,
-                    label: preset.name,
-                  })),
-                ]}
-              />
-            </div>
-            <div className="sheet-section">
-              <div className="sheet-label">Preset name</div>
-              <input
-                type="text"
-                value={presetName}
-                onChange={(e) => onPresetNameChange(e.target.value)}
-                className="sheet-input ui-control ui-input"
-                placeholder="Preset name"
-                aria-label="Preset name"
-                disabled={!workflowData}
-              />
-            </div>
-            <div className="sheet-section">
-              <div className="sheet-label">Actions</div>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  className="ui-button is-primary w-full"
-                  onClick={handleSave}
-                  disabled={!workflowData || !presetName.trim()}
-                >
-                  Save
-                </button>
-                <button
-                  type="button"
-                  className="ui-button is-muted w-full"
-                  onClick={handleDelete}
-                  disabled={!workflowData || !selectedPresetId}
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-          </div>
-        </BottomSheet>
-      ) : null}
-    </div>
-  );
-});
 
 function MainPage() {
   const navigate = useNavigate();
@@ -562,27 +271,50 @@ function MainPage() {
       </div>
 
       <section className="controls-board">
+        <WorkflowSelectorSection
+          workflows={workflows}
+          selectedWorkflow={selectedWorkflow}
+          onWorkflowChange={handleWorkflowSelect}
+          workflowData={workflowData}
+          presets={presets}
+          presetName={presetName}
+          onPresetNameChange={setPresetName}
+          selectedPresetId={selectedPresetId}
+          onPresetSelect={handlePresetSelect}
+          onPresetSave={handlePresetSave}
+          onPresetDelete={handlePresetDelete}
+          presetStatus={presetStatus}
+        />
+
+        {hasImageInputs ? (
+          <CollapsibleSection
+            ref={imageSectionRef}
+            className="controls-panel"
+            title={<><IconImages size={18} className="inline-block mr-2 align-text-bottom" />Images</>}
+            bodyClassName="control-shell controls-body"
+            defaultOpen={false}
+          >
+            {workflowData ? (
+              <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                {safeImageInputs.map((imgInput) => (
+                  <ImageInput
+                    key={imgInput.id}
+                    input={imgInput}
+                    value={formData[imgInput.inputs.param_name] || ''}
+                    onFormChange={handleFormChange}
+                  />
+                ))}
+              </div>
+            ) : null}
+          </CollapsibleSection>
+        ) : null}
+
         <CollapsibleSection
           title={<><IconControls size={18} className="inline-block mr-2 align-text-bottom" />Parameters</>}
           bodyClassName="control-shell controls-body"
           defaultOpen
           className="controls-panel"
         >
-          <WorkflowSelectorBar
-            workflows={workflows}
-            selectedWorkflow={selectedWorkflow}
-            onWorkflowChange={handleWorkflowSelect}
-            workflowData={workflowData}
-            presets={presets}
-            presetName={presetName}
-            onPresetNameChange={setPresetName}
-            selectedPresetId={selectedPresetId}
-            onPresetSelect={handlePresetSelect}
-            onPresetSave={handlePresetSave}
-            onPresetDelete={handlePresetDelete}
-            presetStatus={presetStatus}
-          />
-
           {workflowData ? (
             <WorkflowFormLayout
               workflowName={selectedWorkflow}
@@ -608,29 +340,6 @@ function MainPage() {
             </div>
           )}
         </CollapsibleSection>
-
-        {hasImageInputs ? (
-          <CollapsibleSection
-            ref={imageSectionRef}
-            className="scroll-mt-24 controls-panel controls-subpanel"
-            title={<><IconImages size={18} className="inline-block mr-2 align-text-bottom" />Images</>}
-            defaultOpen={false}
-            variant="bare"
-          >
-            {workflowData ? (
-              <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-                {safeImageInputs.map((imgInput) => (
-                  <ImageInput
-                    key={imgInput.id}
-                    input={imgInput}
-                    value={formData[imgInput.inputs.param_name] || ''}
-                    onFormChange={handleFormChange}
-                  />
-                ))}
-              </div>
-            ) : null}
-          </CollapsibleSection>
-        ) : null}
       </section>
 
       <div className="controls-status-strip">

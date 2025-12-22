@@ -1455,6 +1455,24 @@ async def thumb(request: web.Request):
     return web.FileResponse(dest, headers=_thumb_headers(etag))
 
 
+@routes.post("/cozygen/api/clear_cache")
+async def clear_cache(request: web.Request):
+    """Clear thumbnail cache"""
+    try:
+        import shutil
+        if os.path.exists(THUMBS_DIR):
+            shutil.rmtree(THUMBS_DIR)
+            os.makedirs(THUMBS_DIR, exist_ok=True)
+
+        # Also clear the gallery cache
+        global _GALLERY_CACHE
+        _GALLERY_CACHE.clear()
+
+        return web.json_response({"status": "ok", "message": "Cache cleared successfully"})
+    except Exception as e:
+        return web.json_response({"status": "error", "message": str(e)}, status=500)
+
+
 # ---------------- Auth
 @routes.post("/cozygen/api/login")
 async def login(request: web.Request):

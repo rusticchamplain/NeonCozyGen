@@ -55,6 +55,7 @@ export default function MediaViewerModal({
   const closeButtonRef = useRef(null);
   const [metaOpen, setMetaOpen] = useState(false);
   const [rerunBusy, setRerunBusy] = useState(false);
+  const [rerunSuccess, setRerunSuccess] = useState(false);
   const contentRef = useRef(null);
   const lastFocusedRef = useRef(null);
   const justOpenedRef = useRef(false);
@@ -111,6 +112,7 @@ export default function MediaViewerModal({
     if (!isOpen) return;
     setMetaOpen(false);
     setOptionsOpen(false);
+    setRerunSuccess(false);
     setSeedMode('random');
     setSeedInput('');
     setWidthInput('');
@@ -522,7 +524,15 @@ export default function MediaViewerModal({
       });
       await queuePrompt({ prompt: nextPrompt });
       emitRenderState(false);
-      setOptionsOpen(false);
+
+      // Show success state before closing
+      setRerunSuccess(true);
+
+      // Smoothly close after showing success feedback
+      setTimeout(() => {
+        setOptionsOpen(false);
+        setRerunSuccess(false);
+      }, 1500);
     } catch (err) {
       emitRenderState(false);
       if (err?.unauthorized) {
@@ -688,26 +698,35 @@ export default function MediaViewerModal({
           open={optionsOpen}
           onClose={() => setOptionsOpen(false)}
           title="Re-run options"
-          footer={(
-            <div className="flex gap-2">
-              <button
-                type="button"
-                className="ui-button is-muted w-full"
-                onClick={() => setOptionsOpen(false)}
-                disabled={rerunBusy}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="ui-button is-primary w-full"
-                onClick={handleRerunWithOptions}
-                disabled={rerunBusy || promptLoading || !!promptError || !isSeedValid || !isSizeValid}
-              >
-                {rerunBusy ? 'Re-running…' : 'Run'}
-              </button>
-            </div>
-          )}
+          footer={
+            rerunSuccess ? (
+              <div className="fade-in flex items-center justify-center gap-2 py-2 text-sm font-medium text-[#44E1C5]">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+                Render queued successfully!
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="ui-button is-muted w-full"
+                  onClick={() => setOptionsOpen(false)}
+                  disabled={rerunBusy}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="ui-button is-primary w-full"
+                  onClick={handleRerunWithOptions}
+                  disabled={rerunBusy || promptLoading || !!promptError || !isSeedValid || !isSizeValid}
+                >
+                  {rerunBusy ? 'Re-running…' : 'Run'}
+                </button>
+              </div>
+            )
+          }
         >
           <div className="sheet-stack">
             {promptLoading ? (

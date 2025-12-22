@@ -1,6 +1,6 @@
 // js/src/components/TopBar.jsx
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import '../styles/mobile-helpers.css';
 import useGalleryPending from '../hooks/useGalleryPending';
@@ -40,6 +40,8 @@ export default function TopBar({ isMobileAlignedNav = false }) {
   const { logout, user } = useAuth();
   const [renderActive, setRenderActive] = useState(false);
   const isDesktop = useMediaQuery('(min-width: 768px)');
+  const menuRef = useRef(null);
+  const toggleBtnRef = useRef(null);
   const toggleMenu = () => setMenuOpen((prev) => !prev);
   const closeMenu = () => setMenuOpen(false);
   const isLogin = pathname === '/login';
@@ -56,6 +58,30 @@ export default function TopBar({ isMobileAlignedNav = false }) {
     window.addEventListener('cozygen:render-state', handler);
     return () => window.removeEventListener('cozygen:render-state', handler);
   }, []);
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    if (!menuOpen) return;
+
+    const handleClickOutside = (event) => {
+      if (
+        menuRef.current &&
+        !menuRef.current.contains(event.target) &&
+        toggleBtnRef.current &&
+        !toggleBtnRef.current.contains(event.target)
+      ) {
+        closeMenu();
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, [menuOpen]);
 
   const requestRender = async () => {
     if (renderActive) return;
@@ -159,6 +185,7 @@ export default function TopBar({ isMobileAlignedNav = false }) {
 
           {showMenuToggle ? (
             <button
+              ref={toggleBtnRef}
               type="button"
               className={`mobile-menu-toggle btn-touch ${menuOpen ? 'is-active' : ''}`}
               onClick={toggleMenu}
@@ -176,6 +203,7 @@ export default function TopBar({ isMobileAlignedNav = false }) {
 
       {showMenuToggle ? (
         <div
+          ref={menuRef}
           id="cozygen-mobile-nav"
           className={`mobile-nav-drawer ${menuOpen ? 'is-open' : ''}`}
           role="menu"
@@ -196,8 +224,6 @@ export default function TopBar({ isMobileAlignedNav = false }) {
                 </span>
               </NavLink>
             ))}
-          </div>
-          <div className="mobile-nav-section secondary">
             <NavLink
               to="/gallery"
               className={navLinkClasses}
@@ -210,6 +236,8 @@ export default function TopBar({ isMobileAlignedNav = false }) {
                 {galleryPending ? <span className="badge-dot" aria-hidden="true" /> : null}
               </span>
             </NavLink>
+          </div>
+          <div className="mobile-nav-section secondary">
             <NavLink
               to="/tags"
               className={navLinkClasses}

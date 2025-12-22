@@ -193,3 +193,8 @@ export async function authStatus() {
     handleResponse('/cozygen/api/auth_status', res)
   );
 }
+
+/* ---- Cache ---- */
+export async function clearCache() {
+  return jpost('/cozygen/api/clear_cache', {});
+}

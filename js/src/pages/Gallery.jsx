@@ -9,6 +9,7 @@ import Button from '../components/ui/Button';
 import Select from '../components/ui/Select';
 import { useGallery } from '../hooks/useGallery';
 import { useMediaViewer } from '../hooks/useMediaViewer';
+import { clearCache } from '../api';
 import {
   IconEmpty,
   IconFolderOpen,
@@ -219,6 +220,16 @@ export default function Gallery() {
     }
   }, [feedAutoplay]);
 
+  const handleClearCache = useCallback(async () => {
+    try {
+      await clearCache();
+      refresh();
+      alert('Cache cleared successfully! Thumbnails will be regenerated.');
+    } catch (err) {
+      alert('Failed to clear cache: ' + (err.message || 'Unknown error'));
+    }
+  }, [refresh]);
+
   const handleItemSelect = useCallback((item) => {
     if (item.type === 'directory') {
       selectDir(item.subfolder);
@@ -380,15 +391,19 @@ export default function Gallery() {
                 >
                   <IconRefresh size={16} />
                 </Button>
+                <Button
+                  size="xs"
+                  onClick={handleClearCache}
+                  title="Clear thumbnail cache"
+                  aria-label="Clear cache"
+                >
+                  Clear Cache
+                </Button>
               </div>
             </div>
           </div>
 
           <div className="gallery-pagination">
-            <div className="gallery-pagination-info">
-              {isRefreshing ? <span className="loading-spinner" aria-hidden="true" /> : null}
-              <span className={isInitialLoading ? 'gallery-loading-text' : ''}>{summaryMeta}</span>
-            </div>
             <div className="gallery-pagination-controls">
               <button
                 type="button"

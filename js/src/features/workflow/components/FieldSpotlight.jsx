@@ -1,5 +1,6 @@
 // js/src/components/FieldSpotlight.jsx
 import { useEffect, useRef, useState } from 'react';
+import Button from '../../../ui/primitives/Button';
 import { IconX } from '../../../ui/primitives/Icons';
 
 export default function FieldSpotlight({
@@ -103,14 +104,14 @@ export default function FieldSpotlight({
         <div className="spotlight-body">{content}</div>
         <div className="spotlight-footer">
           <div className="spotlight-footer-right">
-            <button
-              type="button"
-              className="ui-button is-muted is-compact"
+            <Button
+              size="sm"
+              variant="muted"
               onClick={onClose}
               aria-label="Close"
             >
               Close
-            </button>
+            </Button>
           </div>
         </div>
       </div>

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import BottomSheet from '../primitives/BottomSheet';
+import Button from '../primitives/Button';
 import { formatTokenWeight } from '../../utils/tokenWeights';
 
 function clamp(n, min, max) {
@@ -35,23 +36,23 @@ export default function TokenStrengthSheet({
       title={title}
       footer={(
         <div className="flex gap-2">
-          <button type="button" className="ui-button is-muted w-full" onClick={onClose}>
+          <Button variant="muted" className="w-full" onClick={onClose}>
             Cancel
-          </button>
-          <button
-            type="button"
-            className="ui-button is-primary w-full"
+          </Button>
+          <Button
+            variant="primary"
+            className="w-full"
             onClick={() => {
               onApply?.(draft);
               onClose?.();
             }}
           >
             Done
-          </button>
+          </Button>
         </div>
       )}
     >
-      <div className="sheet-stack">
+      <div className="sheet-stack token-strength-sheet">
         <div className="sheet-section">
           <div className="sheet-label">Alias</div>
           <div className="sheet-hint">{tokenLabel || '—'}</div>
@@ -59,24 +60,24 @@ export default function TokenStrengthSheet({
 
         <div className="sheet-section">
           <div className="sheet-label">Strength</div>
-          <div className="flex items-center justify-between gap-3">
-            <button
-              type="button"
-              className="ui-button is-muted is-compact"
+          <div className="token-strength-row">
+            <Button
+              size="sm"
+              variant="muted"
               onClick={() => setDraft((v) => clamp(v - 0.05, 0.2, 2.0))}
             >
               −
-            </button>
-            <div className="text-sm text-[rgba(237,242,255,0.92)] tabular-nums">
+            </Button>
+            <div className="token-strength-value tabular-nums">
               {pretty}×
             </div>
-            <button
-              type="button"
-              className="ui-button is-muted is-compact"
+            <Button
+              size="sm"
+              variant="muted"
               onClick={() => setDraft((v) => clamp(v + 0.05, 0.2, 2.0))}
             >
               +
-            </button>
+            </Button>
           </div>
           <input
             type="range"
@@ -85,42 +86,35 @@ export default function TokenStrengthSheet({
             step={0.05}
             value={draft}
             onChange={(e) => setDraft(clamp(e.target.value, 0.2, 2.0))}
-            className="w-full"
+            className="ui-range"
             aria-label="Alias strength"
           />
-          <div className="sheet-hint">1.0× is normal. Increase to emphasize or reduce to soften.</div>
+          <div className="sheet-hint token-strength-hint">
+            1.0× is normal. Increase to emphasize or reduce to soften.
+          </div>
         </div>
 
         <div className="sheet-section">
           <div className="sheet-label">Actions</div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <button
-              type="button"
-              className="ui-button is-ghost is-compact"
+          <div className="token-strength-actions">
+            <Button
+              size="sm"
+              variant="ghost"
               onClick={() => setDraft(1)}
             >
-              Reset to 1.0×
-            </button>
-            <button
-              type="button"
-              className="ui-button is-ghost is-compact"
-              onClick={() => {
-                onRemoveWeight?.();
-                onClose?.();
-              }}
-            >
-              Remove strength
-            </button>
-            <button
-              type="button"
-              className="ui-button is-danger is-compact"
+              Reset
+            </Button>
+            <span className="token-strength-divider" aria-hidden="true">|</span>
+            <Button
+              size="sm"
+              variant="danger"
               onClick={() => {
                 onDeleteToken?.();
                 onClose?.();
               }}
             >
-              Remove alias
-            </button>
+              Delete
+            </Button>
           </div>
         </div>
       </div>

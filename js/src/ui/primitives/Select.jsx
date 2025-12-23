@@ -35,6 +35,7 @@ function Select({
   className = '',
   wrapperClassName = '',
   searchable = false,
+  searchThreshold = 0,
   searchPlaceholder = 'Search options...',
   searchValue,
   onSearchChange,
@@ -46,9 +47,11 @@ function Select({
   const setQuery = onSearchChange || setInternalSearch;
 
   const normalizedOptions = useMemo(() => normalizeOptions(options), [options]);
+  const shouldSearch = searchable
+    || (typeof searchThreshold === 'number' && searchThreshold > 0 && normalizedOptions.length > searchThreshold);
   const filteredOptions = useMemo(
-    () => (searchable ? filterOptions(normalizedOptions, query) : normalizedOptions),
-    [normalizedOptions, query, searchable]
+    () => (shouldSearch ? filterOptions(normalizedOptions, query) : normalizedOptions),
+    [normalizedOptions, query, shouldSearch]
   );
 
   const selectClasses = [
@@ -56,6 +59,7 @@ function Select({
     'ui-select',
     size === 'sm' ? 'is-compact' : '',
     className,
+    !shouldSearch ? wrapperClassName : '',
   ]
     .filter(Boolean)
     .join(' ');
@@ -89,12 +93,12 @@ function Select({
     </select>
   );
 
-  if (!searchable) {
+  if (!shouldSearch) {
     return selectElement;
   }
 
   return (
-    <div className={wrapperClassName}>
+    <div className={['ui-select-stack', wrapperClassName].filter(Boolean).join(' ')}>
       <input
         type="search"
         value={query}

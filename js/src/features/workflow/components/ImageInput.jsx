@@ -141,27 +141,27 @@ export default function ImageInput({ input, value, onFormChange }) {
 
       {/* controls */}
       <div className="flex items-center gap-2 flex-wrap">
-        <button
-          type="button"
-          className="ui-button is-primary is-compact"
+        <Button
+          size="sm"
+          variant="primary"
           onClick={openServer}
         >
           Choose
-        </button>
-        <button
-          type="button"
-          className="ui-button is-muted is-compact"
+        </Button>
+        <Button
+          size="sm"
+          variant="muted"
           onClick={triggerBrowse}
         >
           Upload
-        </button>
-        <button
-          type="button"
-          className="ui-button is-ghost is-compact"
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
           onClick={clearImage}
         >
           Clear
-        </button>
+        </Button>
       </div>
 
       <ImagePickerSheet

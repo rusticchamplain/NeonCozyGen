@@ -56,6 +56,8 @@ export default function GalleryNav({
   onCrumb,
   onSelectDir,
 }) {
+  const atRoot = !subfolder;
+
   return (
     <div className="gallery-nav">
       <div className="gallery-crumbs" role="navigation" aria-label="Gallery path">
@@ -74,20 +76,29 @@ export default function GalleryNav({
         ))}
       </div>
 
-      {dirChips.length > 0 ? (
-        <div className="gallery-dir-chips">
-          {dirChips.map((dir) => (
-            <Button
-              key={dir.subfolder || dir.filename}
-              size="xs"
-              variant="chip"
-              onClick={() => onSelectDir?.(dir.subfolder)}
-            >
-              {dir.filename || dir.subfolder || 'Collection'}
-            </Button>
-          ))}
-        </div>
-      ) : null}
+      <div className="gallery-dir-chips">
+        <Button
+          size="xs"
+          variant="chip"
+          onClick={() => onRoot?.()}
+          disabled={atRoot}
+          aria-label="Go to output root"
+          title="Output root"
+        >
+          <IconCollection />
+          Output
+        </Button>
+        {dirChips.map((dir) => (
+          <Button
+            key={dir.subfolder || dir.filename}
+            size="xs"
+            variant="chip"
+            onClick={() => onSelectDir?.(dir.subfolder)}
+          >
+            {dir.filename || dir.subfolder || 'Collection'}
+          </Button>
+        ))}
+      </div>
     </div>
   );
 }

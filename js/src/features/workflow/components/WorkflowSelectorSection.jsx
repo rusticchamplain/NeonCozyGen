@@ -1,11 +1,9 @@
 import { memo, useEffect, useMemo, useState } from 'react';
 import CollapsibleSection from './CollapsibleSection';
-import BottomSheet from '../../../ui/primitives/BottomSheet';
 import Button from '../../../ui/primitives/Button';
 import Select from '../../../ui/primitives/Select';
 import { IconFolderOpen } from '../../../ui/primitives/Icons';
 import { formatFileBaseName, isFilePathLike, splitFilePath } from '../../../utils/modelDisplay';
-import useMediaQuery from '../../../hooks/useMediaQuery';
 
 const getFolderLabel = (folderPath = '') => {
   if (!folderPath || folderPath === 'root') return 'root';
@@ -29,16 +27,7 @@ const WorkflowSelectorSection = memo(function WorkflowSelectorSection({
 }) {
   const safeWorkflows = Array.isArray(workflows) ? workflows : [];
   const safePresets = Array.isArray(presets) ? presets : [];
-  const presetCount = safePresets.length;
-  const presetLabel = presetCount ? `${presetCount} saved` : 'No presets yet';
-  const isDesktop = useMediaQuery('(min-width: 768px)');
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [sheetOpen, setSheetOpen] = useState(false);
   const [workflowFolder, setWorkflowFolder] = useState('All');
-  useEffect(() => {
-    setMenuOpen(false);
-    setSheetOpen(false);
-  }, [isDesktop]);
 
   const workflowMeta = useMemo(
     () =>
@@ -115,24 +104,11 @@ const WorkflowSelectorSection = memo(function WorkflowSelectorSection({
       ...workflowOptions,
     ];
   }, [hasWorkflowInFiltered, selectedWorkflow, workflowOptions]);
-  const closeMenus = () => {
-    setMenuOpen(false);
-    setSheetOpen(false);
-  };
-  const toggleMenu = () => {
-    if (!isDesktop) {
-      setSheetOpen(true);
-      return;
-    }
-    setMenuOpen((v) => !v);
-  };
   const handleSave = () => {
     onPresetSave();
-    closeMenus();
   };
   const handleDelete = () => {
     onPresetDelete();
-    closeMenus();
   };
   return (
     <CollapsibleSection
@@ -149,7 +125,7 @@ const WorkflowSelectorSection = memo(function WorkflowSelectorSection({
           <Select
             value={workflowFolder}
             onChange={setWorkflowFolder}
-            className="mb-2"
+            wrapperClassName="mb-2"
             aria-label="Workflow folder filter"
             size="sm"
             options={workflowFolders.map((folder) => ({ value: folder, label: folder }))}
@@ -200,22 +176,22 @@ const WorkflowSelectorSection = memo(function WorkflowSelectorSection({
 
       <div className="flex flex-col gap-2">
         <div className="flex gap-2 flex-wrap">
-          <button
-            type="button"
-            className="ui-button is-primary is-compact"
+          <Button
+            size="sm"
+            variant="primary"
             onClick={handleSave}
             disabled={!workflowData || !presetName.trim()}
           >
             Save preset
-          </button>
-          <button
-            type="button"
-            className="ui-button is-muted is-compact"
+          </Button>
+          <Button
+            size="sm"
+            variant="muted"
             onClick={handleDelete}
             disabled={!workflowData || !selectedPresetId}
           >
             Delete preset
-          </button>
+          </Button>
         </div>
         {presetStatus ? (
           <div className="text-xs text-[#6D8BFF]">{presetStatus}</div>

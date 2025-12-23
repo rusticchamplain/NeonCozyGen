@@ -92,6 +92,7 @@ export default function TagLibrarySheet({
   const [query, setQuery] = useState(initialQuery || '');
   const [category, setCategory] = useState('');
   const [sort, setSort] = useState('count'); // 'count' | 'alpha'
+  const [minCount, setMinCount] = useState('');
   const [categories, setCategories] = useState([]);
   const [items, setItems] = useState([]);
   const [total, setTotal] = useState(0);
@@ -135,8 +136,19 @@ export default function TagLibrarySheet({
 
   const collectedText = useMemo(() => collectedTags.join(', '), [collectedTags]);
   const collectedSet = useMemo(() => new Set(collectedTags.map((t) => t.toLowerCase())), [collectedTags]);
-  const cacheKey = useCallback((q, c, s, limit, offset) => {
-    return [q || '', c || '', s || '', String(limit || 0), String(offset || 0)].join('::');
+  const minCountValue = useMemo(() => {
+    const parsed = Number.parseInt(String(minCount || ''), 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+  }, [minCount]);
+  const cacheKey = useCallback((q, c, s, minCountFilter, limit, offset) => {
+    return [
+      q || '',
+      c || '',
+      s || '',
+      String(minCountFilter || 0),
+      String(limit || 0),
+      String(offset || 0),
+    ].join('::');
   }, []);
 
   const trimCache = useCallback(() => {
@@ -293,11 +305,12 @@ export default function TagLibrarySheet({
     setDropIndex(null);
   }, [dragIndex, dropIndex, reorderCollectedTags]);
 
-  const resetAndSearch = useCallback(async ({ nextQuery, nextCategory, nextSort } = {}) => {
+  const resetAndSearch = useCallback(async ({ nextQuery, nextCategory, nextSort, nextMinCount } = {}) => {
     const q = typeof nextQuery === 'string' ? nextQuery : query;
     const c = typeof nextCategory === 'string' ? nextCategory : category;
     const s = typeof nextSort === 'string' ? nextSort : sort;
-    const key = cacheKey(q, c, s, 80, 0);
+    const m = typeof nextMinCount === 'number' ? nextMinCount : minCountValue;
+    const key = cacheKey(q, c, s, m, 80, 0);
     const now = Date.now();
     const cached = searchCacheRef.current.get(key);
     if (cached && now - cached.ts < 5 * 60 * 1000) {
@@ -334,7 +347,7 @@ export default function TagLibrarySheet({
     searchAbortRef.current = { controller, key };
     try {
       const request = searchDanbooruTags(
-        { q, category: c, sort: s, limit: 80, offset: 0 },
+        { q, category: c, sort: s, minCount: m, limit: 80, offset: 0 },
         { signal: controller.signal }
       );
       inflightRef.current.set(key, request);
@@ -358,13 +371,13 @@ export default function TagLibrarySheet({
       }
       setLoading(false);
     }
-  }, [cacheKey, category, query, sort, trimCache]);
+  }, [cacheKey, category, minCountValue, query, sort, trimCache]);
 
   const loadMore = useCallback(async () => {
     if (loading || loadingMore) return;
     if (!canLoadMore) return;
     const nextOffset = offset + 80;
-    const key = cacheKey(query, category, sort, 80, nextOffset);
+    const key = cacheKey(query, category, sort, minCountValue, 80, nextOffset);
     const now = Date.now();
     const cached = searchCacheRef.current.get(key);
     if (cached && now - cached.ts < 5 * 60 * 1000) {
@@ -396,7 +409,7 @@ export default function TagLibrarySheet({
     loadAbortRef.current = { controller, key };
     try {
       const request = searchDanbooruTags(
-        { q: query, category, sort, limit: 80, offset: nextOffset },
+        { q: query, category, sort, minCount: minCountValue, limit: 80, offset: nextOffset },
         { signal: controller.signal }
       );
       inflightRef.current.set(key, request);
@@ -420,7 +433,7 @@ export default function TagLibrarySheet({
       }
       setLoadingMore(false);
     }
-  }, [cacheKey, canLoadMore, category, loading, loadingMore, offset, query, sort, trimCache]);
+  }, [cacheKey, canLoadMore, category, loading, loadingMore, minCountValue, offset, query, sort, trimCache]);
 
   // Load categories on open
   useEffect(() => {
@@ -449,6 +462,7 @@ export default function TagLibrarySheet({
     setQuery(initialQuery || '');
     setCategory('');
     setSort('count');
+    setMinCount('');
     setItems([]);
     setTotal(0);
     setOffset(0);
@@ -467,7 +481,7 @@ export default function TagLibrarySheet({
       resetAndSearch();
     }, 220);
     return () => window.clearTimeout(handle);
-  }, [category, isActive, query, resetAndSearch, sort]);
+  }, [category, isActive, minCountValue, query, resetAndSearch, sort]);
 
   useEffect(() => {
     return () => {
@@ -508,12 +522,12 @@ export default function TagLibrarySheet({
     if (inline) return null;
     return (
       <div className="flex gap-2">
-        <button type="button" className="ui-button is-muted w-full" onClick={onClose}>
+        <Button variant="muted" className="w-full" onClick={onClose}>
           Done
-        </button>
-        <button
-          type="button"
-          className="ui-button is-ghost w-full"
+        </Button>
+        <Button
+          variant="ghost"
+          className="w-full"
           onClick={() => resetAndSearch()}
           disabled={loading || loadingMore}
         >
@@ -521,7 +535,7 @@ export default function TagLibrarySheet({
             <IconRefresh size={14} />
             Refresh
           </span>
-        </button>
+        </Button>
       </div>
     );
   }, [inline, loading, loadingMore, onClose, resetAndSearch]);
@@ -532,7 +546,7 @@ export default function TagLibrarySheet({
     <div className={`sheet-stack ${inline ? 'ui-card' : ''}`}>
       {showContext ? (
         <div className="tag-library-context">
-          <div className="tag-library-context-head">
+            <div className="tag-library-context-head">
             <div className="min-w-0">
               <div className="sheet-label">Adding to alias</div>
               <div className="tag-library-context-title">{contextTitle || 'Alias'}</div>
@@ -540,13 +554,9 @@ export default function TagLibrarySheet({
                 <div className="tag-library-context-token">{contextToken}</div>
               ) : null}
             </div>
-            <button
-              type="button"
-              className="ui-button is-tiny is-muted"
-              onClick={onClose}
-            >
+            <Button size="xs" variant="muted" onClick={onClose}>
               Back
-            </button>
+            </Button>
           </div>
           <div className="tag-library-context-preview">
             {contextText || '—'}
@@ -582,9 +592,10 @@ export default function TagLibrarySheet({
           <Select
             value={category}
             onChange={setCategory}
-            className="composer-subcategory-select"
+            wrapperClassName="composer-subcategory-select"
             aria-label="Filter by category"
             size="sm"
+            searchThreshold={0}
             options={[
               { value: '', label: 'Category: All' },
               ...categories.map((c) => ({
@@ -593,17 +604,41 @@ export default function TagLibrarySheet({
               })),
             ]}
           />
-          <Select
-            value={sort}
-            onChange={setSort}
-            className="composer-subcategory-select"
-            aria-label="Sort tags"
-            size="sm"
-            options={[
-              { value: 'count', label: 'Sort: Popular' },
-              { value: 'alpha', label: 'Sort: A–Z' },
-            ]}
-          />
+          <div className="composer-sort-row">
+            <Select
+              value={sort}
+              onChange={setSort}
+              wrapperClassName="composer-subcategory-select"
+              aria-label="Sort tags"
+              size="sm"
+              options={[
+                { value: 'count', label: 'Sort: Popular' },
+                { value: 'alpha', label: 'Sort: A–Z' },
+              ]}
+            />
+            <div className="composer-min-count">
+              <span className="composer-filter-divider" aria-hidden="true">|</span>
+              <label className="composer-min-count-label" htmlFor="tag-library-min-count">
+                Minimum count
+              </label>
+              <input
+                id="tag-library-min-count"
+                type="number"
+                inputMode="numeric"
+                min={0}
+                step={1}
+                value={minCount}
+                onChange={(e) => {
+                  const nextValue = e.target.value;
+                  if (nextValue === '' || Number(nextValue) >= 0) {
+                    setMinCount(nextValue);
+                  }
+                }}
+                className="ui-control ui-input is-compact composer-min-count-input"
+                placeholder="0"
+              />
+            </div>
+          </div>
         </div>
         {status ? <div className="text-xs text-[#9DA3FFCC]">{status}</div> : null}
         {error ? <div className="text-xs text-[#FF8F70]">{error}</div> : null}
@@ -766,21 +801,21 @@ export default function TagLibrarySheet({
               </div>
 
               <div className="sheet-section flex gap-2">
-                <button
-                  type="button"
-                  className="ui-button is-muted w-full"
+                <Button
+                  variant="muted"
+                  className="w-full"
                   onClick={() => setCollectionManagerOpen(false)}
                 >
                   Close
-                </button>
-                <button
-                  type="button"
-                  className="ui-button is-ghost w-full"
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="w-full"
                   onClick={clearCollection}
                   disabled={collectedTags.length === 0}
                 >
                   Clear
-                </button>
+                </Button>
               </div>
             </div>
           </BottomSheet>

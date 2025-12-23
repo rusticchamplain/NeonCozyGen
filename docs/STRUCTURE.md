@@ -2,6 +2,10 @@
 
 This document is the source of truth for where code lives and how to extend the UI without drift.
 
+## UI standards
+
+The canonical UI system is documented in `docs/UI_STANDARDS.md`. Follow it before introducing new components or styles.
+
 ## Mental model (top-level)
 
 - `js/src/app/`: app shell, routing, and providers. No feature logic.
@@ -39,6 +43,7 @@ This document is the source of truth for where code lives and how to extend the 
 - `ui/primitives/Button.jsx` → `.ui-button` variants (including `is-chip` for breadcrumb/chip buttons, `is-bare` for unstyled click targets).
   - Sizes: `mini`, `xs`, `sm`, `md` (default), `lg`, `icon`.
 - `ui/primitives/Select.jsx` → `.ui-control`, `.ui-select`.
+  - Searchable dropdowns use `.ui-select-stack` (auto-added) and opt-in `searchable`/`searchThreshold`.
 - `ui/primitives/SegmentedTabs.jsx` → `.segmented-tabs`.
 - `ui/primitives/BottomSheet.jsx` → `.bottom-sheet-*`.
 - `ui/primitives/Icons.jsx` → shared icon set.

@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import BottomSheet from '../primitives/BottomSheet';
+import Button from '../primitives/Button';
 
 export default function TextAreaSheet({
   open,
@@ -23,9 +24,9 @@ export default function TextAreaSheet({
       title={label}
       variant="fullscreen"
       footer={(
-        <button type="button" className="ui-button is-primary w-full" onClick={onClose}>
+        <Button variant="primary" className="w-full" onClick={onClose}>
           Done
-        </button>
+        </Button>
       )}
     >
       {description ? (

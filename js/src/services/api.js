@@ -127,6 +127,10 @@ export async function getGalleryPrompt({ filename = '', subfolder = '' } = {}, o
   return payload;
 }
 
+export async function deleteGalleryItem({ filename = '', subfolder = '' } = {}, options = {}) {
+  return jpost('/cozygen/api/gallery/delete', { filename, subfolder }, options);
+}
+
 /* ---- Prompt aliases ---- */
 export async function getPromptAliases() {
   return jget('/cozygen/api/aliases');
@@ -142,9 +146,10 @@ export async function getDanbooruTagCategories(options = {}) {
 }
 
 export async function searchDanbooruTags(
-  { q = '', category = '', sort = 'count', limit = 80, offset = 0 } = {},
+  { q = '', category = '', sort = 'count', minCount = 0, limit = 80, offset = 0 } = {},
   options = {}
 ) {
+  const minCountValue = Number.isFinite(Number(minCount)) ? Math.max(0, Number(minCount)) : 0;
   const qs = new URLSearchParams({
     q: String(q || ''),
     category: String(category || ''),
@@ -152,6 +157,9 @@ export async function searchDanbooruTags(
     limit: String(limit || 80),
     offset: String(offset || 0),
   });
+  if (minCountValue > 0) {
+    qs.set('min_count', String(minCountValue));
+  }
   return jget(`/cozygen/api/tags/search?${qs.toString()}`, options);
 }
 

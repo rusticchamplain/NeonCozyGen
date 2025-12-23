@@ -38,6 +38,7 @@ This file is the shared guide for contributors and agents working in this repo.
 - Canonical surfaces are `.ui-card` (standard) and `.ui-panel` (large centered). Do not reintroduce legacy card classes.
 - If a new surface pattern is required, add it to `js/src/styles/ui-kit.css` and document it in `docs/STRUCTURE.md`.
 - If a new UI pattern is truly needed, define it once in `js/src/ui/primitives/` and style it consistently.
+- Follow `docs/UI_STANDARDS.md` for canonical primitives, dropdown rules, and button variants.
 
 ## Styling rules
 

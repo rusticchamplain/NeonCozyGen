@@ -72,6 +72,19 @@ input:focus-visible {
   outline-offset: 2px;
 }
 
+textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+@media (max-width: 640px) {
+  textarea {
+    min-height: 100px;
+    font-size: 1rem;
+    line-height: 1.5;
+  }
+}
+
 body {
   background: linear-gradient(135deg, #050914 0%, #040812 45%, #02050c 100%);
   color: var(--text-strong);

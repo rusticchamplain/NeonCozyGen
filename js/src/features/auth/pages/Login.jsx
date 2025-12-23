@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import Button from '../../../ui/primitives/Button';
 import { LogoMark } from '../../../ui/primitives/Icons';
 
 function Login() {
@@ -98,13 +99,14 @@ function Login() {
             <div className="ui-alert is-warn">You were signed out due to inactivity. Please sign in again.</div>
           ) : null}
 
-          <button
+          <Button
             type="submit"
             disabled={loading}
-            className="ui-button is-primary w-full"
+            variant="primary"
+            className="w-full"
           >
             {loading ? 'Signing in…' : 'Sign in'}
-          </button>
+          </Button>
         </form>
 
         <p className="login-footnote">

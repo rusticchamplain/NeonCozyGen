@@ -186,42 +186,6 @@
   overflow-x: hidden;
 }
 
-/* ---- Minimal Context Bar (workflow/preset) ---- */
-.context-bar {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-bottom: 0.75rem;
-  padding-bottom: 0.65rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-}
-
-.context-bar-presets {
-  justify-content: flex-start;
-}
-
-.context-bar-presets .context-status {
-  flex: 1;
-  min-width: 180px;
-}
-
-.context-presets-actions {
-  display: inline-flex;
-  gap: 0.35rem;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-.context-bar-presets.is-disabled .context-select {
-  opacity: 0.6;
-}
-
-.context-bar-presets.is-disabled .ui-button {
-  opacity: 0.6;
-  pointer-events: none;
-}
-
 /* ---- Controls page makeover ---- */
 .controls-page {
   --controls-radius: var(--radius-md);
@@ -410,22 +374,6 @@
   border-bottom: 1px solid rgba(255, 255, 255, 0.04);
 }
 
-.context-input {
-  min-width: 150px;
-  padding: 0.3rem 0.55rem;
-  border-radius: 0.7rem;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(8, 12, 24, 0.65);
-  color: var(--ink-strong);
-  font-size: 0.72rem;
-  outline: none;
-}
-
-.context-input:focus {
-  border-color: rgba(109, 139, 255, 0.4);
-  box-shadow: 0 0 0 1px rgba(109, 139, 255, 0.2);
-}
-
 .page-header {
   margin-bottom: 1rem;
 }
@@ -546,9 +494,35 @@
   justify-content: space-between;
   gap: 0.6rem;
   padding: 0.45rem 0.6rem;
+  padding-left: 0.85rem;
   border-radius: var(--radius-md);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(7, 10, 22, 0.72);
+  background: rgba(7, 10, 22, 0.78);
+  position: relative;
+  overflow: hidden;
+}
+
+.page-bar::before {
+  content: "";
+  position: absolute;
+  left: 0.35rem;
+  top: 0.45rem;
+  bottom: 0.45rem;
+  width: 3px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(109, 139, 255, 0.9), rgba(68, 225, 197, 0.75));
+  box-shadow: 0 0 12px rgba(109, 139, 255, 0.4);
+}
+
+.page-bar::after {
+  content: "";
+  position: absolute;
+  left: 0.7rem;
+  right: 0.7rem;
+  top: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  opacity: 0.6;
 }
 
 .page-bar-title {
@@ -556,6 +530,13 @@
   font-size: 0.95rem;
   font-weight: 650;
   color: var(--text-strong);
+  position: relative;
+  z-index: 1;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
+  box-shadow: 0 8px 20px rgba(4, 7, 16, 0.4);
 }
 
 .page-bar-actions {
@@ -564,6 +545,8 @@
   gap: 0.35rem;
   flex-wrap: wrap;
   justify-content: flex-end;
+  position: relative;
+  z-index: 1;
 }
 
 
@@ -855,12 +838,6 @@
   }
 }
 
-.hero-context .context-bar {
-  margin: 0;
-  padding: 0;
-  border: none;
-}
-
 .input-with-action {
   flex: 1 1 180px;
   min-width: 140px;
@@ -985,58 +962,6 @@
   }
 }
 
-.context-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  position: relative;
-}
-
-.context-chip.is-secondary {
-  opacity: 0.7;
-}
-
-.context-chip.is-secondary:hover,
-.context-chip.is-secondary:focus-within {
-  opacity: 1;
-}
-
-.context-select {
-  appearance: none;
-  background: transparent;
-  border: none;
-  color: var(--ink-muted);
-  font-size: 0.75rem;
-  font-weight: 500;
-  letter-spacing: 0.02em;
-  padding: 0.3rem 1.2rem 0.3rem 0.1rem;
-  cursor: pointer;
-  max-width: 180px;
-  text-overflow: ellipsis;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 12 12'%3E%3Cpath fill='%237f91b6' d='M3 4.5L6 8l3-3.5H3z'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 0 center;
-  transition: color 0.15s ease;
-}
-
-.context-select:hover,
-.context-select:focus {
-  color: var(--ink-strong);
-  outline: none;
-}
-
-.context-select option {
-  background: #0a0f1a;
-  color: var(--ink-strong);
-  padding: 0.5rem;
-}
-
-.context-status {
-  font-size: 0.65rem;
-  color: var(--accent-cool);
-  opacity: 0.9;
-}
-
 /* Inline empty state for workflow selection */
 .empty-state-inline {
   display: flex;
@@ -1060,26 +985,6 @@
   50% { transform: translateY(-4px); }
 }
 
-/* Mobile: slightly larger touch targets for context selects */
-@media (max-width: 640px) {
-  .context-bar {
-    gap: 0.75rem;
-    padding-bottom: 0.75rem;
-  }
-
-  .context-select {
-    font-size: 0.8rem;
-    padding: 0.4rem 1.4rem 0.4rem 0.2rem;
-    min-height: 32px;
-    max-width: 160px;
-  }
-
-  .context-input {
-    min-width: 120px;
-    flex: 1 1 120px;
-  }
-}
-
 /* ---- Mobile Form Enhancements ---- */
 @media (max-width: 640px) {
   /* Larger touch-friendly select dropdowns */
@@ -1099,150 +1004,6 @@
   /* Better spacing for form groups */
   .control-shell {
     gap: 0.75rem;
-  }
-}
-
-/* ---- Shared Form Controls ---- */
-.ui-control {
-  width: 100%;
-  border-radius: 0.9rem;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.03);
-  color: rgba(237, 242, 255, 0.92);
-  padding: 0.75rem 0.85rem;
-  font-size: 0.9rem;
-  line-height: 1.2;
-  transition: border-color 150ms ease, box-shadow 150ms ease, background 150ms ease;
-}
-
-.ui-control.is-compact {
-  padding: 0.6rem 0.75rem;
-  font-size: 0.85rem;
-  border-radius: 0.85rem;
-}
-
-.ui-control:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.ui-control.gallery-page-size {
-  width: auto;
-  min-width: 72px;
-}
-
-.ui-input::placeholder,
-.ui-textarea::placeholder {
-  color: rgba(159, 178, 215, 0.65);
-}
-
-.ui-select {
-  appearance: none;
-  -webkit-appearance: none;
-  -moz-appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%239fb2d7' d='M3 4.5L6 8l3-3.5H3z'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 0.6rem center;
-  padding-right: 2rem;
-}
-
-.ui-switch {
-  display: inline-flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.65rem;
-  min-height: 38px;
-  border-radius: var(--radius-md);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(255, 255, 255, 0.03);
-  color: rgba(237, 242, 255, 0.88);
-  padding: 0.4rem 0.65rem;
-  transition: background 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
-}
-
-.ui-switch.is-on {
-  border-color: rgba(68, 225, 197, 0.42);
-  background: rgba(68, 225, 197, 0.12);
-  box-shadow: 0 0 0 3px rgba(68, 225, 197, 0.08);
-}
-
-.ui-switch-track {
-  position: relative;
-  width: 36px;
-  height: 18px;
-  border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.12);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  flex: 0 0 auto;
-  transition: background 150ms ease, border-color 150ms ease;
-}
-
-.ui-switch.is-on .ui-switch-track {
-  background: rgba(68, 225, 197, 0.55);
-  border-color: rgba(68, 225, 197, 0.55);
-}
-
-.ui-switch-knob {
-  position: absolute;
-  top: 50%;
-  left: 2px;
-  width: 14px;
-  height: 14px;
-  border-radius: 999px;
-  background: rgba(3, 7, 17, 0.95);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  transform: translateY(-50%);
-  transition: transform 150ms ease;
-}
-
-.ui-switch.is-on .ui-switch-knob {
-  transform: translate(18px, -50%);
-}
-
-.ui-switch-state {
-  font-size: 0.7rem;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: rgba(159, 178, 215, 0.85);
-}
-
-.ui-switch.is-on .ui-switch-state {
-  color: rgba(237, 242, 255, 0.92);
-}
-
-.ui-alert {
-  border-radius: 1rem;
-  border: 1px solid rgba(255, 143, 112, 0.4);
-  background: rgba(255, 143, 112, 0.12);
-  color: rgba(255, 209, 198, 0.95);
-  padding: 0.8rem 0.9rem;
-  font-size: 0.85rem;
-}
-
-.ui-alert.is-warn {
-  border-color: rgba(245, 158, 11, 0.5);
-  background: rgba(245, 158, 11, 0.12);
-  color: rgba(255, 236, 196, 0.95);
-}
-
-/* Input focus glow */
-.ui-control:focus {
-  border-color: var(--accent-cool);
-  box-shadow: 0 0 0 3px rgba(68, 225, 197, 0.15);
-  outline: none;
-}
-
-/* Textarea touch optimization */
-textarea {
-  resize: vertical;
-  min-height: 80px;
-}
-
-@media (max-width: 640px) {
-  textarea {
-    min-height: 100px;
-    font-size: 1rem;
-    line-height: 1.5;
   }
 }
 

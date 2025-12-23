@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import BottomSheet from '../../../ui/primitives/BottomSheet';
+import Button from '../../../ui/primitives/Button';
 
 function formatTs(ts) {
   try {
@@ -29,9 +30,9 @@ export default function RunLogsSheet({
       title="Run logs"
       footer={(
         <div className="flex gap-2">
-          <button
-            type="button"
-            className="ui-button is-muted w-full"
+          <Button
+            variant="muted"
+            className="w-full"
             onClick={() => {
               try {
                 navigator.clipboard?.writeText?.(textDump || '');
@@ -41,21 +42,21 @@ export default function RunLogsSheet({
             }}
           >
             Copy
-          </button>
-          <button
-            type="button"
-            className="ui-button is-ghost w-full"
+          </Button>
+          <Button
+            variant="ghost"
+            className="w-full"
             onClick={onClear}
           >
             Clear
-          </button>
-          <button
-            type="button"
-            className="ui-button is-primary w-full"
+          </Button>
+          <Button
+            variant="primary"
+            className="w-full"
             onClick={onClose}
           >
             Close
-          </button>
+          </Button>
         </div>
       )}
     >

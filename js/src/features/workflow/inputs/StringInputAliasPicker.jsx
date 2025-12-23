@@ -50,9 +50,10 @@ export default function StringInputAliasPicker({
             <Select
               value={pickerCategory}
               onChange={onCategoryChange}
-              className="composer-subcategory-select"
+              wrapperClassName="composer-subcategory-select"
               aria-label="Filter by category"
               size="sm"
+              searchThreshold={0}
               options={['All', ...categories.filter((c) => c !== 'All')].map((c) => ({
                 value: c,
                 label: c === 'All' ? 'Category: All' : formatCategoryLabel(c),
@@ -62,8 +63,9 @@ export default function StringInputAliasPicker({
               <Select
                 value={pickerSubcategory}
                 onChange={onSubcategoryChange}
-                className="composer-subcategory-select"
+                wrapperClassName="composer-subcategory-select"
                 size="sm"
+                searchThreshold={0}
                 options={subcategories.map((c) => ({
                   value: c,
                   label: c === 'All' ? 'All subcategories' : formatSubcategoryLabel(c),

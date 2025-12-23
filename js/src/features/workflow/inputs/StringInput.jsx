@@ -384,29 +384,29 @@ function StringInput({
       <div className="relative space-y-2" ref={wrapperRef}>
         {onOpenComposer && !isPromptLike ? (
           <div className="stringinput-toolbar">
-            <button
-              type="button"
-              className="ui-button is-muted is-compact"
+            <Button
+              size="sm"
+              variant="muted"
               onClick={() => onOpenComposer(name)}
             >
               Open composer
-            </button>
+            </Button>
             {aliasEntries.length ? (
-              <button
-                type="button"
-                className="ui-button is-ghost is-compact"
+              <Button
+                size="sm"
+                variant="ghost"
                 onClick={openPicker}
               >
                 Aliases
-              </button>
+              </Button>
             ) : null}
-            <button
-              type="button"
-              className="ui-button is-ghost is-compact"
+            <Button
+              size="sm"
+              variant="ghost"
               onClick={() => setExpandedEditorOpen(true)}
             >
               Expand
-            </button>
+            </Button>
           </div>
         ) : null}
         <textarea
@@ -668,15 +668,16 @@ function StringInput({
         }}
       />
       {aliasEntries.length ? (
-        <button
-          type="button"
-          className="stringinput-trailing ui-button is-ghost is-compact"
+        <Button
+          size="sm"
+          variant="ghost"
+          className="stringinput-trailing"
           onClick={() => onOpenComposer ? onOpenComposer(name) : openPicker()}
-          title={onOpenComposer ? "Open prompt composer" : "Insert alias"}
+          title={onOpenComposer ? 'Open prompt composer' : 'Insert alias'}
           aria-label={onOpenComposer ? 'Open prompt composer' : 'Insert alias'}
         >
           {onOpenComposer ? <IconEdit size={16} /> : <IconTag size={16} />}
-        </button>
+        </Button>
       ) : null}
       <StringInputAliasPicker
         open={showPicker}

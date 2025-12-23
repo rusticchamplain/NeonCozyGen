@@ -1,8 +1,9 @@
 // js/src/components/MediaViewerModal.jsx
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { getChoices, getGalleryPrompt, queuePrompt } from '../../../services/api';
+import { deleteGalleryItem, getChoices, getGalleryPrompt, queuePrompt } from '../../../services/api';
 import BottomSheet from '../../../ui/primitives/BottomSheet';
+import Button from '../../../ui/primitives/Button';
 import SegmentedTabs from '../../../ui/primitives/SegmentedTabs';
 import Select from '../../../ui/primitives/Select';
 import { saveLastRenderPayload } from '../../workflow/utils/globalRender';
@@ -48,6 +49,7 @@ export default function MediaViewerModal({
   onClose,
   onPrev,
   onNext,
+  onDeleted,
   total = 0,
   canPrev = false,
   canNext = false,
@@ -57,6 +59,7 @@ export default function MediaViewerModal({
   const [metaOpen, setMetaOpen] = useState(false);
   const [rerunBusy, setRerunBusy] = useState(false);
   const [rerunSuccess, setRerunSuccess] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
   const contentRef = useRef(null);
   const lastFocusedRef = useRef(null);
   const justOpenedRef = useRef(false);
@@ -114,6 +117,7 @@ export default function MediaViewerModal({
     setMetaOpen(false);
     setOptionsOpen(false);
     setRerunSuccess(false);
+    setDeleteBusy(false);
     setSeedMode('random');
     setSeedInput('');
     setWidthInput('');
@@ -223,6 +227,7 @@ export default function MediaViewerModal({
   const hasPromptMeta = Boolean(media?.meta?.has_prompt || metaRows.length);
   const isPng = typeof media?.filename === 'string' && media.filename.toLowerCase().endsWith('.png');
   const canRerun = hasMedia && hasPromptMeta && isPng;
+  const canDelete = hasMedia;
   const seedTabs = useMemo(() => ([
     { key: 'random', label: 'Random' },
     { key: 'keep', label: 'Keep' },
@@ -547,6 +552,27 @@ export default function MediaViewerModal({
     }
   };
 
+  const handleDelete = async () => {
+    if (!media?.filename) return;
+    const ok = window.confirm('Delete this item? This cannot be undone.');
+    if (!ok) return;
+    setDeleteBusy(true);
+    try {
+      await deleteGalleryItem({ filename: media.filename, subfolder: media.subfolder || '' });
+      onDeleted?.();
+      onClose?.();
+    } catch (err) {
+      if (err?.unauthorized) {
+        window.location.hash = '#/login';
+        return;
+      }
+      const message = err?.payload?.error || err?.message || 'Unable to delete this item.';
+      alert(message);
+    } finally {
+      setDeleteBusy(false);
+    }
+  };
+
   if (!media) return null;
   if (!isOpen) return null;
   if (typeof document === 'undefined') return null;
@@ -568,7 +594,7 @@ export default function MediaViewerModal({
           }}
         >
           <div
-            className="react-modal-content"
+            className="react-modal-content media-viewer-dialog"
             ref={contentRef}
             role="dialog"
             aria-modal="true"
@@ -584,10 +610,13 @@ export default function MediaViewerModal({
                 url={url}
                 canRerun={canRerun}
                 rerunBusy={rerunBusy}
+                canDelete={canDelete}
+                deleteBusy={deleteBusy}
                 metaRows={metaRows}
                 metaOpen={metaOpen}
                 onToggleMeta={() => setMetaOpen((prev) => !prev)}
                 onOpenOptions={handleOpenOptions}
+                onDelete={handleDelete}
                 onClose={onClose}
                 closeButtonRef={closeButtonRef}
               />
@@ -621,22 +650,22 @@ export default function MediaViewerModal({
               </div>
             ) : (
               <div className="flex gap-2">
-                <button
-                  type="button"
-                  className="ui-button is-muted w-full"
+                <Button
+                  variant="muted"
+                  className="w-full"
                   onClick={() => setOptionsOpen(false)}
                   disabled={rerunBusy}
                 >
                   Cancel
-                </button>
-                <button
-                  type="button"
-                  className="ui-button is-primary w-full"
+                </Button>
+                <Button
+                  variant="primary"
+                  className="w-full"
                   onClick={handleRerunWithOptions}
                   disabled={rerunBusy || promptLoading || !!promptError || !isSeedValid || !isSizeValid}
                 >
                   {rerunBusy ? 'Re-running…' : 'Run'}
-                </button>
+                </Button>
               </div>
             )
           }
@@ -710,18 +739,19 @@ export default function MediaViewerModal({
                   <Select
                     value={checkpointFolder}
                     onChange={setCheckpointFolder}
-                    className="sheet-select"
                     aria-label="Checkpoint folder filter"
                     size="sm"
+                    searchThreshold={0}
                     options={checkpointFolders.map((folder) => ({ value: folder, label: folder }))}
                   />
                 ) : null}
                 <Select
                   value={checkpointOverride}
                   onChange={setCheckpointOverride}
-                  className={`sheet-select ${showCheckpointFolder ? 'mt-2' : ''}`}
+                  wrapperClassName={showCheckpointFolder ? 'mt-2' : ''}
                   aria-label="Checkpoint override"
                   size="sm"
+                  searchThreshold={0}
                   options={[
                     { value: '', label: checkpointDisplay ? `Keep current (${checkpointDisplay})` : 'Keep current' },
                     ...checkpointOptionsWithValue,
@@ -736,18 +766,19 @@ export default function MediaViewerModal({
                   <Select
                     value={loraFolder}
                     onChange={setLoraFolder}
-                    className="sheet-select"
                     aria-label="LoRA folder filter"
                     size="sm"
+                    searchThreshold={0}
                     options={loraFolders.map((folder) => ({ value: folder, label: folder }))}
                   />
                 ) : null}
                 <Select
                   value={loraOverride}
                   onChange={setLoraOverride}
-                  className={`sheet-select ${showLoraFolder ? 'mt-2' : ''}`}
+                  wrapperClassName={showLoraFolder ? 'mt-2' : ''}
                   aria-label="LoRA override"
                   size="sm"
+                  searchThreshold={0}
                   options={[
                     { value: '', label: loraDisplay ? `Keep current (${loraDisplay})` : 'Keep current' },
                     ...loraOptionsWithValue,

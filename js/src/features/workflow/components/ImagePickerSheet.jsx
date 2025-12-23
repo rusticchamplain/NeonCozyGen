@@ -1,6 +1,7 @@
 // js/src/components/ImagePickerSheet.jsx
 import { inputFileUrl, outputFileUrl } from '../hooks/useImagePicker';
 import BottomSheet from '../../../ui/primitives/BottomSheet';
+import Button from '../../../ui/primitives/Button';
 import SegmentedTabs from '../../../ui/primitives/SegmentedTabs';
 import Select from '../../../ui/primitives/Select';
 
@@ -66,25 +67,25 @@ export default function ImagePickerSheet({
       variant="fullscreen"
       footer={(
         <div className="flex items-center gap-2 w-full">
-          <button
-            type="button"
-            className="ui-button is-muted w-full"
+          <Button
+            variant="muted"
+            className="w-full"
             disabled={page <= 1 || loading}
             onClick={() => setPage((p) => Math.max(1, p - 1))}
           >
             Prev
-          </button>
+          </Button>
           <div className="text-xs text-center text-[rgba(159,178,215,0.75)] min-w-[92px]">
             {page} / {totalPages}
           </div>
-          <button
-            type="button"
-            className="ui-button is-muted w-full"
+          <Button
+            variant="muted"
+            className="w-full"
             disabled={page >= totalPages || loading}
             onClick={() => setPage((p) => (p < totalPages ? p + 1 : p))}
           >
             Next
-          </button>
+          </Button>
         </div>
       )}
     >
@@ -153,7 +154,6 @@ export default function ImagePickerSheet({
               aria-label="Search files"
             />
             <Select
-              className="sheet-select"
               value={perPage}
               onChange={(value) => {
                 const n = parseInt(value, 10) || 50;

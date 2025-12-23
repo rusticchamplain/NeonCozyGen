@@ -823,6 +823,37 @@ async def gallery_prompt(request: web.Request):
     return web.json_response(payload)
 
 
+@routes.post("/cozygen/api/gallery/delete")
+async def gallery_delete(request: web.Request):
+    payload = await request.json()
+    filename = (payload.get("filename") or "").strip()
+    subfolder = (payload.get("subfolder") or "").strip()
+    if not filename:
+        return web.json_response({"error": "missing filename"}, status=400)
+    if os.path.basename(filename) != filename:
+        return web.json_response({"error": "invalid filename"}, status=400)
+
+    base = folder_paths.get_output_directory()
+    folder = os.path.normpath(os.path.join(base, subfolder))
+    if not folder.startswith(base):
+        return web.json_response({"error": "forbidden"}, status=403)
+    target = os.path.normpath(os.path.join(folder, filename))
+    if not target.startswith(folder):
+        return web.json_response({"error": "forbidden"}, status=403)
+    if not os.path.isfile(target):
+        return web.json_response({"error": "not found"}, status=404)
+
+    try:
+        os.remove(target)
+    except Exception as err:
+        return web.json_response({"error": f"unable to delete file: {err}"}, status=500)
+
+    # Clear gallery cache so list updates immediately.
+    global _GALLERY_CACHE
+    _GALLERY_CACHE.clear()
+    return web.json_response({"ok": True, "filename": filename, "subfolder": subfolder})
+
+
 def _latest_mtime(path: str, recursive: bool, show_hidden: bool) -> float:
     newest = 0.0
     if recursive:
@@ -1069,6 +1100,10 @@ async def search_tags(request: web.Request):
         offset = max(0, int(request.rel_url.query.get("offset", "0")))
     except Exception:
         offset = 0
+    try:
+        min_count = max(0, int(request.rel_url.query.get("min_count", "0")))
+    except Exception:
+        min_count = 0
 
     # Select base list
     base = None
@@ -1089,6 +1124,9 @@ async def search_tags(request: web.Request):
             if q in tl or (parts and all(p in tl for p in parts)):
                 filtered.append(entry)
         base = filtered
+
+    if min_count > 0:
+        base = [entry for entry in base if int(entry.get("count") or 0) >= min_count]
 
     # Sort
     if sort == "alpha":

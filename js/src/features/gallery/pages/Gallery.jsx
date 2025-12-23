@@ -454,13 +454,14 @@ export default function Gallery() {
           <div className="gallery-empty-icon"><IconEmpty size={48} /></div>
           <div className="gallery-empty-title">Gallery unavailable</div>
           <div className="gallery-empty-desc">{error}</div>
-          <button
-            type="button"
-            className="ui-button is-primary is-compact mt-4"
+          <Button
+            size="sm"
+            variant="primary"
+            className="mt-4"
             onClick={refresh}
           >
             Retry
-          </button>
+          </Button>
         </div>
       ) : filtered.length === 0 ? (
         <div className="gallery-empty">
@@ -519,6 +520,7 @@ export default function Gallery() {
         onClose={closeViewer}
         onPrev={handlePrev}
         onNext={handleNext}
+        onDeleted={refresh}
         total={total}
         canPrev={canPrev}
         canNext={canNext}
@@ -528,13 +530,14 @@ export default function Gallery() {
         open={filtersOpen}
         onClose={() => setFiltersOpen(false)}
         title="Gallery filters"
+        contentClassName="gallery-filters-sheet"
         footer={(
-          <button type="button" className="ui-button is-primary w-full" onClick={() => setFiltersOpen(false)}>
+          <Button variant="primary" className="w-full" onClick={() => setFiltersOpen(false)}>
             Done
-          </button>
+          </Button>
         )}
       >
-        <div className="sheet-stack">
+        <div className="sheet-stack gallery-filters-stack">
           <div className="sheet-section">
             <div className="sheet-label">Type</div>
             <SegmentedTabs
@@ -548,83 +551,84 @@ export default function Gallery() {
 
           <div className="sheet-section">
             <div className="sheet-label">Options</div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <button
-                type="button"
-                className={`ui-button is-compact ${recursive ? 'is-primary' : 'is-muted'}`}
+            <div className="gallery-filter-actions">
+              <Button
+                size="sm"
+                variant={recursive ? 'primary' : 'muted'}
                 onClick={() => setRecursive((prev) => !prev)}
               >
                 <span className="inline-flex items-center gap-1.5">
                   {recursive ? <IconFolderOpen size={14} /> : <IconFolder size={14} />}
                   <span>{recursive ? 'Subfolders' : 'This folder'}</span>
                 </span>
-              </button>
-              <button
-                type="button"
-                className={`ui-button is-compact ${showHidden ? 'is-primary' : 'is-muted'}`}
+              </Button>
+              <Button
+                size="sm"
+                variant={showHidden ? 'primary' : 'muted'}
                 onClick={() => setShowHidden((prev) => !prev)}
               >
                 <span className="inline-flex items-center gap-1.5">
                   {showHidden ? <IconEye size={14} /> : <IconEyeOff size={14} />}
                   <span>{showHidden ? 'Hidden on' : 'Hidden off'}</span>
                 </span>
-              </button>
+              </Button>
               {viewMode === 'feed' ? (
-                <button
-                  type="button"
-                  className={`ui-button is-compact ${feedAutoplay ? 'is-primary' : 'is-muted'}`}
+                <Button
+                  size="sm"
+                  variant={feedAutoplay ? 'primary' : 'muted'}
                   onClick={() => setFeedAutoplay((prev) => !prev)}
                 >
                   <span className="inline-flex items-center gap-1.5">
                     {feedAutoplay ? <IconPlay size={14} /> : <IconPause size={14} />}
                     <span>{feedAutoplay ? 'Autoplay' : 'No autoplay'}</span>
                   </span>
-                </button>
+                </Button>
               ) : null}
-              <button
-                type="button"
-                className="ui-button is-compact is-ghost"
+              <Button
+                size="sm"
+                variant="ghost"
                 onClick={refresh}
               >
                 <span className="inline-flex items-center gap-1.5">
                   <IconRefresh size={14} />
                   <span>Refresh</span>
                 </span>
-              </button>
+              </Button>
             </div>
           </div>
 
           <div className="sheet-section">
             <div className="sheet-label">Page size</div>
-            <Select
-              value={perPage}
-              onChange={(value) => setPerPage(parseInt(value, 10) || 30)}
-              className="sheet-select"
-              aria-label="Items per page"
-              size="sm"
-              options={[15, 30, 60, 120]}
-            />
-            <div className="sheet-hint">
-              {isRefreshing ? <span className="loading-spinner" aria-hidden="true" /> : null}
-              <span>{summaryMeta} • Page {page} of {totalPages}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                className="ui-button is-muted w-full"
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page <= 1 || loading}
-              >
-                Prev
-              </button>
-              <button
-                type="button"
-                className="ui-button is-muted w-full"
-                onClick={() => setPage((p) => (p < totalPages ? p + 1 : p))}
-                disabled={page >= totalPages || loading}
-              >
-                Next
-              </button>
+            <div className="gallery-filter-page">
+              <Select
+                value={perPage}
+                onChange={(value) => setPerPage(parseInt(value, 10) || 30)}
+                aria-label="Items per page"
+                size="sm"
+                options={[15, 30, 60, 120]}
+              />
+              <div className="sheet-hint">
+                {isRefreshing ? <span className="loading-spinner" aria-hidden="true" /> : null}
+                <span>{summaryMeta} • Page {page} of {totalPages}</span>
+              </div>
+              <div className="gallery-filter-pagination">
+                <Button
+                  variant="muted"
+                  className="w-full"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page <= 1 || loading}
+                >
+                  Prev
+                </Button>
+                <Button
+                  variant="muted"
+                  className="w-full"
+                  onClick={() => setPage((p) => (p < totalPages ? p + 1 : p))}
+                  disabled={page >= totalPages || loading}
+                >
+                  Next
+                </Button>
+              </div>
             </div>
           </div>
         </div>

@@ -8,10 +8,13 @@ export default function MediaViewerHeader({
   url,
   canRerun,
   rerunBusy,
+  canDelete,
+  deleteBusy,
   metaRows,
   metaOpen,
   onToggleMeta,
   onOpenOptions,
+  onDelete,
   onClose,
   closeButtonRef,
 }) {
@@ -72,6 +75,16 @@ export default function MediaViewerHeader({
         >
           Open
         </Button>
+        {canDelete ? (
+          <Button
+            variant="danger"
+            size="sm"
+            onClick={onDelete}
+            disabled={deleteBusy}
+          >
+            {deleteBusy ? 'Deleting…' : 'Delete'}
+          </Button>
+        ) : null}
       </div>
     </header>
   );

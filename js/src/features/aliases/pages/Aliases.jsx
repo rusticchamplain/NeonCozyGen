@@ -470,21 +470,21 @@ export default function Aliases() {
 
   const editorFooter = (
     <div className="flex gap-2">
-      <button
-        type="button"
-        className="ui-button is-muted w-full"
+      <Button
+        variant="muted"
+        className="w-full"
         onClick={closeEditor}
       >
         {isDesktop ? 'Clear selection' : 'Close'}
-      </button>
-      <button
-        type="button"
-        className="ui-button is-primary w-full"
+      </Button>
+      <Button
+        variant="primary"
+        className="w-full"
         onClick={handleSave}
         disabled={saving || !dirty}
       >
         {saving ? 'Saving…' : dirty ? 'Save' : 'Saved'}
-      </button>
+      </Button>
     </div>
   );
 
@@ -496,27 +496,27 @@ export default function Aliases() {
           <div className="alias-editor-meta">{selectedTokenDisplay}</div>
         </div>
         <div className="alias-editor-actions">
-          <button
-            type="button"
-            className="ui-button is-tiny is-muted"
+          <Button
+            size="xs"
+            variant="muted"
             onClick={() => jumpToRow(prevRow)}
             disabled={!prevRow}
             title="Previous alias"
           >
             Prev
-          </button>
-          <button
-            type="button"
-            className="ui-button is-tiny is-muted"
+          </Button>
+          <Button
+            size="xs"
+            variant="muted"
             onClick={() => jumpToRow(nextRow)}
             disabled={!nextRow}
             title="Next alias"
           >
             Next
-          </button>
-          <button
-            type="button"
-            className="ui-button is-tiny is-ghost"
+          </Button>
+          <Button
+            size="xs"
+            variant="ghost"
             onClick={() => {
               if (selectedToken && copyText(selectedTokenDisplay)) {
                 setStatus('Token copied.');
@@ -527,7 +527,7 @@ export default function Aliases() {
             title="Copy token"
           >
             Copy token
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -569,8 +569,8 @@ export default function Aliases() {
             const idx = rows.findIndex((r) => r.id === selectedRow.id);
             if (idx !== -1) updateRow(idx, 'category', value);
           }}
-          className="sheet-select"
           size="sm"
+          searchThreshold={0}
           options={[
             { value: '', label: 'Uncategorized' },
             ...availableCategories.filter(Boolean).map((cat) => ({
@@ -579,13 +579,13 @@ export default function Aliases() {
             })),
           ]}
         />
-        <button
-          type="button"
-          className="ui-button is-tiny is-muted"
+        <Button
+          size="xs"
+          variant="muted"
           onClick={() => setCategoriesOpen(true)}
         >
           Manage categories
-        </button>
+        </Button>
       </div>
 
       <div className="sheet-section">
@@ -615,29 +615,29 @@ export default function Aliases() {
             className="ui-control ui-input tag-quick-input"
             aria-label="Add tags"
           />
-          <button
-            type="button"
-            className="ui-button is-compact is-primary"
+          <Button
+            size="sm"
+            variant="primary"
             onClick={addQuickTags}
             disabled={!quickTagInput.trim()}
           >
             Add
-          </button>
+          </Button>
         </div>
           <div className="tag-editor-actions">
-            <button
-              type="button"
-              className="ui-button is-tiny is-ghost"
+            <Button
+              size="xs"
+              variant="ghost"
               onClick={() => goToTagLibrary('')}
             >
               <span className="inline-flex items-center gap-2">
                 <IconTag size={14} />
                 Open tag library
               </span>
-            </button>
-            <button
-              type="button"
-              className="ui-button is-tiny is-muted"
+            </Button>
+            <Button
+              size="xs"
+              variant="muted"
             onClick={() => {
               setTagCheck((prev) => ({ ...prev, loading: true }));
               const tags = splitTags(selectedRow.text || '');
@@ -655,7 +655,7 @@ export default function Aliases() {
             title="Validate against danbooru_tags.md"
           >
             {tagCheck.loading ? 'Validating…' : 'Validate'}
-          </button>
+          </Button>
         </div>
 
         {selectedRowTags.length ? (
@@ -699,13 +699,13 @@ export default function Aliases() {
                   <div key={bad} className="tag-invalid-row">
                     <div className="tag-invalid-tag">
                       <code>{bad}</code>
-                      <button
-                        type="button"
-                        className="ui-button is-tiny is-ghost"
+                      <Button
+                        size="xs"
+                        variant="ghost"
                         onClick={() => goToTagLibrary(bad)}
                       >
                         Find
-                      </button>
+                      </Button>
                     </div>
                     {Array.isArray(sugg) && sugg.length ? (
                       <div className="tag-invalid-suggestions">
@@ -738,9 +738,8 @@ export default function Aliases() {
       </div>
 
       <div className="sheet-section">
-        <button
-          type="button"
-          className="ui-button is-danger"
+        <Button
+          variant="danger"
           onClick={() => {
             const idx = rows.findIndex((r) => r.id === selectedRow.id);
             if (idx !== -1) {
@@ -750,7 +749,7 @@ export default function Aliases() {
           }}
         >
           Delete alias
-        </button>
+        </Button>
         <div className="sheet-hint">
           Deleting removes it from your library. Use Save changes to persist.
         </div>
@@ -807,11 +806,12 @@ export default function Aliases() {
                 </Button>
               </div>
               <Select
-                className="composer-subcategory-select"
+                wrapperClassName="composer-subcategory-select"
                 value={categoryFilter}
                 onChange={setCategoryFilter}
                 aria-label="Filter by category"
                 size="sm"
+                searchThreshold={0}
                 options={[
                   { value: 'All', label: 'Category: All' },
                   { value: '', label: 'Uncategorized' },
@@ -822,11 +822,12 @@ export default function Aliases() {
                 ]}
               />
               <Select
-                className="composer-subcategory-select"
+                wrapperClassName="composer-subcategory-select"
                 value={subcategoryFilter}
                 onChange={setSubcategoryFilter}
                 aria-label="Filter by subcategory"
                 size="sm"
+                searchThreshold={0}
                 options={[
                   { value: 'All', label: 'Subcategory: All' },
                   ...availableSubcategories.map((sub) => ({
@@ -836,14 +837,14 @@ export default function Aliases() {
                 ]}
               />
               {dirty ? (
-                <button
-                  type="button"
-                  className="ui-button is-compact is-primary"
+                <Button
+                  size="sm"
+                  variant="primary"
                   onClick={handleSave}
                   disabled={saving}
                 >
                   {saving ? 'Saving…' : 'Save changes'}
-                </button>
+                </Button>
               ) : null}
             </div>
             {error ? (
@@ -941,13 +942,13 @@ export default function Aliases() {
                 placeholder="e.g. styles"
                 className="sheet-input ui-control ui-input"
               />
-              <button
-                type="button"
-                className="ui-button is-primary is-compact"
+              <Button
+                size="sm"
+                variant="primary"
                 onClick={addCategory}
               >
                 Add
-              </button>
+              </Button>
             </div>
           </div>
 
@@ -957,7 +958,6 @@ export default function Aliases() {
               <div className="sheet-hint">No categories yet.</div>
             ) : (
               <Select
-                className="sheet-select"
                 value=""
                 onChange={(value) => {
                   if (!value) return;
@@ -965,6 +965,7 @@ export default function Aliases() {
                   setCategoriesOpen(false);
                 }}
                 size="sm"
+                searchThreshold={0}
                 placeholder="Select a category…"
                 options={availableCategories.filter(Boolean).map((cat) => ({
                   value: cat,
@@ -983,16 +984,16 @@ export default function Aliases() {
         variant="fullscreen"
         footer={(
           <div className="flex gap-2">
-            <button
-              type="button"
-              className="ui-button is-muted w-full"
+            <Button
+              variant="muted"
+              className="w-full"
               onClick={() => setInvalidReportOpen(false)}
             >
               Close
-            </button>
-            <button
-              type="button"
-              className="ui-button is-primary w-full"
+            </Button>
+            <Button
+              variant="primary"
+              className="w-full"
               onClick={() => {
                 const invalidLower = new Set((invalidReport?.invalidLower || []).map((t) => String(t).toLowerCase()));
                 if (!invalidLower.size) {
@@ -1013,7 +1014,7 @@ export default function Aliases() {
               }}
             >
               Remove invalid tags
-            </button>
+            </Button>
           </div>
         )}
       >

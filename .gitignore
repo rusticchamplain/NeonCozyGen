@@ -1,8 +1,18 @@
-__pycache__/
-*.py[cod]
+# ---- OS/editor ----
 .DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# ---- Environment ----
 .env
 .env.*
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
 .ruff_cache/
 .mypy_cache/
 .pytest_cache/
@@ -10,11 +20,22 @@ __pycache__/
 .venv/
 venv/
 env/
+*.egg-info/
 
+# ---- Data/workflows (generated/local) ----
 data/
 workflows/*
+
+# ---- Node/Vite ----
 js/node_modules/
 js/.eslintcache
 js/.vite/
+js/.cache/
+js/.parcel-cache/
+js/.turbo/
+js/coverage/
+
+# ---- Logs ----
 npm-debug.log*
 yarn-error.log*
+pnpm-debug.log*

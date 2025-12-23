@@ -65,6 +65,7 @@ export default function PromptComposer({
   const [tagQuery, setTagQuery] = useState('');
   const [tagCategory, setTagCategory] = useState('');
   const [tagSort, setTagSort] = useState('count');
+  const [tagMinCount, setTagMinCount] = useState('');
   const [tagCategories, setTagCategories] = useState([]);
   const [tagItems, setTagItems] = useState([]);
   const [tagTotal, setTagTotal] = useState(0);
@@ -76,6 +77,10 @@ export default function PromptComposer({
   const tagLoadAbortRef = useRef(null);
   const tagSearchCacheRef = useRef(new Map());
   const tagInflightRef = useRef(new Map());
+  const tagMinCountValue = useMemo(() => {
+    const parsed = Number.parseInt(String(tagMinCount || ''), 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+  }, [tagMinCount]);
   const [composerCollectedTags, setComposerCollectedTags] = useState([]);
   const [collectionStatus, setCollectionStatus] = useState('');
   const [composerCollectedAliases, setComposerCollectedAliases] = useState([]);
@@ -138,6 +143,7 @@ export default function PromptComposer({
       setTagQuery('');
       setTagCategory('');
       setTagSort('count');
+      setTagMinCount('');
       setTagItems([]);
       setTagTotal(0);
       setTagOffset(0);
@@ -307,8 +313,8 @@ export default function PromptComposer({
     return () => { cancelled = true; };
   }, [open, activeTab, tagCategories.length]);
 
-  const tagCacheKey = useCallback((q, c, s, limit, offset) => {
-    return [q || '', c || '', s || '', String(limit || 0), String(offset || 0)].join('::');
+  const tagCacheKey = useCallback((q, c, s, minCount, limit, offset) => {
+    return [q || '', c || '', s || '', String(minCount || 0), String(limit || 0), String(offset || 0)].join('::');
   }, []);
 
   const trimTagCache = useCallback(() => {
@@ -320,11 +326,12 @@ export default function PromptComposer({
   }, []);
 
   // Tag library: search function
-  const searchTags = useCallback(async ({ nextQuery, nextCategory, nextSort } = {}) => {
+  const searchTags = useCallback(async ({ nextQuery, nextCategory, nextSort, nextMinCount } = {}) => {
     const q = typeof nextQuery === 'string' ? nextQuery : tagQuery;
     const c = typeof nextCategory === 'string' ? nextCategory : tagCategory;
     const s = typeof nextSort === 'string' ? nextSort : tagSort;
-    const key = tagCacheKey(q, c, s, 80, 0);
+    const m = typeof nextMinCount === 'number' ? nextMinCount : tagMinCountValue;
+    const key = tagCacheKey(q, c, s, m, 80, 0);
     const now = Date.now();
     const cached = tagSearchCacheRef.current.get(key);
     if (cached && now - cached.ts < 5 * 60 * 1000) {
@@ -358,7 +365,7 @@ export default function PromptComposer({
     tagSearchAbortRef.current = { controller, key };
     try {
       const request = searchDanbooruTags(
-        { q, category: c, sort: s, limit: 80, offset: 0 },
+        { q, category: c, sort: s, minCount: m, limit: 80, offset: 0 },
         { signal: controller.signal }
       );
       tagInflightRef.current.set(key, request);
@@ -382,14 +389,14 @@ export default function PromptComposer({
       }
       setTagLoading(false);
     }
-  }, [tagCacheKey, tagCategory, tagQuery, tagSort, trimTagCache]);
+  }, [tagCacheKey, tagCategory, tagMinCountValue, tagQuery, tagSort, trimTagCache]);
 
   // Tag library: load more function
   const loadMoreTags = useCallback(async () => {
     if (tagLoading || tagLoadingMore) return;
     if (tagItems.length >= tagTotal) return;
     const nextOffset = tagOffset + 80;
-    const key = tagCacheKey(tagQuery, tagCategory, tagSort, 80, nextOffset);
+    const key = tagCacheKey(tagQuery, tagCategory, tagSort, tagMinCountValue, 80, nextOffset);
     const now = Date.now();
     const cached = tagSearchCacheRef.current.get(key);
     if (cached && now - cached.ts < 5 * 60 * 1000) {
@@ -421,7 +428,14 @@ export default function PromptComposer({
     tagLoadAbortRef.current = { controller, key };
     try {
       const request = searchDanbooruTags(
-        { q: tagQuery, category: tagCategory, sort: tagSort, limit: 80, offset: nextOffset },
+        {
+          q: tagQuery,
+          category: tagCategory,
+          sort: tagSort,
+          minCount: tagMinCountValue,
+          limit: 80,
+          offset: nextOffset,
+        },
         { signal: controller.signal }
       );
       tagInflightRef.current.set(key, request);
@@ -445,7 +459,19 @@ export default function PromptComposer({
       }
       setTagLoadingMore(false);
     }
-  }, [tagCacheKey, tagCategory, tagLoading, tagLoadingMore, tagOffset, tagQuery, tagSort, tagItems.length, tagTotal, trimTagCache]);
+  }, [
+    tagCacheKey,
+    tagCategory,
+    tagLoading,
+    tagLoadingMore,
+    tagMinCountValue,
+    tagOffset,
+    tagQuery,
+    tagSort,
+    tagItems.length,
+    tagTotal,
+    trimTagCache,
+  ]);
 
   // Tag library: debounced search when filters change
   useEffect(() => {
@@ -454,7 +480,7 @@ export default function PromptComposer({
       searchTags();
     }, 220);
     return () => window.clearTimeout(handle);
-  }, [open, activeTab, tagQuery, tagCategory, tagSort, searchTags]);
+  }, [open, activeTab, tagQuery, tagCategory, tagSort, tagMinCountValue, searchTags]);
 
   useEffect(() => {
     return () => {
@@ -1043,9 +1069,10 @@ export default function PromptComposer({
             <Select
               value={pickerCategory}
               onChange={setPickerCategory}
-              className="composer-subcategory-select"
+              wrapperClassName="composer-subcategory-select"
               aria-label="Filter by category"
               size="sm"
+              searchThreshold={0}
               options={categoryOptions.map((c) => ({
                 value: c,
                 label: c === 'All' ? 'Category: All' : formatCategoryLabel(c),
@@ -1055,8 +1082,9 @@ export default function PromptComposer({
               <Select
                 value={pickerSubcategory}
                 onChange={setPickerSubcategory}
-                className="composer-subcategory-select"
+                wrapperClassName="composer-subcategory-select"
                 size="sm"
+                searchThreshold={0}
                 options={subcategoryOptions.map((c) => ({
                   value: c,
                   label: c === 'All' ? 'All subcategories' : formatSubcategoryLabel(c),
@@ -1127,9 +1155,10 @@ export default function PromptComposer({
             <Select
               value={tagCategory}
               onChange={setTagCategory}
-              className="composer-subcategory-select"
+              wrapperClassName="composer-subcategory-select"
               aria-label="Filter by category"
               size="sm"
+              searchThreshold={0}
               options={[
                 { value: '', label: 'Category: All' },
                 ...tagCategories.map((c) => ({
@@ -1138,17 +1167,41 @@ export default function PromptComposer({
                 })),
               ]}
             />
-            <Select
-              value={tagSort}
-              onChange={setTagSort}
-              className="composer-subcategory-select"
-              aria-label="Sort tags"
-              size="sm"
-              options={[
-                { value: 'count', label: 'Sort: Popular' },
-                { value: 'alpha', label: 'Sort: A–Z' },
-              ]}
-            />
+            <div className="composer-sort-row">
+              <Select
+                value={tagSort}
+                onChange={setTagSort}
+                wrapperClassName="composer-subcategory-select"
+                aria-label="Sort tags"
+                size="sm"
+                options={[
+                  { value: 'count', label: 'Sort: Popular' },
+                  { value: 'alpha', label: 'Sort: A–Z' },
+                ]}
+              />
+              <div className="composer-min-count">
+                <span className="composer-filter-divider" aria-hidden="true">|</span>
+                <label className="composer-min-count-label" htmlFor="composer-min-count">
+                  Minimum count
+                </label>
+                <input
+                  id="composer-min-count"
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  step={1}
+                  value={tagMinCount}
+                  onChange={(e) => {
+                    const nextValue = e.target.value;
+                    if (nextValue === '' || Number(nextValue) >= 0) {
+                      setTagMinCount(nextValue);
+                    }
+                  }}
+                  className="ui-control ui-input is-compact composer-min-count-input"
+                  placeholder="0"
+                />
+              </div>
+            </div>
           </div>
 
           {tagError ? <div className="composer-tags-error">{tagError}</div> : null}
@@ -1253,12 +1306,12 @@ export default function PromptComposer({
           <div className="composer-footer-stack">
             {selectionFooter}
             <div className="flex gap-2">
-              <button type="button" className="ui-button is-muted w-full" onClick={handleCancel}>
+              <Button variant="muted" className="w-full" onClick={handleCancel}>
                 Cancel
-              </button>
-              <button type="button" className="ui-button is-primary w-full" onClick={handleSave}>
+              </Button>
+              <Button variant="primary" className="w-full" onClick={handleSave}>
                 Apply
-              </button>
+              </Button>
             </div>
           </div>
         )}

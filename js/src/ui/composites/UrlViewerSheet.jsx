@@ -1,4 +1,5 @@
 import BottomSheet from '../primitives/BottomSheet';
+import Button from '../primitives/Button';
 
 export default function UrlViewerSheet({
   open,
@@ -17,12 +18,18 @@ export default function UrlViewerSheet({
       variant="fullscreen"
       footer={(
         <div className="flex gap-2">
-          <a href={url} target="_blank" rel="noreferrer" className="ui-button is-muted w-full text-center">
+          <Button
+            href={url}
+            target="_blank"
+            rel="noreferrer"
+            variant="muted"
+            className="w-full text-center"
+          >
             Open
-          </a>
-          <button type="button" className="ui-button is-primary w-full" onClick={onClose}>
+          </Button>
+          <Button variant="primary" className="w-full" onClick={onClose}>
             Close
-          </button>
+          </Button>
         </div>
       )}
     >

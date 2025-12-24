@@ -60,7 +60,7 @@ export default function MediaViewerHeader({
             onClick={onToggleMeta}
             aria-expanded={metaOpen}
           >
-            Metadata
+            Meta
           </Button>
         ) : null}
         {canRerun ? (

@@ -743,16 +743,20 @@ export default function MediaViewerModal({
   }, []);
 
   const shouldParsePromptTargets = rerunOpen || promptEditorOpen;
+  const shouldExpandAliases = aliasDisplayMode === 'raw' && aliasLookup?.size;
   const promptTargetsParsed = useMemo(() => {
     if (!shouldParsePromptTargets || !promptTargets.length) return [];
     return promptTargets
       .map((target) => {
         const draft = promptDrafts?.[target.key];
-        const text = typeof draft === 'string' ? draft : target.text || '';
+        const baseText = typeof draft === 'string' ? draft : target.text || '';
+        const text = shouldExpandAliases
+          ? applyPromptAliases(baseText, aliasLookup)
+          : baseText;
         const elements = parsePromptElements(text || '');
-        return { ...target, text, elements };
+        return { ...target, text, rawText: baseText, elements };
       });
-  }, [promptTargets, promptDrafts, shouldParsePromptTargets]);
+  }, [promptTargets, promptDrafts, shouldParsePromptTargets, shouldExpandAliases, aliasLookup]);
 
   const promptTargetsAvailable = useMemo(
     () => promptTargetsParsed.filter((target) => String(target.text || '').trim().length > 0),
@@ -1073,14 +1077,17 @@ export default function MediaViewerModal({
   const updatePromptDraft = useCallback((updater) => {
     if (!activePromptTarget?.key) return;
     setPromptDrafts((prev) => {
-      const base = typeof prev?.[activePromptTarget.key] === 'string'
+      const existing = typeof prev?.[activePromptTarget.key] === 'string'
         ? prev[activePromptTarget.key]
-        : (activePromptTarget.text || '');
+        : (activePromptTarget.rawText || activePromptTarget.text || '');
+      const base = shouldExpandAliases
+        ? applyPromptAliases(existing, aliasLookup)
+        : existing;
       const next = typeof updater === 'function' ? updater(base) : String(updater || '');
       if (next === base) return prev;
       return { ...prev, [activePromptTarget.key]: next };
     });
-  }, [activePromptTarget]);
+  }, [activePromptTarget, aliasLookup, shouldExpandAliases]);
 
   const applyPromptReplacement = useCallback((element, nextType, nextText) => {
     if (!element) return false;
@@ -1682,8 +1689,12 @@ export default function MediaViewerModal({
                                 ? promptElements.map((el) => {
                                   const aliasKey = String(el.text || '').trim().toLowerCase();
                                   const aliasLabel = aliasDisplayLookup.get(aliasKey) || `$${el.text}$`;
+                                  const expandedAlias = aliasLookup?.get(aliasKey);
+                                  const expandedLabel = typeof expandedAlias === 'string' && expandedAlias.trim()
+                                    ? expandedAlias
+                                    : `$${el.text}$`;
                                   const tokenLabel = el.type === 'alias'
-                                    ? (aliasDisplayMode === 'alias' ? aliasLabel : `$${el.text}$`)
+                                    ? (aliasDisplayMode === 'alias' ? aliasLabel : expandedLabel)
                                     : el.text;
                                   const editorLabel = el.type === 'alias'
                                     ? (formatAliasFriendlyName({ token: el.text }) || el.text)

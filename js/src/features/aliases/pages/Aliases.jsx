@@ -17,6 +17,7 @@ import { useVirtualList } from '../../../hooks/useVirtualList';
 import AliasRow from '../components/AliasRow';
 import {
   addTagToText,
+  joinTags,
   makeRowId,
   removeTagFromText,
   replaceTagInText,
@@ -31,7 +32,7 @@ const listItemVisibilityStyles = {
   containIntrinsicSize: '240px 120px',
 };
 
-export default function Aliases() {
+export default function Aliases({ inline = false }) {
   const navigate = useNavigate();
   const {
     aliases,
@@ -345,8 +346,10 @@ export default function Aliases() {
   };
 
   const goToTagLibrary = (q = '') => {
-    const qs = q ? `?q=${encodeURIComponent(q)}` : '';
-    navigate(`/tags${qs}`);
+    const params = new URLSearchParams();
+    params.set('tab', 'tags');
+    if (q) params.set('q', q);
+    navigate(`/library?${params.toString()}`);
   };
 
   const addQuickTags = () => {
@@ -761,28 +764,32 @@ export default function Aliases() {
     </div>
   );
 
+  const shellClassName = inline ? 'page-stack alias-page' : 'page-shell page-stack alias-page';
+
   return (
     <>
-      <div className="page-shell page-stack alias-page">
-        <div className="page-bar">
-          <h1 className="page-bar-title">Aliases</h1>
-          <div className="page-bar-actions">
-            <Button
-              size="xs"
-              onClick={() => openTagLibrary({ query: query || '', targetId: '' })}
-              title="Browse danbooru tags"
-            >
-              Tags
-            </Button>
-            <Button
-              size="xs"
-              variant="primary"
-              onClick={addRow}
-            >
-              Add
-            </Button>
+      <div className={shellClassName}>
+        {!inline ? (
+          <div className="page-bar">
+            <h1 className="page-bar-title">Aliases</h1>
+            <div className="page-bar-actions">
+              <Button
+                size="xs"
+                onClick={() => goToTagLibrary(query || '')}
+                title="Browse danbooru tags"
+              >
+                Tags
+              </Button>
+              <Button
+                size="xs"
+                variant="primary"
+                onClick={addRow}
+              >
+                Add
+              </Button>
+            </div>
           </div>
-        </div>
+        ) : null}
         <div className="library-toolbar screen-sticky">
           <div className="library-toolbar-inner">
             <div className="composer-filters">
@@ -836,6 +843,15 @@ export default function Aliases() {
                   })),
                 ]}
               />
+              {inline ? (
+                <Button
+                  size="sm"
+                  variant="primary"
+                  onClick={addRow}
+                >
+                  Add alias
+                </Button>
+              ) : null}
               {dirty ? (
                 <Button
                   size="sm"

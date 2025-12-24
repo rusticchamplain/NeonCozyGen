@@ -127,6 +127,12 @@ export async function getGalleryPrompt({ filename = '', subfolder = '' } = {}, o
   return payload;
 }
 
+export async function storePromptRaw({ promptId = '', promptRaw = null } = {}, options = {}) {
+  if (!promptId || !promptRaw) return { ok: false };
+  if (typeof promptRaw !== 'object') return { ok: false };
+  return jpost('/cozygen/api/prompt_raw', { prompt_id: String(promptId), prompt_raw: promptRaw }, options);
+}
+
 export async function deleteGalleryItem({ filename = '', subfolder = '' } = {}, options = {}) {
   return jpost('/cozygen/api/gallery/delete', { filename, subfolder }, options);
 }

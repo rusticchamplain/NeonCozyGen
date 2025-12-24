@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import TagLibrarySheet from '../components/TagLibrarySheet';
 import Button from '../../../ui/primitives/Button';
 
-export default function TagLibrary() {
+export default function TagLibrary({ inline = false }) {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const initialQuery = params.get('q') || '';
@@ -12,6 +12,17 @@ export default function TagLibrary() {
     initialQuery ? `Tag Library — “${initialQuery}”` : 'Tag Library'
   ), [initialQuery]);
 
+  if (inline) {
+    return (
+      <TagLibrarySheet
+        inline
+        initialQuery={initialQuery}
+        title=""
+        onSelectTag={null}
+      />
+    );
+  }
+
   return (
     <div className="page-shell page-stack">
       <div className="page-bar">
@@ -19,7 +30,7 @@ export default function TagLibrary() {
         <div className="page-bar-actions">
           <Button
             size="xs"
-            onClick={() => navigate('/aliases')}
+            onClick={() => navigate('/library?tab=aliases')}
           >
             Aliases
           </Button>

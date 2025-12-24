@@ -1,7 +1,8 @@
 // js/src/utils/globalRender.js
 // Global render service for re-queueing prompts from any page
 
-import { queuePrompt } from '../../../services/api';
+import { queuePrompt, storePromptRaw } from '../../../services/api';
+import { createPromptId } from '../../../utils/promptId';
 
 const STORAGE_KEY = 'cozygen_last_render_payload';
 
@@ -49,7 +50,17 @@ export async function requeueLastRender() {
       new CustomEvent('cozygen:render-state', { detail: { active: true } })
     );
 
-    await queuePrompt({ prompt: payload.workflow });
+    const promptId = createPromptId();
+    const rawPrompt = payload.promptRaw
+      || payload?.extraData?.extra_pnginfo?.cozygen_prompt_raw;
+    if (rawPrompt && typeof rawPrompt === 'object') {
+      try {
+        await storePromptRaw({ promptId, promptRaw: rawPrompt });
+      } catch {
+        // ignore metadata storage failures
+      }
+    }
+    await queuePrompt({ prompt: payload.workflow, prompt_id: promptId });
 
     // From non-Studio pages we may not have a websocket listener to know when the
     // prompt actually finishes. Treat this event as "queued" feedback and reset.

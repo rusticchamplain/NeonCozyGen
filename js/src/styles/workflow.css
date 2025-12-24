@@ -1447,10 +1447,43 @@
   background: rgba(255, 143, 112, 0.16);
 }
 
+.gallery-tile-rerun.ui-button {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.6rem;
+  z-index: 3;
+  opacity: 0;
+  transform: translateY(-2px);
+  transition: opacity 150ms ease, transform 150ms ease;
+  width: 18px;
+  height: 18px;
+  border-radius: 0.5rem;
+  padding: 0;
+  color: rgba(196, 255, 244, 0.82);
+  background: rgba(5, 7, 22, 0.55);
+  border-color: rgba(255, 255, 255, 0.14);
+  box-shadow: 0 8px 16px rgba(3, 6, 14, 0.35);
+}
+
+.gallery-tile-rerun:hover:not(:disabled),
+.gallery-tile-rerun:focus-visible:not(:disabled) {
+  color: rgba(218, 255, 250, 0.98);
+  border-color: rgba(68, 225, 197, 0.55);
+  background: rgba(68, 225, 197, 0.14);
+}
+
 .gallery-tile:hover .gallery-tile-delete,
 .gallery-tile:focus-within .gallery-tile-delete,
 .gallery-feed-item:hover .gallery-tile-delete,
 .gallery-feed-item:focus-within .gallery-tile-delete {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.gallery-tile:hover .gallery-tile-rerun,
+.gallery-tile:focus-within .gallery-tile-rerun,
+.gallery-feed-item:hover .gallery-tile-rerun,
+.gallery-feed-item:focus-within .gallery-tile-rerun {
   opacity: 1;
   transform: translateY(0);
 }
@@ -1460,10 +1493,20 @@
     opacity: 1;
     transform: translateY(0);
   }
+
+  .gallery-tile-rerun.ui-button {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @media (pointer: coarse) {
   .gallery-tile-delete.ui-button {
+    width: 22px;
+    height: 22px;
+  }
+
+  .gallery-tile-rerun.ui-button {
     width: 22px;
     height: 22px;
   }

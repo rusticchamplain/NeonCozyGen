@@ -19,6 +19,7 @@ from aiohttp import web
 from PIL import Image, ImageDraw, ImageOps
 
 from ComfyUI_CozyGen import auth
+from .prompt_raw_store import get_prompt_raw_by_file, store_prompt_raw
 
 routes = web.RouteTableDef()
 logger = logging.getLogger(__name__)
@@ -581,7 +582,13 @@ def _read_prompt_payload(base: str, subfolder: str, filename: str):
     prompt_data = _extract_prompt_data(info)
     if not prompt_data:
         return None
-    return {"prompt": prompt_data}
+    raw_prompt = _safe_json_loads(info.get("cozygen_prompt_raw"))
+    if not isinstance(raw_prompt, dict) or not raw_prompt:
+        raw_prompt = get_prompt_raw_by_file(filename, subfolder)
+    payload = {"prompt": prompt_data}
+    if isinstance(raw_prompt, dict) and raw_prompt:
+        payload["cozygen_prompt_raw"] = raw_prompt
+    return payload
 
 
 def _attach_media_meta(items, base: str):
@@ -821,6 +828,29 @@ async def gallery_prompt(request: web.Request):
         return web.json_response({"error": "prompt metadata not found"}, status=404)
 
     return web.json_response(payload)
+
+
+@routes.post("/cozygen/api/prompt_raw")
+async def store_prompt_raw_payload(request: web.Request):
+    try:
+        payload = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid json payload"}, status=400)
+
+    prompt_id = str(payload.get("prompt_id") or "").strip()
+    raw_map = payload.get("prompt_raw")
+    if raw_map is None:
+        raw_map = payload.get("cozygen_prompt_raw") or payload.get("raw")
+
+    if not prompt_id:
+        return web.json_response({"error": "prompt_id required"}, status=400)
+    if not isinstance(raw_map, dict) or not raw_map:
+        return web.json_response({"error": "prompt_raw required"}, status=400)
+
+    stored = store_prompt_raw(prompt_id, raw_map)
+    if not stored:
+        return web.json_response({"error": "prompt_raw invalid"}, status=400)
+    return web.json_response({"ok": True})
 
 
 @routes.post("/cozygen/api/gallery/delete")

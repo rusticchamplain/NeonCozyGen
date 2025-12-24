@@ -11,6 +11,7 @@ import torch
 from PIL import Image
 
 from nodes import SaveImage  # type: ignore[attr-defined]
+from .prompt_raw_store import record_prompt_output
 
 logger = logging.getLogger(__name__)
 
@@ -224,10 +225,20 @@ class CozyGenOutput(SaveImage):
     def save_images(self, images, filename_prefix="CozyGen/output", prompt=None, extra_pnginfo=None):
         results = super().save_images(images, filename_prefix, prompt, extra_pnginfo)
         server_instance = server.PromptServer.instance
+        prompt_id = getattr(server_instance, "last_prompt_id", None) if server_instance else None
 
         if server_instance and results and "ui" in results and "images" in results["ui"]:
             batch_images_data = []
             for saved_image in results["ui"]["images"]:
+                if prompt_id:
+                    try:
+                        record_prompt_output(
+                            prompt_id,
+                            saved_image.get("filename") or "",
+                            saved_image.get("subfolder") or "",
+                        )
+                    except Exception as exc:
+                        logger.warning("CozyGen: Failed to record prompt output: %s", exc)
                 image_url = (
                     f"/view?filename={saved_image['filename']}&subfolder={saved_image['subfolder']}"
                     f"&type={saved_image['type']}"
@@ -317,6 +328,12 @@ class CozyGenVideoOutput:
         results.append({"filename": file, "subfolder": subfolder, "type": self.type})
 
         server_instance = server.PromptServer.instance
+        prompt_id = getattr(server_instance, "last_prompt_id", None) if server_instance else None
+        if prompt_id:
+            try:
+                record_prompt_output(prompt_id, file, subfolder or "")
+            except Exception as exc:
+                logger.warning("CozyGen: Failed to record prompt output: %s", exc)
         if server_instance:
             for result in results:
                 video_url = f"/view?filename={result['filename']}&subfolder={result['subfolder']}&type={result['type']}"

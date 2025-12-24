@@ -8,8 +8,7 @@ import { AuthProvider, useAuth } from '../features/auth/hooks/useAuth';
 import WorkflowControlsPage from '../features/workflow/pages/WorkflowControlsPage';
 import StudioLanding from '../features/studio/pages/StudioLanding';
 import Gallery from '../features/gallery/pages/Gallery';
-import Aliases from '../features/aliases/pages/Aliases';
-import TagLibrary from '../features/tags/pages/TagLibrary';
+import Library from '../features/library/pages/Library';
 import ComposerPage from '../features/composer/pages/Composer';
 import Login from '../features/auth/pages/Login';
 import { StudioProvider } from '../features/studio/contexts/StudioContext';
@@ -51,14 +50,21 @@ function RequireAuth({ children }) {
   return children;
 }
 
+function RedirectToLibrary({ tab }) {
+  const location = useLocation();
+  const params = new URLSearchParams(location.search || '');
+  params.set('tab', tab);
+  const next = params.toString();
+  return <Navigate to={`/library?${next}`} replace />;
+}
+
 function App() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const { defaultCreds, authed } = useAuth();
   const isLogin = pathname === '/login';
   const contentRef = useRef(null);
-  const isMobileAlignedNav = !isLogin;
-  const showBottomNav = isMobileAlignedNav;
+  const showBottomNav = !isLogin;
 
   useEffect(() => {
     if (!authed) return undefined;
@@ -73,7 +79,7 @@ function App() {
 
   return (
     <div className="app-shell">
-      {!isLogin && <TopBar isMobileAlignedNav={isMobileAlignedNav} />}
+      {!isLogin && <TopBar />}
       {!isLogin && authed && defaultCreds && (
         <div className="flex-shrink-0 bg-amber-500/10 text-amber-200 border-b border-amber-400/50 px-4 py-2 text-sm text-center">
           Default CozyGen credentials are still in use. Change <code className="font-mono">COZYGEN_AUTH_USER</code> /
@@ -103,8 +109,9 @@ function App() {
               <Route path="/controls" element={<WorkflowControlsPage />} />
               <Route path="/compose" element={<ComposerPage />} />
               <Route path="/gallery" element={<Gallery />} />
-              <Route path="/aliases" element={<Aliases />} />
-              <Route path="/tags" element={<TagLibrary />} />
+              <Route path="/library" element={<Library />} />
+              <Route path="/aliases" element={<RedirectToLibrary tab="aliases" />} />
+              <Route path="/tags" element={<RedirectToLibrary tab="tags" />} />
             </Route>
 
             {/* Fallback */}

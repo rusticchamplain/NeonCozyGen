@@ -8,6 +8,7 @@ import {
   getGalleryPrompt,
   queuePrompt,
   searchDanbooruTags,
+  storePromptRaw,
 } from '../../../services/api';
 import BottomSheet from '../../../ui/primitives/BottomSheet';
 import Button from '../../../ui/primitives/Button';
@@ -25,8 +26,10 @@ import {
 import CollapsibleSection from '../../workflow/components/CollapsibleSection';
 import AliasRow from '../../aliases/components/AliasRow';
 import TagComposerRow from '../../composer/components/TagComposerRow';
-import { formatFileBaseName, isFilePathLike, splitFilePath } from '../../../utils/modelDisplay';
 import { formatAliasFriendlyName, formatCategoryLabel, formatSubcategoryLabel } from '../../../utils/aliasPresentation';
+import { formatFileBaseName, isFilePathLike, splitFilePath } from '../../../utils/modelDisplay';
+import { applyPromptAliases } from '../../../utils/promptAliases';
+import { createPromptId } from '../../../utils/promptId';
 import {
   formatTokenWeight,
   getElementWeight,
@@ -85,8 +88,15 @@ export default function MediaViewerModal({
   total = 0,
   canPrev = false,
   canNext = false,
+  autoOpenRerunKey = '',
+  onRerunAutoOpen,
 }) {
-  const { aliasCatalog = [], aliasLoading, aliasError } = useStudioContext();
+  const {
+    aliasCatalog = [],
+    aliasLookup,
+    aliasLoading,
+    aliasError,
+  } = useStudioContext();
   const overlayPointerDownRef = useRef(false);
   const closeButtonRef = useRef(null);
   const [metaOpen, setMetaOpen] = useState(false);
@@ -97,10 +107,11 @@ export default function MediaViewerModal({
   const lastFocusedRef = useRef(null);
   const justOpenedRef = useRef(false);
   const justOpenedTimerRef = useRef(null);
-  const [optionsOpen, setOptionsOpen] = useState(false);
+  const [rerunOpen, setRerunOpen] = useState(false);
+  const [rerunPicker, setRerunPicker] = useState(null);
   const [promptEditorOpen, setPromptEditorOpen] = useState(false);
   const [replaceTarget, setReplaceTarget] = useState(null);
-  const replaceReturnRef = useRef('options');
+  const replaceReturnRef = useRef('rerun');
   const [seedMode, setSeedMode] = useState('random');
   const [seedInput, setSeedInput] = useState('');
   const [widthInput, setWidthInput] = useState('');
@@ -120,10 +131,13 @@ export default function MediaViewerModal({
     height: null,
   });
   const [promptTargets, setPromptTargets] = useState([]);
+  const [promptRawMap, setPromptRawMap] = useState(null);
   const [promptDrafts, setPromptDrafts] = useState({});
   const [activePromptKey, setActivePromptKey] = useState('');
   const [promptInput, setPromptInput] = useState('');
   const [promptPanel, setPromptPanel] = useState('elements');
+  const [promptEditMode, setPromptEditMode] = useState('replace');
+  const [aliasDisplayMode, setAliasDisplayMode] = useState('alias');
   const [aliasSearch, setAliasSearch] = useState('');
   const deferredAliasSearch = useDeferredValue(aliasSearch);
   const [aliasCategory, setAliasCategory] = useState('All');
@@ -159,6 +173,7 @@ export default function MediaViewerModal({
   const [loraOptions, setLoraOptions] = useState([]);
   const promptRef = useRef(null);
   const choicesAbortRef = useRef(null);
+  const autoOpenKeyRef = useRef('');
 
   const getFocusable = (root) => {
     if (!root) return [];
@@ -183,10 +198,11 @@ export default function MediaViewerModal({
   useEffect(() => {
     if (!isOpen) return;
     setMetaOpen(false);
-    setOptionsOpen(false);
+    setRerunOpen(false);
+    setRerunPicker(null);
     setPromptEditorOpen(false);
     setReplaceTarget(null);
-    replaceReturnRef.current = 'options';
+    replaceReturnRef.current = 'rerun';
     setRerunSuccess(false);
     setDeleteBusy(false);
     setSeedMode('random');
@@ -208,10 +224,13 @@ export default function MediaViewerModal({
       height: null,
     });
     setPromptTargets([]);
+    setPromptRawMap(null);
     setPromptDrafts({});
     setActivePromptKey('');
     setPromptInput('');
     setPromptPanel('elements');
+    setPromptEditMode('replace');
+    setAliasDisplayMode('alias');
     setAliasSearch('');
     setAliasCategory('All');
     setAliasSubcategory('All');
@@ -577,11 +596,17 @@ export default function MediaViewerModal({
       }
       const info = analyzePromptGraph(prompt);
       const targets = getPromptTargets(prompt);
+      const rawPromptData = data?.cozygen_prompt_raw;
+      const rawMap = rawPromptData && typeof rawPromptData === 'object' ? rawPromptData : null;
       setPromptTargets(targets);
+      setPromptRawMap(rawMap);
       if (targets.length) {
         const drafts = {};
         targets.forEach((target) => {
-          drafts[target.key] = target.text;
+          const rawValue = rawMap && typeof rawMap[target.key] === 'string'
+            ? rawMap[target.key]
+            : target.text;
+          drafts[target.key] = rawValue;
         });
         setPromptDrafts(drafts);
         setActivePromptKey((prev) => (prev && drafts[prev] ? prev : targets[0].key));
@@ -601,10 +626,14 @@ export default function MediaViewerModal({
     }
   }, [media?.filename, media?.subfolder, promptInfo]);
 
-  const handleOpenOptions = useCallback(async () => {
+  const openRerunPanel = useCallback(async () => {
     if (!canRerun) return;
     setPromptEditorOpen(false);
-    setOptionsOpen(true);
+    setRerunOpen(true);
+    setMetaOpen(false);
+    setReplaceTarget(null);
+    setRerunPicker(null);
+    setRerunSuccess(false);
     setCheckpointFolder('All');
     setLoraFolder('All');
     try {
@@ -624,22 +653,75 @@ export default function MediaViewerModal({
     }
   }, [canRerun, loadChoices, loadPromptGraph]);
 
+  const toggleRerunPanel = useCallback(() => {
+    if (!canRerun) return;
+    if (rerunOpen) {
+      setRerunOpen(false);
+      setRerunPicker(null);
+      return;
+    }
+    openRerunPanel();
+  }, [canRerun, openRerunPanel, rerunOpen]);
+
+  const handleToggleMeta = useCallback(() => {
+    setRerunOpen(false);
+    setRerunPicker(null);
+    setMetaOpen((prev) => !prev);
+  }, []);
+
+  const openRerunPicker = useCallback((next) => {
+    if (!next) return;
+    setRerunPicker(next);
+  }, []);
+
+  const closeRerunPicker = useCallback(() => {
+    setRerunPicker(null);
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen) {
+      autoOpenKeyRef.current = '';
+      return;
+    }
+    if (!autoOpenRerunKey || !media?.filename) return;
+    const mediaKey = `${media.subfolder || ''}|${media.filename}`;
+    if (mediaKey !== autoOpenRerunKey) return;
+    if (autoOpenKeyRef.current === mediaKey) return;
+    autoOpenKeyRef.current = mediaKey;
+    openRerunPanel();
+    onRerunAutoOpen?.();
+  }, [autoOpenRerunKey, isOpen, media?.filename, media?.subfolder, onRerunAutoOpen, openRerunPanel]);
+
   const openPromptEditor = useCallback(() => {
     setReplaceTarget(null);
-    replaceReturnRef.current = 'options';
-    setOptionsOpen(false);
+    replaceReturnRef.current = 'rerun';
+    setRerunOpen(false);
+    setRerunPicker(null);
+    setPromptEditMode('replace');
     setPromptEditorOpen(true);
   }, []);
 
+  const openPromptEditorForAddTag = useCallback(() => {
+    setReplaceTarget(null);
+    replaceReturnRef.current = promptEditorOpen ? 'editor' : 'rerun';
+    setPromptPanel('tags');
+    setPromptEditMode('replace');
+    setRerunOpen(false);
+    setRerunPicker(null);
+    setPromptEditorOpen(true);
+  }, [promptEditorOpen]);
+
   const openPromptEditorForReplace = useCallback((element, displayName) => {
     if (!element) return;
-    replaceReturnRef.current = promptEditorOpen ? 'editor' : 'options';
+    replaceReturnRef.current = promptEditorOpen ? 'editor' : 'rerun';
     setPromptPanel(element.type === 'alias' ? 'aliases' : 'tags');
     setReplaceTarget({
       element,
       displayName: displayName || element.text || '',
     });
-    setOptionsOpen(false);
+    setPromptEditMode('replace');
+    setRerunOpen(false);
+    setRerunPicker(null);
     setPromptEditorOpen(true);
   }, [promptEditorOpen]);
 
@@ -647,59 +729,85 @@ export default function MediaViewerModal({
     setPromptEditorOpen(false);
     setReplaceTarget(null);
     setPromptPanel('elements');
-    replaceReturnRef.current = 'options';
+    replaceReturnRef.current = 'rerun';
   }, []);
 
-  const handleBackToOptions = useCallback(() => {
+  const handleBackToRerun = useCallback(() => {
     setPromptEditorOpen(false);
     setReplaceTarget(null);
     setPromptPanel('elements');
-    setOptionsOpen(true);
-    replaceReturnRef.current = 'options';
+    setMetaOpen(false);
+    setRerunOpen(true);
+    setRerunPicker(null);
+    replaceReturnRef.current = 'rerun';
   }, []);
 
-  const promptTargetsWithElements = useMemo(() => {
-    if (!promptTargets.length) return [];
+  const shouldParsePromptTargets = rerunOpen || promptEditorOpen;
+  const promptTargetsParsed = useMemo(() => {
+    if (!shouldParsePromptTargets || !promptTargets.length) return [];
     return promptTargets
       .map((target) => {
         const draft = promptDrafts?.[target.key];
         const text = typeof draft === 'string' ? draft : target.text || '';
         const elements = parsePromptElements(text || '');
         return { ...target, text, elements };
-      })
-      .filter((target) => target.elements.length);
-  }, [promptTargets, promptDrafts]);
+      });
+  }, [promptTargets, promptDrafts, shouldParsePromptTargets]);
+
+  const promptTargetsAvailable = useMemo(
+    () => promptTargetsParsed.filter((target) => String(target.text || '').trim().length > 0),
+    [promptTargetsParsed]
+  );
 
   useEffect(() => {
-    if (!promptTargetsWithElements.length) {
+    if (!promptTargetsAvailable.length) {
       setActivePromptKey('');
       return;
     }
-    const hasActive = promptTargetsWithElements.some((target) => target.key === activePromptKey);
+    const hasActive = promptTargetsAvailable.some((target) => target.key === activePromptKey);
     if (!hasActive) {
-      setActivePromptKey(promptTargetsWithElements[0].key);
+      setActivePromptKey(promptTargetsAvailable[0].key);
     }
-  }, [promptTargetsWithElements, activePromptKey]);
+  }, [promptTargetsAvailable, activePromptKey]);
 
   const activePromptTarget = useMemo(() => {
-    if (!promptTargetsWithElements.length) return null;
-    const match = promptTargetsWithElements.find((target) => target.key === activePromptKey);
-    return match || promptTargetsWithElements[0];
-  }, [promptTargetsWithElements, activePromptKey]);
+    if (!promptTargetsAvailable.length) return null;
+    const match = promptTargetsAvailable.find((target) => target.key === activePromptKey);
+    return match || promptTargetsAvailable[0];
+  }, [promptTargetsAvailable, activePromptKey]);
 
   const promptText = activePromptTarget?.text || '';
 
   const promptTargetOptions = useMemo(
-    () => (promptTargetsWithElements || []).map((target) => ({ value: target.key, label: target.label })),
-    [promptTargetsWithElements]
+    () => (promptTargetsAvailable || []).map((target) => ({ value: target.key, label: target.label })),
+    [promptTargetsAvailable]
   );
 
   const promptElements = activePromptTarget?.elements || [];
+  const hasAliasElements = useMemo(
+    () => promptElements.some((el) => el?.type === 'alias'),
+    [promptElements]
+  );
+  const hasAliasTokens = useMemo(() => {
+    if (hasAliasElements) return true;
+    const activeKey = activePromptTarget?.key;
+    if (!activeKey || !promptRawMap) return false;
+    const rawValue = promptRawMap[activeKey];
+    return typeof rawValue === 'string' && rawValue.includes('$');
+  }, [activePromptTarget?.key, hasAliasElements, promptRawMap]);
 
   const promptPanelTabs = useMemo(() => ([
     { key: 'elements', label: 'Elements', icon: <IconEdit size={14} /> },
     { key: 'aliases', label: 'Aliases', icon: <IconAlias size={14} /> },
     { key: 'tags', label: 'Tags', icon: <IconTag size={14} /> },
+  ]), []);
+  const promptEditModeTabs = useMemo(() => ([
+    { key: 'replace', label: 'Replace' },
+    { key: 'strength', label: 'Strength' },
+  ]), []);
+  const aliasDisplayTabs = useMemo(() => ([
+    { key: 'alias', label: 'Alias' },
+    { key: 'raw', label: 'Raw' },
   ]), []);
 
   const promptEditorActive = promptEditorOpen;
@@ -714,6 +822,12 @@ export default function MediaViewerModal({
   }, [replaceTarget]);
   const promptInputLabel = replaceTarget ? 'Replace prompt element' : 'Add prompt element';
   const promptInputPlaceholder = replaceTarget ? 'Replace with tag or $alias$' : 'Add tag or $alias$';
+  const promptEditHint = promptEditMode === 'strength'
+    ? 'Tap an element to adjust strength'
+    : 'Tap an element to replace it';
+  const hasPromptTargets = promptTargetsAvailable.length > 0;
+  const showPromptControls = promptTargetOptions.length > 1 || hasAliasTokens;
+  const canEditPrompt = !promptLoading && !promptError && hasPromptTargets;
 
   const promptTagSet = useMemo(() => {
     const set = new Set();
@@ -753,6 +867,18 @@ export default function MediaViewerModal({
       })
       .filter(Boolean);
   }, [aliasCatalog]);
+
+  const aliasDisplayLookup = useMemo(() => {
+    const map = new Map();
+    aliasEntries.forEach((entry) => {
+      if (!entry?.token) return;
+      const key = String(entry.token || '').trim().toLowerCase();
+      if (!key) return;
+      const displayName = entry.displayName || formatAliasFriendlyName({ token: entry.token, name: entry.name });
+      if (displayName) map.set(key, displayName);
+    });
+    return map;
+  }, [aliasEntries]);
 
   const aliasCategories = useMemo(() => {
     const set = new Set();
@@ -956,47 +1082,58 @@ export default function MediaViewerModal({
     });
   }, [activePromptTarget]);
 
-  const replacePromptElement = useCallback((nextType, nextText, statusLabel) => {
-    const target = replaceTarget?.element;
-    if (!target) return false;
+  const applyPromptReplacement = useCallback((element, nextType, nextText) => {
+    if (!element) return false;
     const normalized = String(nextText || '').trim();
     if (!normalized) return false;
     updatePromptDraft((current) => {
       const raw = typeof current === 'string' ? current : '';
       if (!raw) return raw;
-      if (typeof target.start !== 'number' || typeof target.end !== 'number') return raw;
-      const weightInfo = getElementWeight(raw, target);
-      const core = nextType === 'alias' ? `$${normalized.replace(/^\$|\$$/g, '')}$` : normalized;
+      if (typeof element.start !== 'number' || typeof element.end !== 'number') return raw;
+      const weightInfo = getElementWeight(raw, element);
+      const cleaned = normalized.replace(/^\$|\$$/g, '');
+      const core = nextType === 'alias' ? `$${cleaned}$` : cleaned;
       const replacement = weightInfo
         ? `(${core}:${formatTokenWeight(weightInfo.weight)})`
         : core;
-      return raw.slice(0, target.start) + replacement + raw.slice(target.end);
+      return raw.slice(0, element.start) + replacement + raw.slice(element.end);
     });
+    return true;
+  }, [updatePromptDraft]);
+
+  const replacePromptElement = useCallback((nextType, nextText, statusLabel) => {
+    const target = replaceTarget?.element;
+    if (!target) return false;
+    const normalized = String(nextText || '').trim();
+    if (!normalized) return false;
+    const replaced = applyPromptReplacement(target, nextType, normalized);
+    if (!replaced) return false;
     setReplaceTarget(null);
     setStrengthOpen(false);
     setStrengthToken(null);
     if (nextType === 'alias') {
-      setAliasStatus(`Replaced with ${statusLabel || normalized}`);
+      setAliasStatus(`Replaced with ${statusLabel || normalized.replace(/^\$|\$$/g, '')}`);
     } else {
-      setTagStatus(`Replaced with ${statusLabel || normalized}`);
+      setTagStatus(`Replaced with ${statusLabel || normalized.replace(/^\$|\$$/g, '')}`);
     }
+    setPromptPanel('elements');
     if (replaceReturnRef.current === 'editor') {
       setPromptEditorOpen(true);
+      setRerunOpen(false);
     } else {
-      setPromptPanel('elements');
       setPromptEditorOpen(false);
-      setOptionsOpen(true);
+      setRerunOpen(true);
     }
-    replaceReturnRef.current = 'options';
+    replaceReturnRef.current = 'rerun';
     return true;
   }, [
     replaceTarget,
-    updatePromptDraft,
+    applyPromptReplacement,
     setStrengthOpen,
     setStrengthToken,
     setPromptPanel,
     setPromptEditorOpen,
-    setOptionsOpen,
+    setRerunOpen,
   ]);
 
   const insertPromptText = useCallback((insertText) => {
@@ -1247,20 +1384,57 @@ export default function MediaViewerModal({
       if (promptTargets.length) {
         nextPrompt = applyPromptTextOverrides(nextPrompt, promptTargets, promptDrafts, { mutate: true });
       }
+      const rawPromptTargets = {};
+      if (promptTargets.length) {
+        promptTargets.forEach((target) => {
+          const rawValue = promptDrafts?.[target.key];
+          if (typeof rawValue === 'string' && /\$[a-z0-9_:-]+\$/i.test(rawValue)) {
+            rawPromptTargets[target.key] = rawValue;
+          }
+        });
+      }
+      const promptId = createPromptId();
+      if (Object.keys(rawPromptTargets).length) {
+        try {
+          await storePromptRaw({ promptId, promptRaw: rawPromptTargets });
+        } catch {
+          // ignore metadata storage failures
+        }
+      }
+      let expandedPrompt = nextPrompt;
+      if (aliasLookup && aliasLookup.size) {
+        const expandValue = (value) => {
+          if (typeof value === 'string') return applyPromptAliases(value, aliasLookup);
+          if (Array.isArray(value)) return value.map((item) => expandValue(item));
+          if (value && typeof value === 'object') {
+            const next = Array.isArray(value) ? [] : {};
+            Object.entries(value).forEach(([key, val]) => {
+              next[key] = expandValue(val);
+            });
+            return next;
+          }
+          return value;
+        };
+        try {
+          expandedPrompt = expandValue(nextPrompt);
+        } catch {
+          expandedPrompt = nextPrompt;
+        }
+      }
       saveLastRenderPayload({
         workflowName: media.filename || 'gallery',
-        workflow: nextPrompt,
+        workflow: expandedPrompt,
         timestamp: Date.now(),
+        promptRaw: Object.keys(rawPromptTargets).length ? rawPromptTargets : null,
       });
-      await queuePrompt({ prompt: nextPrompt });
+      await queuePrompt({ prompt: expandedPrompt, prompt_id: promptId });
       emitRenderState(false);
 
       // Show success state before closing
       setRerunSuccess(true);
 
-      // Smoothly close after showing success feedback
+      // Clear success state after a short beat
       setTimeout(() => {
-        setOptionsOpen(false);
         setRerunSuccess(false);
       }, 1500);
     } catch (err) {
@@ -1269,7 +1443,7 @@ export default function MediaViewerModal({
         window.location.hash = '#/login';
         return;
       }
-      const message = err?.payload?.error || err?.message || 'Unable to re-run this item.';
+      const message = err?.payload?.error || err?.message || 'Unable to tweak this item.';
       alert(message);
     } finally {
       setRerunBusy(false);
@@ -1361,19 +1535,243 @@ export default function MediaViewerModal({
                 isClip={isClip}
                 url={url}
                 canRerun={canRerun}
-                rerunBusy={rerunBusy}
+                rerunOpen={rerunOpen}
                 canDelete={canDelete}
                 deleteBusy={deleteBusy}
                 metaRows={metaRows}
                 metaOpen={metaOpen}
-                onToggleMeta={() => setMetaOpen((prev) => !prev)}
-                onOpenOptions={handleOpenOptions}
+                onToggleMeta={handleToggleMeta}
+                onToggleRerun={toggleRerunPanel}
                 onDelete={handleDelete}
                 onClose={onClose}
                 closeButtonRef={closeButtonRef}
               />
 
               {metaOpen ? <MediaViewerMeta metaRows={metaRows} /> : null}
+              {rerunOpen ? (
+                <div className="media-viewer-info rerun-info" aria-label="Tweak options">
+                  <div className="media-info-row rerun-info-row rerun-controls-row">
+                    <span className="media-info-label">Seed & Size</span>
+                    <div className="media-info-value rerun-info-value">
+                      <CollapsibleSection
+                        title="Adjust"
+                        defaultOpen={false}
+                        variant="bare"
+                        className="rerun-collapsible"
+                        bodyClassName="rerun-collapsible-body"
+                      >
+                        <div className="rerun-control-stack">
+                          <div className="rerun-control-group">
+                            <SegmentedTabs
+                              ariaLabel="Seed mode"
+                              value={seedMode}
+                              onChange={setSeedMode}
+                              size="sm"
+                              layout="auto"
+                              wrap
+                              items={seedTabs}
+                            />
+                            {seedMode === 'custom' ? (
+                              <input
+                                type="number"
+                                inputMode="numeric"
+                                className="ui-control ui-input"
+                                placeholder="Enter seed"
+                                value={seedInput}
+                                onChange={(e) => setSeedInput(e.target.value)}
+                              />
+                            ) : null}
+                            <div className="sheet-hint text-xs text-[#9DA3FFCC]">
+                              {seedMode === 'random' ? 'Randomize each run' : 'Keep or customize the seed used in the prompt.'}
+                            </div>
+                          </div>
+                          {promptInfo.hasSize ? (
+                            <div className="rerun-control-group">
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="number"
+                                  inputMode="numeric"
+                                  min={1}
+                                  step={1}
+                                  className="ui-control ui-input flex-1"
+                                  placeholder="Width"
+                                  value={widthInput}
+                                  onChange={(e) => setWidthInput(e.target.value)}
+                                  aria-label="Width"
+                                  aria-invalid={widthInvalid}
+                                />
+                                <span className="text-xs text-[#9DA3FF99]" aria-hidden="true">×</span>
+                                <input
+                                  type="number"
+                                  inputMode="numeric"
+                                  min={1}
+                                  step={1}
+                                  className="ui-control ui-input flex-1"
+                                  placeholder="Height"
+                                  value={heightInput}
+                                  onChange={(e) => setHeightInput(e.target.value)}
+                                  aria-label="Height"
+                                  aria-invalid={heightInvalid}
+                                />
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
+                      </CollapsibleSection>
+                    </div>
+                  </div>
+                  {promptInfo.hasCheckpoint ? (
+                    <div className="media-info-row rerun-info-row">
+                      <span className="media-info-label">Model</span>
+                      <div className="media-info-value rerun-info-value">
+                        <Button
+                          variant="bare"
+                          className="w-full justify-start text-left text-[0.8rem] whitespace-normal break-words"
+                          onClick={() => openRerunPicker('model')}
+                          aria-label="Change model"
+                          aria-haspopup="dialog"
+                          aria-expanded={rerunPicker === 'model'}
+                        >
+                          {checkpointOverride || checkpointLabel || '—'}
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
+                  <div className="media-info-row rerun-info-row">
+                    <span className="media-info-label">Prompt</span>
+                    <div className="media-info-value rerun-info-value">
+                      {promptLoading ? (
+                        <div className="rerun-info-empty">Loading prompt…</div>
+                      ) : null}
+                      {promptError ? (
+                        <div className="rerun-info-empty rerun-info-error">{promptError}</div>
+                      ) : null}
+                      {!promptLoading && !promptError && !hasPromptTargets ? (
+                        <div className="rerun-info-empty">No prompt text found for this image.</div>
+                      ) : null}
+                      {canEditPrompt ? (
+                        <>
+                          {showPromptControls ? (
+                            <div className="rerun-prompt-controls">
+                              {promptTargetOptions.length > 1 ? (
+                                <Select
+                                  value={activePromptTarget?.key || ''}
+                                  onChange={setActivePromptKey}
+                                  aria-label="Prompt source"
+                                  size="sm"
+                                  wrapperClassName="rerun-select"
+                                  options={promptTargetOptions}
+                                />
+                              ) : null}
+                              {hasAliasTokens ? (
+                                <SegmentedTabs
+                                  ariaLabel="Alias display"
+                                  value={aliasDisplayMode}
+                                  onChange={setAliasDisplayMode}
+                                  items={aliasDisplayTabs}
+                                  size="sm"
+                                  layout="auto"
+                                  className="rerun-alias-toggle"
+                                />
+                              ) : null}
+                            </div>
+                          ) : null}
+                          <div className="media-info-value is-prompt rerun-prompt-box" role="list">
+                            <div className="ui-chip-row">
+                              {promptElements.length
+                                ? promptElements.map((el) => {
+                                  const aliasKey = String(el.text || '').trim().toLowerCase();
+                                  const aliasLabel = aliasDisplayLookup.get(aliasKey) || `$${el.text}$`;
+                                  const tokenLabel = el.type === 'alias'
+                                    ? (aliasDisplayMode === 'alias' ? aliasLabel : `$${el.text}$`)
+                                    : el.text;
+                                  const editorLabel = el.type === 'alias'
+                                    ? (formatAliasFriendlyName({ token: el.text }) || el.text)
+                                    : el.text;
+                                  const weightInfo = getElementWeight(promptText || '', el);
+                                  const weight = weightInfo?.weight ?? 1;
+                                  const showWeight = Math.abs(weight - 1) > 1e-6;
+                                  return (
+                                    <button
+                                      key={`${el.type}-${el.text}-${el.start}`}
+                                      type="button"
+                                      className={`ui-chip is-clickable rerun-token max-w-full whitespace-normal leading-snug ${el.type === 'alias' ? 'is-accent' : ''}`}
+                                      onClick={() => openPromptEditorForReplace(el, editorLabel)}
+                                      title={el.type === 'alias' ? `Alias: $${el.text}$` : `Tag: ${el.text}`}
+                                    >
+                                      <span className="break-words">{tokenLabel}</span>
+                                      {showWeight ? (
+                                        <span className="rerun-chip-weight">{formatTokenWeight(weight)}×</span>
+                                      ) : null}
+                                    </button>
+                                  );
+                                })
+                                : null}
+                              <button
+                                type="button"
+                                className="ui-chip is-clickable rerun-token rerun-token-add"
+                                onClick={openPromptEditorForAddTag}
+                                aria-label="Add tag"
+                                title="Add tag"
+                              >
+                                +
+                              </button>
+                            </div>
+                          </div>
+                        </>
+                      ) : null}
+                    </div>
+                  </div>
+                  {promptInfo.hasLora ? (
+                    <div className="media-info-row rerun-info-row">
+                      <span className="media-info-label">LoRAs</span>
+                      <div className="media-info-value rerun-info-value">
+                        <Button
+                          variant="bare"
+                          className="w-full justify-start text-left text-[0.8rem] whitespace-normal break-words"
+                          onClick={() => openRerunPicker('lora')}
+                          aria-label="Change LoRA"
+                          aria-haspopup="dialog"
+                          aria-expanded={rerunPicker === 'lora'}
+                        >
+                          {loraOverride || (loraValues.length ? loraValues.join(', ') : '—')}
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
+                  <div className="media-info-row rerun-info-row rerun-actions-row">
+                    <span className="media-info-label">Run</span>
+                    <div className="media-info-value rerun-info-value">
+                      {rerunSuccess ? (
+                        <div className="rerun-success">
+                          <svg className="rerun-success-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                          </svg>
+                          Render queued successfully!
+                        </div>
+                      ) : (
+                        <div className="rerun-actions">
+                          <Button
+                            variant="muted"
+                            size="sm"
+                            onClick={toggleRerunPanel}
+                          >
+                            Close
+                          </Button>
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            onClick={handleRerunWithOptions}
+                            disabled={rerunBusy || promptLoading || !!promptError || !isSeedValid || !isSizeValid}
+                          >
+                            {rerunBusy ? 'Tweaking…' : 'Run'}
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
 
               <MediaViewerStage
                 showNav={showNav}
@@ -1389,186 +1787,6 @@ export default function MediaViewerModal({
           </div>
         </div>
         <BottomSheet
-          open={optionsOpen}
-          onClose={() => setOptionsOpen(false)}
-          title="Re-run options"
-          footer={
-            rerunSuccess ? (
-              <div className="fade-in flex items-center justify-center gap-2 py-2 text-sm font-medium text-[#44E1C5]">
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                </svg>
-                Render queued successfully!
-              </div>
-            ) : (
-              <div className="flex gap-2">
-                <Button
-                  variant="muted"
-                  className="w-full"
-                  onClick={() => setOptionsOpen(false)}
-                  disabled={rerunBusy}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  variant="primary"
-                  className="w-full"
-                  onClick={handleRerunWithOptions}
-                  disabled={rerunBusy || promptLoading || !!promptError || !isSeedValid || !isSizeValid}
-                >
-                  {rerunBusy ? 'Re-running…' : 'Run'}
-                </Button>
-              </div>
-            )
-          }
-        >
-          <div className="sheet-stack">
-            {!promptLoading && !promptError && promptTargetsWithElements.length ? (
-              <Button
-                variant="muted"
-                className="w-full"
-                onClick={() => {
-                  setPromptPanel('elements');
-                  openPromptEditor();
-                }}
-              >
-                Open prompt editor
-              </Button>
-            ) : null}
-            {promptLoading ? (
-              <div className="composer-alias-empty">Loading prompt…</div>
-            ) : null}
-            {promptError ? (
-              <div className="text-xs text-[#FF8F70]">{promptError}</div>
-            ) : null}
-            <CollapsibleSection title="Seed" variant="bare" defaultOpen>
-              <div className="sheet-section">
-                <SegmentedTabs
-                  ariaLabel="Seed mode"
-                  value={seedMode}
-                  onChange={setSeedMode}
-                  size="sm"
-                  items={seedTabs}
-                />
-                {seedMode === 'custom' ? (
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    className="ui-control ui-input mt-2"
-                    placeholder="Enter seed"
-                    value={seedInput}
-                    onChange={(e) => setSeedInput(e.target.value)}
-                  />
-                ) : null}
-                <div className="sheet-hint text-xs text-[#9DA3FFCC]">
-                  {seedMode === 'random' ? 'Randomize each run' : 'Keep or customize the seed used in the prompt.'}
-                </div>
-              </div>
-            </CollapsibleSection>
-
-            {!promptLoading && !promptError && !promptTargetsWithElements.length ? (
-              <div className="text-xs text-[#9DA3FFCC]">
-                No prompt text found for this image.
-              </div>
-            ) : null}
-            {promptInfo.hasSize ? (
-              <CollapsibleSection title="Size" variant="bare" defaultOpen={false}>
-                <div className="sheet-section">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      inputMode="numeric"
-                      min={1}
-                      step={1}
-                      className="ui-control ui-input flex-1"
-                      placeholder="Width"
-                      value={widthInput}
-                      onChange={(e) => setWidthInput(e.target.value)}
-                      aria-label="Width"
-                      aria-invalid={widthInvalid}
-                    />
-                    <span className="text-xs text-[#9DA3FF99]" aria-hidden="true">×</span>
-                    <input
-                      type="number"
-                      inputMode="numeric"
-                      min={1}
-                      step={1}
-                      className="ui-control ui-input flex-1"
-                      placeholder="Height"
-                      value={heightInput}
-                      onChange={(e) => setHeightInput(e.target.value)}
-                      aria-label="Height"
-                      aria-invalid={heightInvalid}
-                    />
-                  </div>
-                </div>
-              </CollapsibleSection>
-            ) : null}
-            {promptInfo.hasCheckpoint ? (
-              <CollapsibleSection title="Checkpoint" variant="bare" defaultOpen={false}>
-                <div className="sheet-section">
-                  {showCheckpointFolder ? (
-                    <Select
-                      value={checkpointFolder}
-                      onChange={setCheckpointFolder}
-                      aria-label="Checkpoint folder filter"
-                      size="sm"
-                      searchThreshold={0}
-                      options={checkpointFolders.map((folder) => ({ value: folder, label: folder }))}
-                    />
-                  ) : null}
-                  <Select
-                    value={checkpointOverride}
-                    onChange={setCheckpointOverride}
-                    wrapperClassName={showCheckpointFolder ? 'mt-2' : ''}
-                    aria-label="Checkpoint override"
-                    size="sm"
-                    searchThreshold={0}
-                    options={[
-                      { value: '', label: checkpointDisplay ? `Keep current (${checkpointDisplay})` : 'Keep current' },
-                      ...checkpointOptionsWithValue,
-                    ]}
-                  />
-                </div>
-              </CollapsibleSection>
-            ) : null}
-            {promptInfo.hasLora ? (
-              <CollapsibleSection title="LoRA" variant="bare" defaultOpen={false}>
-                <div className="sheet-section">
-                  {showLoraFolder ? (
-                    <Select
-                      value={loraFolder}
-                      onChange={setLoraFolder}
-                      aria-label="LoRA folder filter"
-                      size="sm"
-                      searchThreshold={0}
-                      options={loraFolders.map((folder) => ({ value: folder, label: folder }))}
-                    />
-                  ) : null}
-                  <Select
-                    value={loraOverride}
-                    onChange={setLoraOverride}
-                    wrapperClassName={showLoraFolder ? 'mt-2' : ''}
-                    aria-label="LoRA override"
-                    size="sm"
-                    searchThreshold={0}
-                    options={[
-                      { value: '', label: loraDisplay ? `Keep current (${loraDisplay})` : 'Keep current' },
-                      ...loraOptionsWithValue,
-                    ]}
-                  />
-                </div>
-              </CollapsibleSection>
-            ) : null}
-            {choicesLoading ? (
-              <div className="text-xs text-[#9DA3FFCC]">Loading model choices…</div>
-            ) : null}
-            {choicesError ? (
-              <div className="text-xs text-[#FF8F70]">{choicesError}</div>
-            ) : null}
-          </div>
-        </BottomSheet>
-        <BottomSheet
           open={promptEditorOpen}
           onClose={closePromptEditor}
           title="Edit prompt"
@@ -1578,9 +1796,9 @@ export default function MediaViewerModal({
               <Button
                 variant="muted"
                 className="w-full"
-                onClick={handleBackToOptions}
+                onClick={handleBackToRerun}
               >
-                Back to options
+                Back to tweak
               </Button>
             </div>
           )}
@@ -1596,21 +1814,31 @@ export default function MediaViewerModal({
               <div className="sheet-section">
                 <div className="sheet-label">Replacing</div>
                 <div className="sheet-hint">{replaceLabel || '—'}</div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      size="xs"
-                      variant="ghost"
-                      onClick={() => setReplaceTarget(null)}
-                    >
-                      Cancel replace
-                    </Button>
-                    <div className="text-xs text-[#9DA3FFCC]">
-                      Choose a replacement from Aliases or Tags. Selection returns to options.
-                    </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    onClick={() => {
+                      setReplaceTarget(null);
+                      setPromptPanel('elements');
+                    }}
+                  >
+                    Cancel replace
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant="muted"
+                    onClick={() => openStrengthFor(replaceTarget.element, replaceTarget.displayName)}
+                  >
+                    Adjust strength
+                  </Button>
+                  <div className="text-xs text-[#9DA3FFCC]">
+                    Choose a replacement from Aliases or Tags. Selection returns to elements.
                   </div>
+                </div>
               </div>
             ) : null}
-            {!promptLoading && !promptError && promptTargetsWithElements.length ? (
+            {!promptLoading && !promptError && hasPromptTargets ? (
               <>
                 {promptTargetOptions.length > 1 ? (
                   <Select
@@ -1664,8 +1892,17 @@ export default function MediaViewerModal({
                           Elements
                           <span className="composer-tokens-count">{promptElements.length}</span>
                         </span>
-                        <span className="composer-tokens-hint">Drag handle to reorder · Tap to adjust or replace</span>
+                        <SegmentedTabs
+                          ariaLabel="Element edit mode"
+                          value={promptEditMode}
+                          onChange={setPromptEditMode}
+                          items={promptEditModeTabs}
+                          size="sm"
+                          layout="auto"
+                          wrap
+                        />
                       </div>
+                      <span className="composer-tokens-hint">Drag handle to reorder · {promptEditHint}</span>
                       {promptElements.length ? (
                         <div
                           ref={tokensListRef}
@@ -1699,13 +1936,21 @@ export default function MediaViewerModal({
                                 onTouchCancel={handleTouchCancel}
                                 onClick={() => {
                                   if (dragIndex !== null) return;
-                                  openStrengthFor(el, displayName);
+                                  if (promptEditMode === 'strength') {
+                                    openStrengthFor(el, displayName);
+                                  } else {
+                                    openPromptEditorForReplace(el, displayName);
+                                  }
                                 }}
                                 onKeyDown={(e) => {
                                   if (e.target !== e.currentTarget) return;
                                   if (e.key === 'Enter' || e.key === ' ') {
                                     e.preventDefault();
-                                    openStrengthFor(el, displayName);
+                                    if (promptEditMode === 'strength') {
+                                      openStrengthFor(el, displayName);
+                                    } else {
+                                      openPromptEditorForReplace(el, displayName);
+                                    }
                                   }
                                 }}
                               >
@@ -1929,11 +2174,81 @@ export default function MediaViewerModal({
                 ) : null}
               </>
             ) : null}
-            {!promptLoading && !promptError && !promptTargetsWithElements.length ? (
+            {!promptLoading && !promptError && !hasPromptTargets ? (
               <div className="text-xs text-[#9DA3FFCC]">
                 No prompt text found for this image.
               </div>
             ) : null}
+          </div>
+        </BottomSheet>
+        <BottomSheet
+          open={rerunPicker === 'model'}
+          onClose={closeRerunPicker}
+          title="Select model"
+        >
+          <div className="sheet-stack">
+            {choicesLoading ? (
+              <div className="rerun-info-empty">Loading model choices…</div>
+            ) : null}
+            {choicesError ? (
+              <div className="rerun-info-empty rerun-info-error">{choicesError}</div>
+            ) : null}
+            {showCheckpointFolder ? (
+              <Select
+                value={checkpointFolder}
+                onChange={setCheckpointFolder}
+                aria-label="Model folder filter"
+                size="sm"
+                searchThreshold={0}
+                options={checkpointFolders.map((folder) => ({ value: folder, label: folder }))}
+              />
+            ) : null}
+            <Select
+              value={checkpointOverride}
+              onChange={setCheckpointOverride}
+              aria-label="Model selection"
+              size="sm"
+              searchThreshold={0}
+              options={[
+                { value: '', label: checkpointDisplay ? `Keep current (${checkpointDisplay})` : 'Keep current' },
+                ...checkpointOptionsWithValue,
+              ]}
+            />
+          </div>
+        </BottomSheet>
+        <BottomSheet
+          open={rerunPicker === 'lora'}
+          onClose={closeRerunPicker}
+          title="Select LoRA"
+        >
+          <div className="sheet-stack">
+            {choicesLoading ? (
+              <div className="rerun-info-empty">Loading LoRA choices…</div>
+            ) : null}
+            {choicesError ? (
+              <div className="rerun-info-empty rerun-info-error">{choicesError}</div>
+            ) : null}
+            {showLoraFolder ? (
+              <Select
+                value={loraFolder}
+                onChange={setLoraFolder}
+                aria-label="LoRA folder filter"
+                size="sm"
+                searchThreshold={0}
+                options={loraFolders.map((folder) => ({ value: folder, label: folder }))}
+              />
+            ) : null}
+            <Select
+              value={loraOverride}
+              onChange={setLoraOverride}
+              aria-label="LoRA selection"
+              size="sm"
+              searchThreshold={0}
+              options={[
+                { value: '', label: loraDisplay ? `Keep current (${loraDisplay})` : 'Keep current' },
+                ...loraOptionsWithValue,
+              ]}
+            />
           </div>
         </BottomSheet>
         {strengthSheet}

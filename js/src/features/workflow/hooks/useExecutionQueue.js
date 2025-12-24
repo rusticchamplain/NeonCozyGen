@@ -1,13 +1,17 @@
 // js/src/hooks/useExecutionQueue.js
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { queuePrompt } from '../../../services/api';
+import { usePageVisibility } from '../../../hooks/usePageVisibility';
+import { queuePrompt, storePromptRaw } from '../../../services/api';
+import { applyAliasesToForm, applyPromptAliases } from '../../../utils/promptAliases';
+import { createPromptId } from '../../../utils/promptId';
 import { getToken } from '../../auth/utils/auth';
 import { saveLastRenderPayload } from '../utils/globalRender';
-import { applyAliasesToForm, applyPromptAliases } from '../../../utils/promptAliases';
+import { getPromptTargets } from '../utils/promptOverrides';
 import { saveFormState } from '../utils/storage';
 import { injectFormValues } from '../utils/workflowGraph';
-import { usePageVisibility } from '../../../hooks/usePageVisibility';
+
+const ALIAS_TOKEN_RE = /\$[a-z0-9_:-]+\$/i;
 
 /**
  * Handles:
@@ -431,6 +435,27 @@ export function useExecutionQueue({
     }
 
     try {
+      const promptTargets = getPromptTargets(finalWorkflow);
+      const rawPromptTargets = {};
+      if (promptTargets.length) {
+        promptTargets.forEach((target) => {
+          const rawValue = effectiveFormData?.[target.label];
+          const candidate = typeof rawValue === 'string' ? rawValue : target.text;
+          if (typeof candidate === 'string' && ALIAS_TOKEN_RE.test(candidate)) {
+            rawPromptTargets[target.key] = candidate;
+          }
+        });
+      }
+
+      const promptId = createPromptId();
+      if (Object.keys(rawPromptTargets).length) {
+        try {
+          await storePromptRaw({ promptId, promptRaw: rawPromptTargets });
+        } catch {
+          // ignore metadata storage failures
+        }
+      }
+
       // Queue prompt
       let expandedWorkflow = finalWorkflow;
       if (promptAliases) {
@@ -458,9 +483,10 @@ export function useExecutionQueue({
         workflowName: selectedWorkflow,
         workflow: expandedWorkflow,
         timestamp: Date.now(),
+        promptRaw: Object.keys(rawPromptTargets).length ? rawPromptTargets : null,
       });
 
-      await queuePrompt({ prompt: expandedWorkflow });
+      await queuePrompt({ prompt: expandedWorkflow, prompt_id: promptId });
       appendLog('info', 'Prompt queued');
       // From here on, WebSocket + heuristic drive progress/status
     } catch (err) {

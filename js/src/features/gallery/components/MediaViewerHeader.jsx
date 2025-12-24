@@ -7,13 +7,13 @@ export default function MediaViewerHeader({
   isClip,
   url,
   canRerun,
-  rerunBusy,
+  rerunOpen,
   canDelete,
   deleteBusy,
   metaRows,
   metaOpen,
   onToggleMeta,
-  onOpenOptions,
+  onToggleRerun,
   onDelete,
   onClose,
   closeButtonRef,
@@ -59,20 +59,19 @@ export default function MediaViewerHeader({
             size="sm"
             onClick={onToggleMeta}
             aria-expanded={metaOpen}
-            aria-label={metaOpen ? 'Hide metadata' : 'Show metadata'}
           >
-            {metaOpen ? 'Hide metadata' : 'Metadata'}
+            Metadata
           </Button>
         ) : null}
         {canRerun ? (
           <Button
             variant="ghost"
             size="sm"
-            onClick={onOpenOptions}
-            disabled={rerunBusy}
-            aria-label="Re-run generation"
+            onClick={onToggleRerun}
+            aria-expanded={rerunOpen}
+            aria-label="Tweak generation"
           >
-            {rerunBusy ? 'Re-running…' : 'Re-run'}
+            Tweak
           </Button>
         ) : null}
         {canDelete ? (

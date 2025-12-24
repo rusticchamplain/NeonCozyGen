@@ -202,6 +202,7 @@ export default function Gallery() {
     return window.localStorage.getItem(FEED_AUTOPLAY_STORAGE_KEY) === 'true';
   });
   const [deleteBusyKey, setDeleteBusyKey] = useState('');
+  const [rerunTargetKey, setRerunTargetKey] = useState('');
   useEffect(() => {
     try {
       window.localStorage.setItem(VIEW_MODE_STORAGE_KEY, viewMode);
@@ -242,8 +243,15 @@ export default function Gallery() {
       selectDir(item.subfolder);
       return;
     }
+    setRerunTargetKey('');
     openMedia(item);
   }, [openMedia, selectDir]);
+
+  const handleItemRerun = useCallback((item) => {
+    if (!item || item.type === 'directory') return;
+    setRerunTargetKey(itemKey(item));
+    openMedia(item);
+  }, [itemKey, openMedia]);
 
   const handleItemDelete = useCallback(async (item) => {
     if (!item || item.type === 'directory' || !item.filename) return;
@@ -512,6 +520,7 @@ export default function Gallery() {
                 item={item}
                 onSelect={handleItemSelect}
                 onDelete={handleItemDelete}
+                onRerun={handleItemRerun}
                 isDeleting={itemKey(item) === deleteBusyKey}
                 variant="grid"
                 autoPlay={false}
@@ -533,6 +542,7 @@ export default function Gallery() {
                 item={item}
                 onSelect={handleItemSelect}
                 onDelete={handleItemDelete}
+                onRerun={handleItemRerun}
                 isDeleting={itemKey(item) === deleteBusyKey}
                 variant="feed"
                 autoPlay={feedAutoplay}
@@ -552,6 +562,8 @@ export default function Gallery() {
         total={total}
         canPrev={canPrev}
         canNext={canNext}
+        autoOpenRerunKey={rerunTargetKey}
+        onRerunAutoOpen={() => setRerunTargetKey('')}
       />
 
       <BottomSheet

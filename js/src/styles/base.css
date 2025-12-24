@@ -47,8 +47,7 @@ select {
 /* Ensure minimum touch targets (44x44px Apple HIG) */
 button:not(.btn-sm),
 [role="button"]:not(.btn-sm),
-.bottom-nav-link,
-.slim-nav-link {
+.bottom-nav-link {
   min-height: 44px;
   min-width: 44px;
 }
@@ -56,8 +55,7 @@ button:not(.btn-sm),
 /* Active state feedback for touch */
 button:active:not(:disabled),
 [role="button"]:active:not(:disabled),
-.bottom-nav-link:active,
-.slim-nav-link:active {
+.bottom-nav-link:active {
   transform: scale(0.97);
   transition: transform 0.1s ease;
 }
@@ -404,44 +402,6 @@ body::before {
 .bottom-nav-link.is-rendering .bottom-nav-icon {
   animation: icon-pulse 0.8s ease-in-out infinite;
 }
-
-.library-popover {
-  position: fixed;
-  bottom: calc(var(--bottom-nav-height, 64px) + 38px);
-  left: 50%;
-  transform: translateX(-50%) scale(0);
-  transform-origin: bottom center;
-  background: rgba(5, 7, 22, 0.9);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: var(--radius-lg);
-  padding: 0.3rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
-  transition: transform 0.2s ease, opacity 0.2s ease;
-  opacity: 0;
-  pointer-events: none;
-  z-index: 85;
-}
-
-.library-popover.is-open {
-  transform: translateX(-50%) scale(1);
-  opacity: 1;
-  pointer-events: auto;
-}
-
-@media (min-width: 768px) {
-  .library-popover.is-desktop {
-    transform: translateY(-50%) scale(0);
-    transform-origin: left center;
-  }
-
-  .library-popover.is-desktop.is-open {
-    transform: translateY(-50%) scale(1);
-  }
-}
-
 
 @keyframes icon-pulse {
   0%, 100% { transform: scale(1); }

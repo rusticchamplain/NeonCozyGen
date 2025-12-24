@@ -2,7 +2,7 @@
 import { memo, useEffect, useRef } from 'react';
 import { usePageVisibility } from '../../../hooks/usePageVisibility';
 import Button from '../../../ui/primitives/Button';
-import { IconTrash } from '../../../ui/primitives/Icons';
+import { IconRender, IconTrash } from '../../../ui/primitives/Icons';
 
 const looksLikeVideo = (name = '') =>
   /\.(mp4|webm|mov|mkv)$/i.test(name);
@@ -103,6 +103,7 @@ function GalleryItem({
   item,
   onSelect,
   onDelete,
+  onRerun,
   isDeleting = false,
   variant = 'grid', // 'grid' | 'feed'
   autoPlay = false,
@@ -154,10 +155,19 @@ function GalleryItem({
 
   const isVideo = looksLikeVideo(filename);
   const canDelete = Boolean(onDelete) && !isDir;
+  const meta = item?.meta || {};
+  const hasPromptMeta = Boolean(meta?.has_prompt || meta?.prompt || meta?.model || (Array.isArray(meta?.loras) && meta.loras.length));
+  const isPng = typeof filename === 'string' && filename.toLowerCase().endsWith('.png');
+  const canRerun = Boolean(onRerun) && !isDir && hasPromptMeta && isPng;
 
   const handleDelete = (e) => {
     e.stopPropagation();
     onDelete?.(item);
+  };
+
+  const handleRerun = (e) => {
+    e.stopPropagation();
+    onRerun?.(item);
   };
 
   // ----- DIRECTORY TILE (grid only) -----
@@ -241,6 +251,19 @@ function GalleryItem({
             <IconTrash size={12} />
           </Button>
         ) : null}
+        {canRerun ? (
+          <Button
+            size="mini"
+            variant="ghost"
+            iconOnly
+            className="gallery-tile-rerun"
+            onClick={handleRerun}
+            aria-label="Tweak"
+            title="Tweak"
+          >
+            <IconRender size={12} />
+          </Button>
+        ) : null}
       </div>
     );
   }
@@ -288,6 +311,19 @@ function GalleryItem({
           title={isDeleting ? 'Deleting…' : 'Delete item'}
         >
           <IconTrash size={12} />
+        </Button>
+      ) : null}
+      {canRerun ? (
+        <Button
+          size="mini"
+          variant="ghost"
+          iconOnly
+          className="gallery-tile-rerun"
+          onClick={handleRerun}
+          aria-label="Tweak"
+          title="Tweak"
+        >
+          <IconRender size={12} />
         </Button>
       ) : null}
     </div>

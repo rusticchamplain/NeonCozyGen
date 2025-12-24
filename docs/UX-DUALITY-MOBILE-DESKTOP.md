@@ -84,9 +84,9 @@ Decision table (visibility and placement):
 
 ### Navigation model
 
-- Desktop: TopBar exposes primary routes and global actions; BottomNav acts as a left rail with the same labels and order (`js/src/styles/base.css`).
+- Desktop: BottomNav acts as the left rail with primary routes; TopBar is brand + session only (`js/src/styles/base.css`).
 - Mobile: BottomNav is the single navigation surface; avoid parallel hamburger navigation (`docs/80-APP-FUTURE-AND-MOBILE-STRATEGY.md`).
-- Keep routes consistent: `/controls`, `/compose`, `/gallery`, `/aliases`, `/tags` (`js/src/app/App.jsx`).
+- Keep routes consistent: `/controls`, `/compose`, `/gallery`, `/library`. Deep links `/tags` and `/aliases` redirect to `/library` (`js/src/app/App.jsx`).
 
 ### Progressive disclosure patterns
 
@@ -167,6 +167,7 @@ Rules:
 - Lists > 80 items must use virtualization or progressive loading.
 - Pause or throttle background updates when hidden.
 - Avoid state updates in tight loops; batch where possible.
+- Defer prompt parsing and rerun token work until the editor or options sheet is open.
 
 ## 7) Concrete recommendations grounded in the current repo
 
@@ -188,6 +189,7 @@ Rules:
 ### Top inconsistencies blocking unified UX
 
 - Redundant navigation on mobile (TopBar drawer + BottomNav) and duplicated routes (`js/src/ui/layout/TopBar.jsx`, `js/src/ui/layout/BottomNav.jsx`).
+- Library access is nested behind a BottomNav popover (extra tap) and Tags/Aliases are separate routes (`js/src/ui/layout/BottomNav.jsx`, `js/src/app/App.jsx`).
 - Overlay patterns differ between BottomSheet and MediaViewer modal, risking inconsistent behaviors (`js/src/ui/primitives/BottomSheet.jsx`, `js/src/features/gallery/components/MediaViewerModal.jsx`, `js/src/styles/overlays.css`).
 - Action density varies by page: `page-bar` styles live in `js/src/styles/workflow.css` and are used across pages without a single layout primitive.
 - `size="mini"` buttons appear in dense lists (e.g., `js/src/features/gallery/components/GalleryItem.jsx`, `js/src/features/composer/components/PromptComposer.jsx`, `js/src/features/workflow/inputs/StringInput.jsx`) and risk small targets on mobile.

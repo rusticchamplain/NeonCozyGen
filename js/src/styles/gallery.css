@@ -163,6 +163,34 @@
   box-shadow: 0 4px 12px rgba(68, 225, 197, 0.15);
 }
 
+.media-viewer-actions .media-viewer-action-icon {
+  width: 36px;
+  height: 36px;
+  min-height: 36px;
+  padding: 0;
+  border-radius: 0.6rem;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.media-viewer-actions .media-viewer-action-icon .loading-spinner {
+  width: 16px;
+  height: 16px;
+  border-width: 2px;
+}
+
+.media-viewer-actions .media-viewer-action-delete {
+  color: rgba(255, 196, 178, 0.9);
+  border-color: rgba(255, 143, 112, 0.35);
+  background: rgba(255, 143, 112, 0.08);
+}
+
+.media-viewer-actions .media-viewer-action-delete:hover:not(:disabled) {
+  color: rgba(255, 230, 222, 0.98);
+  border-color: rgba(255, 143, 112, 0.6);
+  background: rgba(255, 143, 112, 0.16);
+}
+
 .media-viewer-stage {
   position: relative;
   flex: 1;

@@ -1,5 +1,14 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+
+vi.mock('../features/studio/contexts/StudioContext', () => ({
+  useStudioContext: () => ({
+    aliasCatalog: [],
+    aliasLoading: false,
+    aliasError: null,
+  }),
+}));
+
 import MediaViewerModal from '../features/gallery/components/MediaViewerModal';
 
 describe('MediaViewerModal', () => {

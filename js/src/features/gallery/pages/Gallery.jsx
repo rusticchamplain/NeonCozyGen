@@ -9,7 +9,7 @@ import Button from '../../../ui/primitives/Button';
 import Select from '../../../ui/primitives/Select';
 import { useGallery } from '../hooks/useGallery';
 import { useMediaViewer } from '../hooks/useMediaViewer';
-import { clearCache } from '../../../services/api';
+import { clearCache, deleteGalleryItem } from '../../../services/api';
 import {
   IconEmpty,
   IconFolderOpen,
@@ -201,6 +201,7 @@ export default function Gallery() {
     if (typeof window === 'undefined') return false;
     return window.localStorage.getItem(FEED_AUTOPLAY_STORAGE_KEY) === 'true';
   });
+  const [deleteBusyKey, setDeleteBusyKey] = useState('');
   useEffect(() => {
     try {
       window.localStorage.setItem(VIEW_MODE_STORAGE_KEY, viewMode);
@@ -230,6 +231,12 @@ export default function Gallery() {
     }
   }, [refresh]);
 
+  const itemKey = useCallback((item) =>
+    item?.type === 'directory'
+      ? `dir:${item.subfolder || item.filename}`
+      : `${item.subfolder || ''}|${item.filename}`
+  , []);
+
   const handleItemSelect = useCallback((item) => {
     if (item.type === 'directory') {
       selectDir(item.subfolder);
@@ -237,6 +244,28 @@ export default function Gallery() {
     }
     openMedia(item);
   }, [openMedia, selectDir]);
+
+  const handleItemDelete = useCallback(async (item) => {
+    if (!item || item.type === 'directory' || !item.filename) return;
+    const label = item.filename || 'this item';
+    const ok = window.confirm(`Delete "${label}"? This cannot be undone.`);
+    if (!ok) return;
+    const key = itemKey(item);
+    setDeleteBusyKey(key);
+    try {
+      await deleteGalleryItem({ filename: item.filename, subfolder: item.subfolder || '' });
+      refresh();
+    } catch (err) {
+      if (err?.unauthorized) {
+        window.location.hash = '#/login';
+        return;
+      }
+      const message = err?.payload?.error || err?.message || 'Unable to delete this item.';
+      alert(message);
+    } finally {
+      setDeleteBusyKey('');
+    }
+  }, [itemKey, refresh]);
 
   const isGrid = viewMode === 'grid';
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -277,11 +306,6 @@ export default function Gallery() {
     ],
     []
   );
-
-  const itemKey = (item) =>
-    item.type === 'directory'
-      ? `dir:${item.subfolder || item.filename}`
-      : `${item.subfolder || ''}|${item.filename}`;
 
   useEffect(() => {
     try {
@@ -487,6 +511,8 @@ export default function Gallery() {
                 key={itemKey(item)}
                 item={item}
                 onSelect={handleItemSelect}
+                onDelete={handleItemDelete}
+                isDeleting={itemKey(item) === deleteBusyKey}
                 variant="grid"
                 autoPlay={false}
               />
@@ -506,6 +532,8 @@ export default function Gallery() {
               <GalleryItem
                 item={item}
                 onSelect={handleItemSelect}
+                onDelete={handleItemDelete}
+                isDeleting={itemKey(item) === deleteBusyKey}
                 variant="feed"
                 autoPlay={feedAutoplay}
               />
@@ -592,6 +620,17 @@ export default function Gallery() {
                 <span className="inline-flex items-center gap-1.5">
                   <IconRefresh size={14} />
                   <span>Refresh</span>
+                </span>
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={handleClearCache}
+                title="Clear thumbnail cache"
+              >
+                <span className="inline-flex items-center gap-1.5">
+                  <IconRefresh size={14} />
+                  <span>Clear cache</span>
                 </span>
               </Button>
             </div>

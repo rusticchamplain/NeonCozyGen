@@ -48,21 +48,27 @@ export function parsePromptElements(text = '') {
       if (!hasWeightWrapper) {
         start = aliasStart;
       }
-    } else {
-      // Plain tag: read until comma, $, or end (or : if in weight wrapper)
+    } else if (hasWeightWrapper) {
+      // Weighted group: keep commas inside so aliases expanded to multiple tags stay together.
       type = 'tag';
-      const tagStart = i;
       while (i < raw.length) {
-        if (raw[i] === ',' || raw[i] === '$' || raw[i] === '\n') break;
-        if (hasWeightWrapper && raw[i] === ':') break;
-        if (!hasWeightWrapper && raw[i] === '(') break;
+        if (raw[i] === ':' || raw[i] === '\n' || raw[i] === ')') break;
         content += raw[i];
         i++;
       }
       content = content.trim();
-      if (!hasWeightWrapper) {
-        start = tagStart;
+    } else {
+      // Plain tag: read until comma, $, or end.
+      type = 'tag';
+      const tagStart = i;
+      while (i < raw.length) {
+        if (raw[i] === ',' || raw[i] === '$' || raw[i] === '\n') break;
+        if (raw[i] === '(') break;
+        content += raw[i];
+        i++;
       }
+      content = content.trim();
+      start = tagStart;
     }
 
     // Handle weight suffix if in wrapper
@@ -74,6 +80,9 @@ export function parsePromptElements(text = '') {
       if (raw[i] === ')') {
         i++; // skip ')'
       }
+    }
+    if (hasWeightWrapper && raw[i] === ')') {
+      i++; // skip dangling ')'
     }
 
     end = i;

@@ -1,5 +1,5 @@
 import Button from '../../../ui/primitives/Button';
-import { IconX } from '../../../ui/primitives/Icons';
+import { IconTrash, IconX } from '../../../ui/primitives/Icons';
 
 export default function MediaViewerHeader({
   filename,
@@ -43,17 +43,16 @@ export default function MediaViewerHeader({
         </button>
       </div>
       <div className="media-viewer-actions">
-        {canRerun ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onOpenOptions}
-            disabled={rerunBusy}
-            aria-label="Re-run generation"
-          >
-            {rerunBusy ? 'Re-running…' : 'Re-run'}
-          </Button>
-        ) : null}
+        <Button
+          as="a"
+          href={url}
+          target="_blank"
+          rel="noreferrer"
+          variant="ghost"
+          size="sm"
+        >
+          Open
+        </Button>
         {metaRows.length ? (
           <Button
             variant="ghost"
@@ -65,24 +64,29 @@ export default function MediaViewerHeader({
             {metaOpen ? 'Hide metadata' : 'Metadata'}
           </Button>
         ) : null}
-        <Button
-          as="a"
-          href={url}
-          target="_blank"
-          rel="noreferrer"
-          variant="ghost"
-          size="sm"
-        >
-          Open
-        </Button>
+        {canRerun ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onOpenOptions}
+            disabled={rerunBusy}
+            aria-label="Re-run generation"
+          >
+            {rerunBusy ? 'Re-running…' : 'Re-run'}
+          </Button>
+        ) : null}
         {canDelete ? (
           <Button
-            variant="danger"
+            variant="ghost"
             size="sm"
+            iconOnly
+            className="media-viewer-action-icon media-viewer-action-delete"
             onClick={onDelete}
             disabled={deleteBusy}
+            aria-label="Delete item"
+            title="Delete item"
           >
-            {deleteBusy ? 'Deleting…' : 'Delete'}
+            {deleteBusy ? <span className="loading-spinner" aria-hidden="true" /> : <IconTrash size={16} />}
           </Button>
         ) : null}
       </div>

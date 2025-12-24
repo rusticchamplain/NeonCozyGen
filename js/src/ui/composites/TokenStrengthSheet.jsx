@@ -18,6 +18,8 @@ export default function TokenStrengthSheet({
   onApply,
   onRemoveWeight,
   onDeleteToken,
+  onReplace,
+  replaceLabel = 'Replace',
 }) {
   const initial = useMemo(() => clamp(weight || 1, 0.2, 2.0), [weight]);
   const [draft, setDraft] = useState(initial);
@@ -104,6 +106,21 @@ export default function TokenStrengthSheet({
             >
               Reset
             </Button>
+            {onReplace ? (
+              <>
+                <span className="token-strength-divider" aria-hidden="true">|</span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    onReplace?.();
+                    onClose?.();
+                  }}
+                >
+                  {replaceLabel}
+                </Button>
+              </>
+            ) : null}
             <span className="token-strength-divider" aria-hidden="true">|</span>
             <Button
               size="sm"

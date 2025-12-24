@@ -385,12 +385,13 @@
 .token-strength-actions {
   display: flex;
   align-items: center;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   gap: 0.4rem;
 }
 
 .token-strength-actions .ui-button {
-  min-width: 9.5rem;
+  min-width: 8.25rem;
+  flex: 1 1 8.25rem;
   justify-content: center;
 }
 
@@ -404,6 +405,26 @@
 
 .token-strength-hint {
   margin-top: 0.1rem;
+}
+
+.token-strength-sheet .sheet-hint {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+@media (max-width: 640px) {
+  .token-strength-actions {
+    gap: 0.5rem;
+  }
+
+  .token-strength-actions .ui-button {
+    flex: 1 1 calc(50% - 0.5rem);
+    min-width: 0;
+  }
+
+  .token-strength-divider {
+    display: none;
+  }
 }
 
 .ui-alert {

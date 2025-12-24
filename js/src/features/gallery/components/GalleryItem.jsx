@@ -1,6 +1,8 @@
 // js/src/components/GalleryItem.jsx
 import { memo, useEffect, useRef } from 'react';
 import { usePageVisibility } from '../../../hooks/usePageVisibility';
+import Button from '../../../ui/primitives/Button';
+import { IconTrash } from '../../../ui/primitives/Icons';
 
 const looksLikeVideo = (name = '') =>
   /\.(mp4|webm|mov|mkv)$/i.test(name);
@@ -100,6 +102,8 @@ const tileVisibilityStyles = {
 function GalleryItem({
   item,
   onSelect,
+  onDelete,
+  isDeleting = false,
   variant = 'grid', // 'grid' | 'feed'
   autoPlay = false,
 }) {
@@ -109,12 +113,8 @@ function GalleryItem({
   const filename = item.filename || '';
   const subfolder = item.subfolder || '';
   const displayName = filename || subfolder || 'Unknown';
-  const hasMeta = Boolean(
-    item?.meta &&
-      (item.meta.model ||
-        item.meta.prompt ||
-        (Array.isArray(item.meta.loras) && item.meta.loras.length))
-  );
+  const thumbVersionValue = item.mtime ?? item.modified ?? item.updated_at ?? item.created_at;
+  const thumbVersion = thumbVersionValue ? `&v=${encodeURIComponent(String(thumbVersionValue))}` : '';
 
   const handleClick = () => {
     if (!onSelect) return;
@@ -127,7 +127,7 @@ function GalleryItem({
   const thumbBase = !isDir && filename
     ? `/cozygen/thumb?type=output&subfolder=${encodeURIComponent(
         subfolder
-      )}&filename=${encodeURIComponent(filename)}&w=`
+      )}&filename=${encodeURIComponent(filename)}${thumbVersion}&w=`
     : null;
   const thumbSrc = thumbBase ? `${thumbBase}${thumbSize}` : null;
   const thumbSrcSet = thumbBase
@@ -153,6 +153,12 @@ function GalleryItem({
       : null;
 
   const isVideo = looksLikeVideo(filename);
+  const canDelete = Boolean(onDelete) && !isDir;
+
+  const handleDelete = (e) => {
+    e.stopPropagation();
+    onDelete?.(item);
+  };
 
   // ----- DIRECTORY TILE (grid only) -----
   if (isDir) {
@@ -193,16 +199,6 @@ function GalleryItem({
           onClick={handleClick}
           className="gallery-feed-media"
         >
-          {hasMeta ? (
-            <span
-              className="gallery-meta-badge"
-              role="img"
-              aria-label="Metadata available"
-              title="Metadata available"
-            >
-              i
-            </span>
-          ) : null}
           <div className="relative w-full flex items-center justify-center bg-[#020312]">
             {isVideo ? (
               <FeedVideoPlayer src={mediaSrc} poster={thumbSrc} autoPlay={autoPlay} />
@@ -231,51 +227,70 @@ function GalleryItem({
             </div>
           )}
         </button>
+        {canDelete ? (
+          <Button
+            size="mini"
+            variant="muted"
+            iconOnly
+            className="gallery-tile-delete"
+            onClick={handleDelete}
+            disabled={isDeleting}
+            aria-label="Delete item"
+            title={isDeleting ? 'Deleting…' : 'Delete item'}
+          >
+            <IconTrash size={12} />
+          </Button>
+        ) : null}
       </div>
     );
   }
 
   // ----- GRID VARIANT: small tiles -----
   return (
-    <button
-      type="button"
-      onClick={handleClick}
-      className="gallery-tile"
-      style={tileVisibilityStyles}
-    >
-      <div className="gallery-tile-media">
-        {hasMeta ? (
-          <span
-            className="gallery-meta-badge"
-            role="img"
-            aria-label="Metadata available"
-            title="Metadata available"
-          >
-            i
-          </span>
-        ) : null}
-        {thumbSrc ? (
-          <img
-            src={thumbSrc}
-            srcSet={thumbSrcSet || undefined}
-            sizes={thumbSizes}
-            alt={displayName}
-            className="gallery-tile-img"
-            loading="lazy"
-            decoding="async"
-          />
-        ) : (
-          <div className="gallery-tile-empty">
-            No preview
-          </div>
-        )}
-        {isVideo && (
-          <div className="gallery-badge">
-            Video
-          </div>
-        )}
-      </div>
-    </button>
+    <div className="gallery-tile" style={tileVisibilityStyles}>
+      <button
+        type="button"
+        onClick={handleClick}
+        className="gallery-tile-button"
+      >
+        <div className="gallery-tile-media">
+          {thumbSrc ? (
+            <img
+              src={thumbSrc}
+              srcSet={thumbSrcSet || undefined}
+              sizes={thumbSizes}
+              alt={displayName}
+              className="gallery-tile-img"
+              loading="lazy"
+              decoding="async"
+            />
+          ) : (
+            <div className="gallery-tile-empty">
+              No preview
+            </div>
+          )}
+          {isVideo && (
+            <div className="gallery-badge">
+              Video
+            </div>
+          )}
+        </div>
+      </button>
+      {canDelete ? (
+        <Button
+          size="mini"
+          variant="muted"
+          iconOnly
+          className="gallery-tile-delete"
+          onClick={handleDelete}
+          disabled={isDeleting}
+          aria-label="Delete item"
+          title={isDeleting ? 'Deleting…' : 'Delete item'}
+        >
+          <IconTrash size={12} />
+        </Button>
+      ) : null}
+    </div>
   );
 }
 

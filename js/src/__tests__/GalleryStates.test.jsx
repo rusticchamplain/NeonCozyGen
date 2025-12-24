@@ -4,6 +4,14 @@ import Gallery from '../features/gallery/pages/Gallery';
 import { useGallery } from '../features/gallery/hooks/useGallery';
 import { useMediaViewer } from '../features/gallery/hooks/useMediaViewer';
 
+vi.mock('../features/studio/contexts/StudioContext', () => ({
+  useStudioContext: () => ({
+    aliasCatalog: [],
+    aliasLoading: false,
+    aliasError: null,
+  }),
+}));
+
 vi.mock('../features/gallery/hooks/useGallery', () => ({
   useGallery: vi.fn(),
 }));

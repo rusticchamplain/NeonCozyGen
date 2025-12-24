@@ -1323,12 +1323,14 @@
     border-color 0.2s ease;
 }
 
-.gallery-grid-responsive > button:hover {
+.gallery-grid-responsive > .gallery-tile:hover,
+.gallery-grid-responsive > .gallery-dir-tile:hover {
   transform: translateY(-2px);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
 }
 
-.gallery-grid-responsive > button:active {
+.gallery-grid-responsive > .gallery-tile:active,
+.gallery-grid-responsive > .gallery-dir-tile:active {
   transform: translateY(0) scale(0.98);
 }
 
@@ -1365,8 +1367,19 @@
   background: rgba(255, 255, 255, 0.03);
 }
 
-.gallery-tile:active {
+.gallery-tile-button:active {
   transform: scale(0.99);
+}
+
+.gallery-tile-button {
+  display: block;
+  width: 100%;
+  border: 0;
+  padding: 0;
+  text-align: left;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
 }
 
 .gallery-tile-media {
@@ -1409,24 +1422,51 @@
   backdrop-filter: blur(10px) saturate(140%);
 }
 
-.gallery-meta-badge {
-  pointer-events: none;
+.gallery-tile-delete.ui-button {
   position: absolute;
-  right: 0.6rem;
   top: 0.6rem;
-  width: 1.35rem;
-  height: 1.35rem;
-  border-radius: 999px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.7rem;
-  font-weight: 600;
-  color: rgba(224, 235, 255, 0.92);
-  background: rgba(5, 7, 22, 0.72);
-  border: 1px solid rgba(143, 162, 255, 0.35);
-  box-shadow: 0 8px 18px rgba(3, 6, 14, 0.35);
-  text-transform: uppercase;
+  left: 0.6rem;
+  z-index: 3;
+  opacity: 0;
+  transform: translateY(-2px);
+  transition: opacity 150ms ease, transform 150ms ease;
+  width: 18px;
+  height: 18px;
+  border-radius: 0.5rem;
+  padding: 0;
+  color: rgba(255, 209, 198, 0.82);
+  background: rgba(5, 7, 22, 0.55);
+  border-color: rgba(255, 255, 255, 0.14);
+  box-shadow: 0 8px 16px rgba(3, 6, 14, 0.35);
+}
+
+.gallery-tile-delete:hover:not(:disabled),
+.gallery-tile-delete:focus-visible:not(:disabled) {
+  color: rgba(255, 232, 224, 0.98);
+  border-color: rgba(255, 156, 132, 0.6);
+  background: rgba(255, 143, 112, 0.16);
+}
+
+.gallery-tile:hover .gallery-tile-delete,
+.gallery-tile:focus-within .gallery-tile-delete,
+.gallery-feed-item:hover .gallery-tile-delete,
+.gallery-feed-item:focus-within .gallery-tile-delete {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@media (hover: none) {
+  .gallery-tile-delete.ui-button {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (pointer: coarse) {
+  .gallery-tile-delete.ui-button {
+    width: 22px;
+    height: 22px;
+  }
 }
 
 .gallery-tile-caption {
@@ -1473,6 +1513,7 @@
 }
 
 .gallery-feed-item {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 0.65rem;

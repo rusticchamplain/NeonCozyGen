@@ -5,6 +5,8 @@ const CHECKPOINT_KEYS = ['ckpt_name', 'checkpoint', 'ckpt', 'model_name'];
 const LORA_KEYS = ['lora_name'];
 const WIDTH_KEYS = ['width', 'image_width'];
 const HEIGHT_KEYS = ['height', 'image_height'];
+const PROMPT_PARAM_RE = /(prompt|positive|text)/i;
+const NEGATIVE_PARAM_RE = /(negative|neg)/i;
 
 const toLower = (value) => String(value || '').toLowerCase();
 
@@ -51,6 +53,7 @@ const getNodeScalarValue = (node) => {
 };
 
 const getParamName = (node) => toLower(node?.inputs?.param_name);
+const getParamLabel = (node) => String(node?.inputs?.param_name || '').trim();
 
 const setScalarInputValue = (node, value) => {
   if (!node?.inputs) return false;
@@ -65,6 +68,25 @@ const setScalarInputValue = (node, value) => {
   }
   return touched;
 };
+
+const isPromptParamName = (name) => {
+  const raw = String(name || '').trim();
+  if (!raw) return false;
+  if (NEGATIVE_PARAM_RE.test(raw)) return false;
+  return PROMPT_PARAM_RE.test(raw);
+};
+
+const resolvePromptFields = (inputs) => {
+  if (!inputs) return [];
+  const fields = [];
+  if (typeof inputs.default_value === 'string') fields.push('default_value');
+  if (typeof inputs.value === 'string' && inputs.value !== inputs.default_value) {
+    fields.push('value');
+  }
+  return fields;
+};
+
+const isTextEncodeNode = (node) => toLower(node?.class_type).includes('textencode');
 
 const updateSeedInputs = (node, seed) => {
   if (!node?.inputs) return false;
@@ -227,6 +249,78 @@ const updateSizeGraph = (graph, width, height) => {
     if (target) setScalarInputValue(target, height);
   });
 };
+
+export function getPromptTargets(prompt) {
+  if (!prompt) return [];
+  const entries = Object.entries(prompt || {})
+    .sort((a, b) => {
+      const ai = Number(a[0]);
+      const bi = Number(b[0]);
+      if (Number.isFinite(ai) && Number.isFinite(bi)) return ai - bi;
+      return String(a[0]).localeCompare(String(b[0]));
+    });
+  const targets = [];
+
+  entries.forEach(([id, node]) => {
+    if (!node?.inputs) return;
+    const inputs = node.inputs;
+    const classType = String(node?.class_type || '');
+    const paramName = getParamLabel(node);
+    const paramNameLower = getParamName(node);
+
+    if (paramNameLower && isPromptParamName(paramNameLower)) {
+      const fields = resolvePromptFields(inputs);
+      if (fields.length) {
+        const text = inputs[fields[0]];
+        if (typeof text === 'string') {
+          targets.push({
+            id: String(id),
+            key: `${id}:${fields[0]}`,
+            label: paramName || `Prompt ${id}`,
+            text,
+            fields,
+            classType,
+          });
+        }
+      }
+      return;
+    }
+
+    if (isTextEncodeNode(node) && typeof inputs.text === 'string') {
+      targets.push({
+        id: String(id),
+        key: `${id}:text`,
+        label: `${classType || 'Text Encode'} ${id}`,
+        text: inputs.text,
+        fields: ['text'],
+        classType,
+      });
+    }
+  });
+
+  return targets;
+}
+
+export function applyPromptTextOverrides(prompt, targets = [], drafts = {}, options = {}) {
+  if (!prompt || !targets.length) return prompt;
+  const { mutate = false } = options || {};
+  const next = mutate ? prompt : cloneWorkflow(prompt);
+
+  targets.forEach((target) => {
+    if (!target?.id || !target?.fields?.length) return;
+    const nextText = typeof drafts?.[target.key] === 'string' ? drafts[target.key] : target.text;
+    if (typeof nextText !== 'string') return;
+    const node = next?.[target.id];
+    if (!node?.inputs) return;
+    target.fields.forEach((field) => {
+      if (typeof node.inputs[field] === 'string') {
+        node.inputs[field] = nextText;
+      }
+    });
+  });
+
+  return next;
+}
 
 export function analyzePromptGraph(prompt) {
   const summary = {

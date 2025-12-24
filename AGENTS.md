@@ -36,9 +36,9 @@ This file is the shared guide for contributors and agents working in this repo.
 - Do not introduce new one-off button, input, chip, or card styles in feature code.
 - Use existing primitives and variants (`.ui-button`, `.ui-control`, `.segmented-tabs`, `.bottom-sheet-*`, `.ui-card`, `.ui-panel`, `.ui-chip`).
 - Canonical surfaces are `.ui-card` (standard) and `.ui-panel` (large centered). Do not reintroduce legacy card classes.
-- If a new surface pattern is required, add it to `js/src/styles/ui-kit.css` and document it in `docs/STRUCTURE.md`.
+- If a new surface pattern is required, add it to `js/src/styles/ui-kit.css` and document it in `docs/30-UI-DESIGN-SYSTEM.md`.
 - If a new UI pattern is truly needed, define it once in `js/src/ui/primitives/` and style it consistently.
-- Follow `docs/UI_STANDARDS.md` for canonical primitives, dropdown rules, and button variants.
+- Follow `docs/30-UI-DESIGN-SYSTEM.md` for canonical primitives, dropdown rules, and button variants.
 
 ## Styling rules
 
@@ -55,5 +55,5 @@ This file is the shared guide for contributors and agents working in this repo.
 ## Planned restructure
 
 A Phase 1 audit and restructure strategy exists in `Findings/Phase1_Audit.md`. Follow its guidance when reorganizing code or unifying UI patterns.
-Structure conventions are documented in `docs/STRUCTURE.md`.
+Structure conventions are documented in `docs/20-REPO-STRUCTURE.md`.
 Phase 2 UI unification notes live in `Findings/Phase2_UI_Unification.md` and `Findings/Phase2_Card_Unification.md`.

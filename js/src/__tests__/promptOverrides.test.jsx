@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { analyzePromptGraph, applyPromptOverrides } from '../features/workflow/utils/promptOverrides';
+import {
+  analyzePromptGraph,
+  applyPromptOverrides,
+  applyPromptTextOverrides,
+  getPromptTargets,
+} from '../features/workflow/utils/promptOverrides';
 
 const buildPrompt = () => ({
   10: {
@@ -76,5 +81,37 @@ describe('promptOverrides', () => {
     expect(next[30].inputs.default_value).toBe('NewLoRA.safetensors');
     expect(next[41].inputs.default_value).toBe(1024);
     expect(next[42].inputs.default_value).toBe(640);
+  });
+
+  it('extracts prompt targets and applies prompt text overrides', () => {
+    const prompt = {
+      1: {
+        class_type: 'CLIPTextEncode',
+        inputs: { text: 'cat, dog' },
+      },
+      2: {
+        class_type: 'CozyGenStringInput',
+        inputs: { param_name: 'Prompt', default_value: 'sunrise, fog' },
+      },
+      3: {
+        class_type: 'CozyGenStringInput',
+        inputs: { param_name: 'Negative prompt', default_value: 'blurry' },
+      },
+    };
+
+    const targets = getPromptTargets(prompt);
+    expect(targets.length).toBe(2);
+
+    const drafts = {};
+    targets.forEach((target) => {
+      drafts[target.key] = `updated-${target.id}`;
+    });
+
+    const next = applyPromptTextOverrides(prompt, targets, drafts);
+
+    expect(next[1].inputs.text).toBe('updated-1');
+    expect(next[2].inputs.default_value).toBe('updated-2');
+    expect(next[3].inputs.default_value).toBe('blurry');
+    expect(prompt[1].inputs.text).toBe('cat, dog');
   });
 });

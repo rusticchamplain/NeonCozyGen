@@ -200,6 +200,17 @@ export const IconPlay = (props) => (
   </Icon>
 );
 
+// Trash
+export const IconTrash = (props) => (
+  <Icon {...props}>
+    <path d="M3 6h18" />
+    <path d="M8 6V4h8v2" />
+    <path d="M6 6l1 14h10l1-14" />
+    <line x1="10" y1="11" x2="10" y2="17" />
+    <line x1="14" y1="11" x2="14" y2="17" />
+  </Icon>
+);
+
 // Pause
 export const IconPause = (props) => (
   <Icon {...props}>

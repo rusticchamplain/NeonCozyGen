@@ -28,3 +28,10 @@
 - Reran tests after rolling back the global render toasts.
 - Reran tests after adding the gallery delete action.
 - Reran tests after updating `.gitignore`.
+- Reran tests after wiring gallery tile delete controls.
+- Reran tests after refining gallery delete icon size and placement.
+- Reran tests after adding prompt element editing to gallery re-run.
+- Reran tests after grouping weighted alias expansions in prompt element parsing.
+- Reran tests after reorganizing rerun sheet order and prompt sections.
+- Reran tests after adding alias/tag pickers to the rerun prompt elements pane.
+- Reran tests after adding mobile Clear Cache access and thumbnail cache-busting.

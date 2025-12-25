@@ -14,7 +14,7 @@ import BottomSheet from '../../../ui/primitives/BottomSheet';
 import Button from '../../../ui/primitives/Button';
 import SegmentedTabs from '../../../ui/primitives/SegmentedTabs';
 import Select from '../../../ui/primitives/Select';
-import TokenStrengthSheet from '../../../ui/composites/TokenStrengthSheet';
+import TokenEditSheet from '../../../ui/composites/TokenEditSheet';
 import { useStudioContext } from '../../studio/contexts/StudioContext';
 import { saveLastRenderPayload } from '../../workflow/utils/globalRender';
 import {
@@ -120,6 +120,8 @@ export default function MediaViewerModal({
   const [loraOverride, setLoraOverride] = useState('');
   const [checkpointFolder, setCheckpointFolder] = useState('All');
   const [loraFolder, setLoraFolder] = useState('All');
+  const [modelSearch, setModelSearch] = useState('');
+  const [loraSearch, setLoraSearch] = useState('');
   const [promptInfo, setPromptInfo] = useState({
     hasSeed: false,
     hasCheckpoint: false,
@@ -136,7 +138,6 @@ export default function MediaViewerModal({
   const [activePromptKey, setActivePromptKey] = useState('');
   const [promptInput, setPromptInput] = useState('');
   const [promptPanel, setPromptPanel] = useState('elements');
-  const [promptEditMode, setPromptEditMode] = useState('replace');
   const [aliasDisplayMode, setAliasDisplayMode] = useState('alias');
   const [aliasSearch, setAliasSearch] = useState('');
   const deferredAliasSearch = useDeferredValue(aliasSearch);
@@ -161,6 +162,9 @@ export default function MediaViewerModal({
   const tagLoadAbortRef = useRef(null);
   const [strengthOpen, setStrengthOpen] = useState(false);
   const [strengthToken, setStrengthToken] = useState(null);
+  const [addSheetOpen, setAddSheetOpen] = useState(false);
+  const [tokenEditSearch, setTokenEditSearch] = useState('');
+  const [tokenEditCategory, setTokenEditCategory] = useState('All');
   const [dragIndex, setDragIndex] = useState(null);
   const [dropIndex, setDropIndex] = useState(null);
   const tokensListRef = useRef(null);
@@ -229,7 +233,6 @@ export default function MediaViewerModal({
     setActivePromptKey('');
     setPromptInput('');
     setPromptPanel('elements');
-    setPromptEditMode('replace');
     setAliasDisplayMode('alias');
     setAliasSearch('');
     setAliasCategory('All');
@@ -250,6 +253,7 @@ export default function MediaViewerModal({
     setTagStatus('');
     setStrengthOpen(false);
     setStrengthToken(null);
+    setAddSheetOpen(false);
     setPromptLoading(false);
     setPromptError('');
     setChoicesLoading(false);
@@ -524,20 +528,40 @@ export default function MediaViewerModal({
   }, [loraSelectOptions, loraOverride]);
 
   const checkpointOptionsWithValue = useMemo(() => {
-    if (!checkpointOverride || hasCheckpointInFiltered) return checkpointSelectOptions;
-    return [
-      { value: checkpointOverride, label: formatFileBaseName(String(checkpointOverride)) },
-      ...checkpointSelectOptions,
-    ];
-  }, [checkpointOverride, hasCheckpointInFiltered, checkpointSelectOptions]);
+    let opts = checkpointSelectOptions;
+    if (checkpointOverride && !hasCheckpointInFiltered) {
+      opts = [
+        { value: checkpointOverride, label: formatFileBaseName(String(checkpointOverride)) },
+        ...opts,
+      ];
+    }
+    if (modelSearch.trim()) {
+      const term = modelSearch.toLowerCase().trim();
+      opts = opts.filter((opt) =>
+        String(opt.label).toLowerCase().includes(term) ||
+        String(opt.value).toLowerCase().includes(term)
+      );
+    }
+    return opts;
+  }, [checkpointOverride, hasCheckpointInFiltered, checkpointSelectOptions, modelSearch]);
 
   const loraOptionsWithValue = useMemo(() => {
-    if (!loraOverride || hasLoraInFiltered) return loraSelectOptions;
-    return [
-      { value: loraOverride, label: formatFileBaseName(String(loraOverride)) },
-      ...loraSelectOptions,
-    ];
-  }, [loraOverride, hasLoraInFiltered, loraSelectOptions]);
+    let opts = loraSelectOptions;
+    if (loraOverride && !hasLoraInFiltered) {
+      opts = [
+        { value: loraOverride, label: formatFileBaseName(String(loraOverride)) },
+        ...opts,
+      ];
+    }
+    if (loraSearch.trim()) {
+      const term = loraSearch.toLowerCase().trim();
+      opts = opts.filter((opt) =>
+        String(opt.label).toLowerCase().includes(term) ||
+        String(opt.value).toLowerCase().includes(term)
+      );
+    }
+    return opts;
+  }, [loraOverride, hasLoraInFiltered, loraSelectOptions, loraSearch]);
 
   const loadChoices = useCallback(async (info) => {
     const needsCheckpoint = info?.hasCheckpoint;
@@ -697,19 +721,14 @@ export default function MediaViewerModal({
     replaceReturnRef.current = 'rerun';
     setRerunOpen(false);
     setRerunPicker(null);
-    setPromptEditMode('replace');
     setPromptEditorOpen(true);
   }, []);
 
-  const openPromptEditorForAddTag = useCallback(() => {
-    setReplaceTarget(null);
-    replaceReturnRef.current = promptEditorOpen ? 'editor' : 'rerun';
-    setPromptPanel('tags');
-    setPromptEditMode('replace');
-    setRerunOpen(false);
-    setRerunPicker(null);
-    setPromptEditorOpen(true);
-  }, [promptEditorOpen]);
+  const openAddSheet = useCallback(() => {
+    setTokenEditSearch('');
+    setTokenEditCategory('All');
+    setAddSheetOpen(true);
+  }, []);
 
   const openPromptEditorForReplace = useCallback((element, displayName) => {
     if (!element) return;
@@ -719,7 +738,6 @@ export default function MediaViewerModal({
       element,
       displayName: displayName || element.text || '',
     });
-    setPromptEditMode('replace');
     setRerunOpen(false);
     setRerunPicker(null);
     setPromptEditorOpen(true);
@@ -805,10 +823,6 @@ export default function MediaViewerModal({
     { key: 'aliases', label: 'Aliases', icon: <IconAlias size={14} /> },
     { key: 'tags', label: 'Tags', icon: <IconTag size={14} /> },
   ]), []);
-  const promptEditModeTabs = useMemo(() => ([
-    { key: 'replace', label: 'Replace' },
-    { key: 'strength', label: 'Strength' },
-  ]), []);
   const aliasDisplayTabs = useMemo(() => ([
     { key: 'alias', label: 'Alias' },
     { key: 'raw', label: 'Raw' },
@@ -826,9 +840,6 @@ export default function MediaViewerModal({
   }, [replaceTarget]);
   const promptInputLabel = replaceTarget ? 'Replace prompt element' : 'Add prompt element';
   const promptInputPlaceholder = replaceTarget ? 'Replace with tag or $alias$' : 'Add tag or $alias$';
-  const promptEditHint = promptEditMode === 'strength'
-    ? 'Tap an element to adjust strength'
-    : 'Tap an element to replace it';
   const hasPromptTargets = promptTargetsAvailable.length > 0;
   const showPromptControls = promptTargetOptions.length > 1 || hasAliasTokens;
   const canEditPrompt = !promptLoading && !promptError && hasPromptTargets;
@@ -1012,6 +1023,43 @@ export default function MediaViewerModal({
       setTagLoading(false);
     }
   }, [deferredTagQuery, promptEditorActive, promptPanel, tagCategory, tagMinCountValue, tagSort]);
+
+  // Load tags for TokenEditSheet (doesn't require promptEditorActive)
+  const loadTagsForTokenEdit = useCallback(async () => {
+    // Skip if already have tags loaded
+    if (tagItems.length > 0) return;
+    if (tagLoading) return;
+    if (tagSearchAbortRef.current) {
+      tagSearchAbortRef.current.abort();
+    }
+    const controller = new AbortController();
+    tagSearchAbortRef.current = controller;
+
+    try {
+      setTagLoading(true);
+      setTagError('');
+      const res = await searchDanbooruTags(
+        {
+          q: '',
+          category: '',
+          sort: 'count',
+          minCount: '',
+          limit: 40,
+          offset: 0,
+        },
+        { signal: controller.signal }
+      );
+      const nextItems = Array.isArray(res?.items) ? res.items : [];
+      setTagItems(nextItems);
+      setTagTotal(Number(res?.total || 0));
+      setTagOffset(nextItems.length);
+    } catch (err) {
+      if (err?.name === 'AbortError') return;
+      setTagError('Unable to load tags right now.');
+    } finally {
+      setTagLoading(false);
+    }
+  }, [tagItems.length, tagLoading]);
 
   const loadMoreTags = useCallback(async () => {
     if (!promptEditorActive || promptPanel !== 'tags') return;
@@ -1228,6 +1276,8 @@ export default function MediaViewerModal({
     const weightInfo = getElementWeight(promptText || '', element);
     const weight = weightInfo?.weight ?? 1;
     setStrengthToken({ element, displayName, weight });
+    setTokenEditSearch('');
+    setTokenEditCategory('All');
     setStrengthOpen(true);
   }, [promptText]);
 
@@ -1478,31 +1528,118 @@ export default function MediaViewerModal({
     }
   };
 
+  // Prepare alias data for TokenEditSheet
+  const tokenEditAliases = useMemo(() => {
+    return aliasEntries.map((entry) => ({
+      key: entry.key || entry.token,
+      token: entry.token,
+      displayName: entry.displayName || entry.name || entry.token,
+      category: entry.category,
+      name: entry.name,
+    }));
+  }, [aliasEntries]);
+
+  // Prepare tag data for TokenEditSheet
+  const tokenEditTags = useMemo(() => {
+    return tagItems.map((t) => ({
+      key: `${t.tag}-${t.category}`,
+      tag: t.tag,
+      displayName: t.tag,
+      category: t.category,
+      count: t.count,
+    }));
+  }, [tagItems]);
+
+  const handleTokenEditReplace = useCallback((item) => {
+    if (!strengthToken?.element) return;
+
+    if (item.type === 'alias' && item.token) {
+      // Replace with alias
+      updatePromptDraft((prev) => {
+        const withoutOld = removeElement(prev || '', strengthToken.element);
+        return `${withoutOld.trim()}, $${item.token}$`.replace(/^,\s*/, '');
+      });
+    } else if (item.tag) {
+      // Replace with tag
+      updatePromptDraft((prev) => {
+        const withoutOld = removeElement(prev || '', strengthToken.element);
+        return `${withoutOld.trim()}, ${item.tag}`.replace(/^,\s*/, '');
+      });
+    }
+    setStrengthOpen(false);
+    setStrengthToken(null);
+  }, [strengthToken, updatePromptDraft]);
+
+  const handleTokenEditWeightChange = useCallback((weight) => {
+    if (!strengthToken?.element) return;
+    updatePromptDraft((prev) => setElementWeight(prev || '', strengthToken.element, weight));
+    setStrengthToken((prev) => prev ? { ...prev, weight } : null);
+  }, [strengthToken?.element, updatePromptDraft]);
+
   const strengthSheet = (
-    <TokenStrengthSheet
+    <TokenEditSheet
       open={strengthOpen}
-      onClose={() => setStrengthOpen(false)}
-      title={strengthToken?.element?.type === 'alias' ? 'Alias strength' : 'Tag strength'}
-      tokenLabel={
-        strengthToken
-          ? strengthToken.element?.type === 'alias'
-            ? `${strengthToken.displayName} • $${strengthToken.element?.text}$`
-            : strengthToken.displayName
-          : ''
-      }
-      weight={strengthToken?.weight ?? 1}
-      onApply={(w) => {
-        if (!strengthToken?.element) return;
-        updatePromptDraft((prev) => setElementWeight(prev || '', strengthToken.element, w));
+      onClose={() => {
+        setStrengthOpen(false);
+        setStrengthToken(null);
       }}
-      onDeleteToken={() => {
+      mode="edit"
+      tokenType={strengthToken?.element?.type || 'tag'}
+      tokenLabel={strengthToken?.element?.text || ''}
+      tokenDisplay={strengthToken?.displayName || ''}
+      weight={strengthToken?.weight ?? 1}
+      onWeightChange={handleTokenEditWeightChange}
+      onDelete={() => {
         if (!strengthToken?.element) return;
         handleRemoveElement(strengthToken.element);
       }}
-      onReplace={() => {
-        if (!strengthToken?.element) return;
-        openPromptEditorForReplace(strengthToken.element, strengthToken.displayName);
-      }}
+      aliases={tokenEditAliases}
+      aliasCategories={aliasCategories}
+      aliasLoading={aliasLoading}
+      tags={tokenEditTags}
+      tagLoading={tagLoading}
+      onLoadTags={loadTagsForTokenEdit}
+      replacementSearch={tokenEditSearch}
+      onReplacementSearchChange={setTokenEditSearch}
+      onReplace={handleTokenEditReplace}
+      activeCategory={tokenEditCategory}
+      onCategoryChange={setTokenEditCategory}
+    />
+  );
+
+  // Handler for adding new tokens via the add sheet
+  const handleTokenAdd = useCallback((item) => {
+    if (item.type === 'alias' && item.token) {
+      updatePromptDraft((prev) => {
+        const trimmed = (prev || '').trim();
+        return trimmed ? `${trimmed}, $${item.token}$` : `$${item.token}$`;
+      });
+    } else if (item.tag) {
+      updatePromptDraft((prev) => {
+        const trimmed = (prev || '').trim();
+        return trimmed ? `${trimmed}, ${item.tag}` : item.tag;
+      });
+    }
+    setAddSheetOpen(false);
+  }, [updatePromptDraft]);
+
+  const addSheet = (
+    <TokenEditSheet
+      open={addSheetOpen}
+      onClose={() => setAddSheetOpen(false)}
+      mode="add"
+      tokenType="alias"
+      aliases={tokenEditAliases}
+      aliasCategories={aliasCategories}
+      aliasLoading={aliasLoading}
+      tags={tokenEditTags}
+      tagLoading={tagLoading}
+      onLoadTags={loadTagsForTokenEdit}
+      replacementSearch={tokenEditSearch}
+      onReplacementSearchChange={setTokenEditSearch}
+      onAdd={handleTokenAdd}
+      activeCategory={tokenEditCategory}
+      onCategoryChange={setTokenEditCategory}
     />
   );
 
@@ -1554,9 +1691,13 @@ export default function MediaViewerModal({
                 closeButtonRef={closeButtonRef}
               />
 
-              {metaOpen ? <MediaViewerMeta metaRows={metaRows} /> : null}
-              {rerunOpen ? (
-                <div className="media-viewer-info rerun-info" aria-label="Tweak options">
+              <div className="media-viewer-body">
+                <div className={`media-viewer-drawer ${metaOpen ? 'is-open' : ''}`}>
+                  <MediaViewerMeta metaRows={metaRows} />
+                </div>
+                <div className={`media-viewer-drawer ${rerunOpen ? 'is-open' : ''}`}>
+                  {rerunOpen ? (
+                    <div className="media-viewer-info rerun-info" aria-label="Tweak options">
                   <div className="media-info-row rerun-info-row rerun-controls-row">
                     <span className="media-info-label">Seed & Size</span>
                     <div className="media-info-value rerun-info-value">
@@ -1707,7 +1848,7 @@ export default function MediaViewerModal({
                                       key={`${el.type}-${el.text}-${el.start}`}
                                       type="button"
                                       className={`ui-chip is-clickable rerun-token max-w-full whitespace-normal leading-snug ${el.type === 'alias' ? 'is-accent' : ''}`}
-                                      onClick={() => openPromptEditorForReplace(el, editorLabel)}
+                                      onClick={() => openStrengthFor(el, editorLabel)}
                                       title={el.type === 'alias' ? `Alias: $${el.text}$` : `Tag: ${el.text}`}
                                     >
                                       <span className="break-words">{tokenLabel}</span>
@@ -1721,9 +1862,9 @@ export default function MediaViewerModal({
                               <button
                                 type="button"
                                 className="ui-chip is-clickable rerun-token rerun-token-add"
-                                onClick={openPromptEditorForAddTag}
-                                aria-label="Add tag"
-                                title="Add tag"
+                                onClick={openAddSheet}
+                                aria-label="Add alias or tag"
+                                title="Add alias or tag"
                               >
                                 +
                               </button>
@@ -1781,19 +1922,21 @@ export default function MediaViewerModal({
                       )}
                     </div>
                   </div>
+                    </div>
+                  ) : null}
                 </div>
-              ) : null}
 
-              <MediaViewerStage
-                showNav={showNav}
-                canPrev={canPrev}
-                canNext={canNext}
-                onPrev={onPrev}
-                onNext={onNext}
-                isClip={isClip}
-                url={url}
-                filename={media.filename}
-              />
+                <MediaViewerStage
+                  showNav={showNav}
+                  canPrev={canPrev}
+                  canNext={canNext}
+                  onPrev={onPrev}
+                  onNext={onNext}
+                  isClip={isClip}
+                  url={url}
+                  filename={media.filename}
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -1820,34 +1963,6 @@ export default function MediaViewerModal({
             ) : null}
             {promptError ? (
               <div className="text-xs text-[#FF8F70]">{promptError}</div>
-            ) : null}
-            {replaceTarget ? (
-              <div className="sheet-section">
-                <div className="sheet-label">Replacing</div>
-                <div className="sheet-hint">{replaceLabel || '—'}</div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    size="xs"
-                    variant="ghost"
-                    onClick={() => {
-                      setReplaceTarget(null);
-                      setPromptPanel('elements');
-                    }}
-                  >
-                    Cancel replace
-                  </Button>
-                  <Button
-                    size="xs"
-                    variant="muted"
-                    onClick={() => openStrengthFor(replaceTarget.element, replaceTarget.displayName)}
-                  >
-                    Adjust strength
-                  </Button>
-                  <div className="text-xs text-[#9DA3FFCC]">
-                    Choose a replacement from Aliases or Tags. Selection returns to elements.
-                  </div>
-                </div>
-              </div>
             ) : null}
             {!promptLoading && !promptError && hasPromptTargets ? (
               <>
@@ -1903,17 +2018,8 @@ export default function MediaViewerModal({
                           Elements
                           <span className="composer-tokens-count">{promptElements.length}</span>
                         </span>
-                        <SegmentedTabs
-                          ariaLabel="Element edit mode"
-                          value={promptEditMode}
-                          onChange={setPromptEditMode}
-                          items={promptEditModeTabs}
-                          size="sm"
-                          layout="auto"
-                          wrap
-                        />
                       </div>
-                      <span className="composer-tokens-hint">Drag handle to reorder · {promptEditHint}</span>
+                      <span className="composer-tokens-hint">Drag to reorder · Tap to edit</span>
                       {promptElements.length ? (
                         <div
                           ref={tokensListRef}
@@ -1947,21 +2053,13 @@ export default function MediaViewerModal({
                                 onTouchCancel={handleTouchCancel}
                                 onClick={() => {
                                   if (dragIndex !== null) return;
-                                  if (promptEditMode === 'strength') {
-                                    openStrengthFor(el, displayName);
-                                  } else {
-                                    openPromptEditorForReplace(el, displayName);
-                                  }
+                                  openStrengthFor(el, displayName);
                                 }}
                                 onKeyDown={(e) => {
                                   if (e.target !== e.currentTarget) return;
                                   if (e.key === 'Enter' || e.key === ' ') {
                                     e.preventDefault();
-                                    if (promptEditMode === 'strength') {
-                                      openStrengthFor(el, displayName);
-                                    } else {
-                                      openPromptEditorForReplace(el, displayName);
-                                    }
+                                    openStrengthFor(el, displayName);
                                   }
                                 }}
                               >
@@ -2194,75 +2292,148 @@ export default function MediaViewerModal({
         </BottomSheet>
         <BottomSheet
           open={rerunPicker === 'model'}
-          onClose={closeRerunPicker}
+          onClose={() => { closeRerunPicker(); setModelSearch(''); }}
           title="Select model"
         >
-          <div className="sheet-stack">
+          <div className="model-picker">
             {choicesLoading ? (
-              <div className="rerun-info-empty">Loading model choices…</div>
-            ) : null}
-            {choicesError ? (
-              <div className="rerun-info-empty rerun-info-error">{choicesError}</div>
-            ) : null}
-            {showCheckpointFolder ? (
-              <Select
-                value={checkpointFolder}
-                onChange={setCheckpointFolder}
-                aria-label="Model folder filter"
-                size="sm"
-                searchThreshold={0}
-                options={checkpointFolders.map((folder) => ({ value: folder, label: folder }))}
-              />
-            ) : null}
-            <Select
-              value={checkpointOverride}
-              onChange={setCheckpointOverride}
-              aria-label="Model selection"
-              size="sm"
-              searchThreshold={0}
-              options={[
-                { value: '', label: checkpointDisplay ? `Keep current (${checkpointDisplay})` : 'Keep current' },
-                ...checkpointOptionsWithValue,
-              ]}
-            />
+              <div className="model-picker-loading">Loading models…</div>
+            ) : choicesError ? (
+              <div className="model-picker-error">{choicesError}</div>
+            ) : (
+              <>
+                <div className="model-picker-search">
+                  <input
+                    type="search"
+                    placeholder="Search models…"
+                    className="model-picker-input"
+                    value={modelSearch}
+                    onChange={(e) => setModelSearch(e.target.value)}
+                    aria-label="Search models"
+                  />
+                </div>
+                {showCheckpointFolder && !modelSearch ? (
+                  <div className="model-picker-folders">
+                    {checkpointFolders.map((folder) => (
+                      <button
+                        key={folder}
+                        type="button"
+                        className={`model-picker-folder-chip ${checkpointFolder === folder ? 'is-active' : ''}`}
+                        onClick={() => setCheckpointFolder(folder)}
+                      >
+                        {folder === 'All' ? 'All' : folder.split('/').pop()}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                <div className="model-picker-current">
+                  <span className="model-picker-current-label">Current</span>
+                  <span className="model-picker-current-value">{checkpointDisplay || 'Default'}</span>
+                </div>
+                <div className="model-picker-list">
+                  {!modelSearch ? (
+                    <button
+                      type="button"
+                      className={`model-picker-item ${!checkpointOverride ? 'is-selected' : ''}`}
+                      onClick={() => { setCheckpointOverride(''); setModelSearch(''); closeRerunPicker(); }}
+                    >
+                      <span className="model-picker-item-icon">↩</span>
+                      <span className="model-picker-item-name">Keep current</span>
+                    </button>
+                  ) : null}
+                  {checkpointOptionsWithValue.length === 0 && modelSearch ? (
+                    <div className="model-picker-empty">No models match "{modelSearch}"</div>
+                  ) : null}
+                  {checkpointOptionsWithValue.map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      className={`model-picker-item ${checkpointOverride === opt.value ? 'is-selected' : ''}`}
+                      onClick={() => { setCheckpointOverride(opt.value); setModelSearch(''); closeRerunPicker(); }}
+                    >
+                      <span className="model-picker-item-icon">◆</span>
+                      <span className="model-picker-item-name">{opt.label}</span>
+                      {checkpointOverride === opt.value && <span className="model-picker-item-check">✓</span>}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         </BottomSheet>
         <BottomSheet
           open={rerunPicker === 'lora'}
-          onClose={closeRerunPicker}
+          onClose={() => { closeRerunPicker(); setLoraSearch(''); }}
           title="Select LoRA"
         >
-          <div className="sheet-stack">
+          <div className="model-picker">
             {choicesLoading ? (
-              <div className="rerun-info-empty">Loading LoRA choices…</div>
-            ) : null}
-            {choicesError ? (
-              <div className="rerun-info-empty rerun-info-error">{choicesError}</div>
-            ) : null}
-            {showLoraFolder ? (
-              <Select
-                value={loraFolder}
-                onChange={setLoraFolder}
-                aria-label="LoRA folder filter"
-                size="sm"
-                searchThreshold={0}
-                options={loraFolders.map((folder) => ({ value: folder, label: folder }))}
-              />
-            ) : null}
-            <Select
-              value={loraOverride}
-              onChange={setLoraOverride}
-              aria-label="LoRA selection"
-              size="sm"
-              searchThreshold={0}
-              options={[
-                { value: '', label: loraDisplay ? `Keep current (${loraDisplay})` : 'Keep current' },
-                ...loraOptionsWithValue,
-              ]}
-            />
+              <div className="model-picker-loading">Loading LoRAs…</div>
+            ) : choicesError ? (
+              <div className="model-picker-error">{choicesError}</div>
+            ) : (
+              <>
+                <div className="model-picker-search">
+                  <input
+                    type="search"
+                    placeholder="Search LoRAs…"
+                    className="model-picker-input"
+                    value={loraSearch}
+                    onChange={(e) => setLoraSearch(e.target.value)}
+                    aria-label="Search LoRAs"
+                  />
+                </div>
+                {showLoraFolder && !loraSearch ? (
+                  <div className="model-picker-folders">
+                    {loraFolders.map((folder) => (
+                      <button
+                        key={folder}
+                        type="button"
+                        className={`model-picker-folder-chip ${loraFolder === folder ? 'is-active' : ''}`}
+                        onClick={() => setLoraFolder(folder)}
+                      >
+                        {folder === 'All' ? 'All' : folder.split('/').pop()}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                <div className="model-picker-current">
+                  <span className="model-picker-current-label">Current</span>
+                  <span className="model-picker-current-value">{loraDisplay || 'None'}</span>
+                </div>
+                <div className="model-picker-list">
+                  {!loraSearch ? (
+                    <button
+                      type="button"
+                      className={`model-picker-item ${!loraOverride ? 'is-selected' : ''}`}
+                      onClick={() => { setLoraOverride(''); setLoraSearch(''); closeRerunPicker(); }}
+                    >
+                      <span className="model-picker-item-icon">↩</span>
+                      <span className="model-picker-item-name">Keep current</span>
+                    </button>
+                  ) : null}
+                  {loraOptionsWithValue.length === 0 && loraSearch ? (
+                    <div className="model-picker-empty">No LoRAs match "{loraSearch}"</div>
+                  ) : null}
+                  {loraOptionsWithValue.map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      className={`model-picker-item ${loraOverride === opt.value ? 'is-selected' : ''}`}
+                      onClick={() => { setLoraOverride(opt.value); setLoraSearch(''); closeRerunPicker(); }}
+                    >
+                      <span className="model-picker-item-icon">✦</span>
+                      <span className="model-picker-item-name">{opt.label}</span>
+                      {loraOverride === opt.value && <span className="model-picker-item-check">✓</span>}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         </BottomSheet>
         {strengthSheet}
+        {addSheet}
       </>,
       document.body
     )

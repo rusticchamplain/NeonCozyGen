@@ -2,7 +2,7 @@
 import { memo, useEffect, useRef } from 'react';
 import { usePageVisibility } from '../../../hooks/usePageVisibility';
 import Button from '../../../ui/primitives/Button';
-import { IconRender, IconTrash } from '../../../ui/primitives/Icons';
+import { IconTweak, IconTrash } from '../../../ui/primitives/Icons';
 
 const looksLikeVideo = (name = '') =>
   /\.(mp4|webm|mov|mkv)$/i.test(name);
@@ -261,7 +261,7 @@ function GalleryItem({
             aria-label="Tweak"
             title="Tweak"
           >
-            <IconRender size={12} />
+            <IconTweak size={12} />
           </Button>
         ) : null}
       </div>
@@ -323,7 +323,7 @@ function GalleryItem({
           aria-label="Tweak"
           title="Tweak"
         >
-          <IconRender size={12} />
+          <IconTweak size={12} />
         </Button>
       ) : null}
     </div>

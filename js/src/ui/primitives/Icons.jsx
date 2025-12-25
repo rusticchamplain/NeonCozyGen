@@ -126,6 +126,15 @@ export const IconRender = (props) => (
   </Icon>
 );
 
+// Tweak/Re-run - magic wand with sparkle
+export const IconTweak = (props) => (
+  <Icon {...props}>
+    <path d="M15 4l2 2-10 10-3 1 1-3L15 4z" fill="currentColor" stroke="none" />
+    <circle cx="19" cy="5" r="1.5" fill="currentColor" stroke="none" opacity="0.8" />
+    <circle cx="20" cy="9" r="1" fill="currentColor" stroke="none" opacity="0.5" />
+  </Icon>
+);
+
 // Logout - exit arrow
 export const IconLogout = (props) => (
   <Icon {...props}>
@@ -200,14 +209,12 @@ export const IconPlay = (props) => (
   </Icon>
 );
 
-// Trash
+// Trash - simplified for small sizes
 export const IconTrash = (props) => (
   <Icon {...props}>
-    <path d="M3 6h18" />
-    <path d="M8 6V4h8v2" />
-    <path d="M6 6l1 14h10l1-14" />
-    <line x1="10" y1="11" x2="10" y2="17" />
-    <line x1="14" y1="11" x2="14" y2="17" />
+    <path d="M4 6h16" />
+    <path d="M6 6v12a2 2 0 002 2h8a2 2 0 002-2V6" />
+    <path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" />
   </Icon>
 );
 

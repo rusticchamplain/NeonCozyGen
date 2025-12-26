@@ -1,5 +1,5 @@
 import Button from '../../../ui/primitives/Button';
-import { IconTrash, IconX } from '../../../ui/primitives/Icons';
+import { IconTrash, IconX, IconDice } from '../../../ui/primitives/Icons';
 
 export default function MediaViewerHeader({
   filename,
@@ -8,12 +8,15 @@ export default function MediaViewerHeader({
   url,
   canRerun,
   rerunOpen,
+  canQuickRerun,
+  quickRerunBusy,
   canDelete,
   deleteBusy,
   metaRows,
   metaOpen,
   onToggleMeta,
   onToggleRerun,
+  onQuickRerun,
   onDelete,
   onClose,
   closeButtonRef,
@@ -72,6 +75,20 @@ export default function MediaViewerHeader({
             aria-label="Tweak generation"
           >
             Tweak
+          </Button>
+        ) : null}
+        {canQuickRerun ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            iconOnly
+            className="media-viewer-action-icon media-viewer-action-quickrun"
+            onClick={onQuickRerun}
+            disabled={quickRerunBusy}
+            aria-label="Re-run with random seed"
+            title="Re-run with random seed"
+          >
+            {quickRerunBusy ? <span className="loading-spinner" aria-hidden="true" /> : <IconDice size={16} />}
           </Button>
         ) : null}
         {canDelete ? (

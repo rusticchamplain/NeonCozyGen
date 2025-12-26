@@ -87,8 +87,10 @@ export function parsePromptElements(text = '') {
 
     end = i;
 
-    if (content) {
-      elements.push({ type, text: content, start, end });
+    const trimmedContent = content.trim();
+    const weightOnlyAlias = type === 'alias' && /^:?[\d.]+$/u.test(trimmedContent);
+    if (trimmedContent && !weightOnlyAlias) {
+      elements.push({ type, text: trimmedContent, start, end });
     }
   }
 
@@ -201,6 +203,30 @@ export function removeElement(text = '', element) {
   const before = raw.slice(0, element.start).replace(/[\s,]*$/, '');
   const after = raw.slice(element.end).replace(/^[\s,]*/, '');
   return before ? `${before}, ${after}`.trim() : after.trim();
+}
+
+export function replaceElement(text = '', element, newToken) {
+  const raw = String(text || '');
+  if (!element || typeof element.start !== 'number' || typeof element.end !== 'number') return raw;
+  if (!newToken) return raw;
+
+  const before = raw.slice(0, element.start);
+  const after = raw.slice(element.end);
+
+  // Clean up spacing around the replacement
+  const cleanBefore = before.replace(/[\s,]*$/, '');
+  const cleanAfter = after.replace(/^[\s,]*/, '');
+
+  // Insert the new token at the same position
+  if (cleanBefore && cleanAfter) {
+    return `${cleanBefore}, ${newToken}, ${cleanAfter}`;
+  } else if (cleanBefore) {
+    return `${cleanBefore}, ${newToken}`;
+  } else if (cleanAfter) {
+    return `${newToken}, ${cleanAfter}`;
+  } else {
+    return newToken;
+  }
 }
 
 export function getTokenWeightRange(text = '', tokenObj) {

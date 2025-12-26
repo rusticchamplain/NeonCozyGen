@@ -36,6 +36,7 @@ import {
   parsePromptElements,
   reorderElements,
   removeElement,
+  replaceElement,
   setElementWeight,
 } from '../../../utils/tokenWeights';
 import { IconAlias, IconEdit, IconGrip, IconTag } from '../../../ui/primitives/Icons';
@@ -103,6 +104,7 @@ export default function MediaViewerModal({
   const [rerunBusy, setRerunBusy] = useState(false);
   const [rerunSuccess, setRerunSuccess] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
+  const [quickRerunBusy, setQuickRerunBusy] = useState(false);
   const contentRef = useRef(null);
   const lastFocusedRef = useRef(null);
   const justOpenedRef = useRef(false);
@@ -164,6 +166,7 @@ export default function MediaViewerModal({
   const [strengthToken, setStrengthToken] = useState(null);
   const [addSheetOpen, setAddSheetOpen] = useState(false);
   const [tokenEditSearch, setTokenEditSearch] = useState('');
+  const deferredTokenEditSearch = useDeferredValue(tokenEditSearch);
   const [tokenEditCategory, setTokenEditCategory] = useState('All');
   const [dragIndex, setDragIndex] = useState(null);
   const [dropIndex, setDropIndex] = useState(null);
@@ -600,12 +603,33 @@ export default function MediaViewerModal({
     }
   }, [checkpointOptions.length, loraOptions.length]);
 
+  const promptTargetsRef = useRef(promptTargets);
+  const promptRawMapRef = useRef(promptRawMap);
+  const promptDraftsRef = useRef(promptDrafts);
+
+  useEffect(() => {
+    promptTargetsRef.current = promptTargets;
+  }, [promptTargets]);
+
+  useEffect(() => {
+    promptRawMapRef.current = promptRawMap;
+  }, [promptRawMap]);
+
+  useEffect(() => {
+    promptDraftsRef.current = promptDrafts;
+  }, [promptDrafts]);
+
   const loadPromptGraph = useCallback(async () => {
     if (!media) {
       throw new Error('media_missing');
     }
     if (promptRef.current) {
-      return { prompt: promptRef.current, info: promptInfo };
+      return {
+        prompt: promptRef.current,
+        info: promptInfo,
+        targets: promptTargetsRef.current,
+        rawMap: promptRawMapRef.current,
+      };
     }
     setPromptLoading(true);
     setPromptError('');
@@ -640,7 +664,7 @@ export default function MediaViewerModal({
       }
       promptRef.current = prompt;
       setPromptInfo(info);
-      return { prompt, info };
+      return { prompt, info, targets, rawMap };
     } catch (err) {
       const message = err?.payload?.error || err?.message || 'Unable to load prompt metadata.';
       setPromptError(message);
@@ -648,7 +672,11 @@ export default function MediaViewerModal({
     } finally {
       setPromptLoading(false);
     }
-  }, [media?.filename, media?.subfolder, promptInfo]);
+  }, [
+    media?.filename,
+    media?.subfolder,
+    promptInfo,
+  ]);
 
   const openRerunPanel = useCallback(async () => {
     if (!canRerun) return;
@@ -1024,10 +1052,8 @@ export default function MediaViewerModal({
     }
   }, [deferredTagQuery, promptEditorActive, promptPanel, tagCategory, tagMinCountValue, tagSort]);
 
-  // Load tags for TokenEditSheet (doesn't require promptEditorActive)
+  // Load/search tags for TokenEditSheet
   const loadTagsForTokenEdit = useCallback(async () => {
-    // Skip if already have tags loaded
-    if (tagItems.length > 0) return;
     if (tagLoading) return;
     if (tagSearchAbortRef.current) {
       tagSearchAbortRef.current.abort();
@@ -1040,11 +1066,11 @@ export default function MediaViewerModal({
       setTagError('');
       const res = await searchDanbooruTags(
         {
-          q: '',
+          q: deferredTokenEditSearch,
           category: '',
           sort: 'count',
           minCount: '',
-          limit: 40,
+          limit: 100,
           offset: 0,
         },
         { signal: controller.signal }
@@ -1056,10 +1082,48 @@ export default function MediaViewerModal({
     } catch (err) {
       if (err?.name === 'AbortError') return;
       setTagError('Unable to load tags right now.');
+      setTagItems([]);
+      setTagTotal(0);
+      setTagOffset(0);
     } finally {
       setTagLoading(false);
     }
-  }, [tagItems.length, tagLoading]);
+  }, [deferredTokenEditSearch, tagLoading]);
+
+  // Load more tags for TokenEditSheet
+  const loadMoreTagsForTokenEdit = useCallback(async () => {
+    if (tagLoading || tagLoadingMore) return;
+    if (tagItems.length >= tagTotal) return;
+    if (tagLoadAbortRef.current) {
+      tagLoadAbortRef.current.abort();
+    }
+    const controller = new AbortController();
+    tagLoadAbortRef.current = controller;
+
+    try {
+      setTagLoadingMore(true);
+      const res = await searchDanbooruTags(
+        {
+          q: deferredTokenEditSearch,
+          category: '',
+          sort: 'count',
+          minCount: '',
+          limit: 100,
+          offset: tagOffset,
+        },
+        { signal: controller.signal }
+      );
+      const nextItems = Array.isArray(res?.items) ? res.items : [];
+      setTagItems((prev) => [...prev, ...nextItems]);
+      setTagTotal(Number(res?.total || 0));
+      setTagOffset(tagOffset + nextItems.length);
+    } catch (err) {
+      if (err?.name === 'AbortError') return;
+      setTagError('Unable to load more tags.');
+    } finally {
+      setTagLoadingMore(false);
+    }
+  }, [deferredTokenEditSearch, tagItems.length, tagLoading, tagLoadingMore, tagOffset, tagTotal]);
 
   const loadMoreTags = useCallback(async () => {
     if (!promptEditorActive || promptPanel !== 'tags') return;
@@ -1121,6 +1185,15 @@ export default function MediaViewerModal({
     setDragIndex(null);
     setDropIndex(null);
   }, [promptPanel]);
+
+  // Trigger tag search when token edit search changes
+  useEffect(() => {
+    if (!strengthOpen && !addSheetOpen) return undefined;
+    const handle = window.setTimeout(() => {
+      loadTagsForTokenEdit();
+    }, 300);
+    return () => window.clearTimeout(handle);
+  }, [deferredTokenEditSearch, strengthOpen, addSheetOpen, loadTagsForTokenEdit]);
 
   const updatePromptDraft = useCallback((updater) => {
     if (!activePromptTarget?.key) return;
@@ -1333,7 +1406,7 @@ export default function MediaViewerModal({
   };
 
   const handleTouchStart = useCallback((e, idx) => {
-    const isHandle = e.target?.closest?.('.composer-token-drag-handle');
+    const isHandle = e.target?.closest?.('.composer-token-drag-handle, .rerun-token-grip');
     if (!isHandle) return;
     const touch = e.touches[0];
     const timer = window.setTimeout(() => {
@@ -1369,10 +1442,20 @@ export default function MediaViewerModal({
 
     e.preventDefault();
 
+    // Find draggable tokens - check both composer view and compact view
+    let tokenElements = [];
     const listNode = tokensListRef.current;
-    const tokenElements = listNode
-      ? listNode.querySelectorAll('.composer-token-draggable')
-      : [];
+    if (listNode) {
+      tokenElements = listNode.querySelectorAll('.composer-token-draggable');
+    }
+    // Also check for compact view tokens
+    if (!tokenElements.length) {
+      const compactContainer = e.target?.closest?.('.rerun-chip-row');
+      if (compactContainer) {
+        tokenElements = compactContainer.querySelectorAll('.rerun-token-drag');
+      }
+    }
+
     const touchX = touch.clientX;
     const touchY = touch.clientY;
 
@@ -1507,6 +1590,94 @@ export default function MediaViewerModal({
     }
   };
 
+  // Quick re-run: same prompt but with random seed
+  const handleQuickRerun = async () => {
+    if (!media || quickRerunBusy || !canRerun) return;
+    setQuickRerunBusy(true);
+    emitRenderState(true);
+    try {
+      const resolvedPrompt = promptRef.current
+        ? {
+            prompt: promptRef.current,
+            targets: promptTargetsRef.current,
+            rawMap: promptRawMapRef.current,
+          }
+        : await loadPromptGraph();
+      const { prompt, targets = [], rawMap = null } = resolvedPrompt;
+      // Use random seed mode, keep other settings as-is
+      const overrides = {
+        seedMode: 'random',
+        seedValue: null,
+        checkpoint: null,
+        lora: null,
+        width: widthValue,
+        height: heightValue,
+      };
+      let nextPrompt = applyPromptOverrides(prompt, overrides);
+      // Expand aliases if available
+      let expandedPrompt = nextPrompt;
+      if (aliasLookup && aliasLookup.size) {
+        const expandValue = (value) => {
+          if (typeof value === 'string') return applyPromptAliases(value, aliasLookup);
+          if (Array.isArray(value)) return value.map((item) => expandValue(item));
+          if (value && typeof value === 'object') {
+            const next = Array.isArray(value) ? [] : {};
+            Object.entries(value).forEach(([key, val]) => {
+              next[key] = expandValue(val);
+            });
+            return next;
+          }
+          return value;
+        };
+        try {
+          expandedPrompt = expandValue(nextPrompt);
+        } catch {
+          expandedPrompt = nextPrompt;
+        }
+      }
+      const promptId = createPromptId();
+      const rawPromptTargets = {};
+      if (targets.length || promptDraftsRef.current) {
+        targets.forEach((target) => {
+          const draftMap = promptDraftsRef.current || {};
+          const canonicalRawMap = rawMap || promptRawMapRef.current;
+          const rawValue =
+            (canonicalRawMap && typeof target.key === 'string' && typeof canonicalRawMap[target.key] === 'string')
+              ? canonicalRawMap[target.key]
+              : draftMap[target.key] || target.text;
+          if (typeof rawValue === 'string' && /\$[a-z0-9_:-]+\$/i.test(rawValue)) {
+            rawPromptTargets[target.key] = rawValue;
+          }
+        });
+      }
+      if (Object.keys(rawPromptTargets).length) {
+        try {
+          await storePromptRaw({ promptId, promptRaw: rawPromptTargets });
+        } catch {
+          // ignore metadata storage failures
+        }
+      }
+      saveLastRenderPayload({
+        workflowName: media.filename || 'gallery',
+        workflow: expandedPrompt,
+        timestamp: Date.now(),
+        promptRaw: Object.keys(rawPromptTargets).length ? rawPromptTargets : null,
+      });
+      await queuePrompt({ prompt: expandedPrompt, prompt_id: promptId });
+      emitRenderState(false);
+    } catch (err) {
+      emitRenderState(false);
+      if (err?.unauthorized) {
+        window.location.hash = '#/login';
+        return;
+      }
+      const message = err?.payload?.error || err?.message || 'Unable to re-run this item.';
+      alert(message);
+    } finally {
+      setQuickRerunBusy(false);
+    }
+  };
+
   const handleDelete = async () => {
     if (!media?.filename) return;
     const ok = window.confirm('Delete this item? This cannot be undone.');
@@ -1553,19 +1724,19 @@ export default function MediaViewerModal({
   const handleTokenEditReplace = useCallback((item) => {
     if (!strengthToken?.element) return;
 
-    if (item.type === 'alias' && item.token) {
-      // Replace with alias
-      updatePromptDraft((prev) => {
-        const withoutOld = removeElement(prev || '', strengthToken.element);
-        return `${withoutOld.trim()}, $${item.token}$`.replace(/^,\s*/, '');
-      });
-    } else if (item.tag) {
-      // Replace with tag
-      updatePromptDraft((prev) => {
-        const withoutOld = removeElement(prev || '', strengthToken.element);
-        return `${withoutOld.trim()}, ${item.tag}`.replace(/^,\s*/, '');
-      });
-    }
+    const nextType = item.type === 'alias' ? 'alias' : 'tag';
+    const nextToken = item.token || item.tag || '';
+    updatePromptDraft((prev) => {
+      const raw = String(prev || '');
+      const weightInfo = getElementWeight(raw, strengthToken.element);
+      const cleaned = String(nextToken || '').replace(/^\$|\$$/g, '').trim();
+      if (!cleaned) return raw;
+      const core = nextType === 'alias' ? `$${cleaned}$` : cleaned;
+      const replacement = weightInfo
+        ? `(${core}:${formatTokenWeight(weightInfo.weight)})`
+        : core;
+      return replaceElement(raw, strengthToken.element, replacement);
+    });
     setStrengthOpen(false);
     setStrengthToken(null);
   }, [strengthToken, updatePromptDraft]);
@@ -1597,8 +1768,10 @@ export default function MediaViewerModal({
       aliasCategories={aliasCategories}
       aliasLoading={aliasLoading}
       tags={tokenEditTags}
-      tagLoading={tagLoading}
+      tagLoading={tagLoading || tagLoadingMore}
+      tagHasMore={tagItems.length < tagTotal}
       onLoadTags={loadTagsForTokenEdit}
+      onLoadMoreTags={loadMoreTagsForTokenEdit}
       replacementSearch={tokenEditSearch}
       onReplacementSearchChange={setTokenEditSearch}
       onReplace={handleTokenEditReplace}
@@ -1633,8 +1806,10 @@ export default function MediaViewerModal({
       aliasCategories={aliasCategories}
       aliasLoading={aliasLoading}
       tags={tokenEditTags}
-      tagLoading={tagLoading}
+      tagLoading={tagLoading || tagLoadingMore}
+      tagHasMore={tagItems.length < tagTotal}
       onLoadTags={loadTagsForTokenEdit}
+      onLoadMoreTags={loadMoreTagsForTokenEdit}
       replacementSearch={tokenEditSearch}
       onReplacementSearchChange={setTokenEditSearch}
       onAdd={handleTokenAdd}
@@ -1680,12 +1855,15 @@ export default function MediaViewerModal({
                 url={url}
                 canRerun={canRerun}
                 rerunOpen={rerunOpen}
+                canQuickRerun={canRerun}
+                quickRerunBusy={quickRerunBusy}
                 canDelete={canDelete}
                 deleteBusy={deleteBusy}
                 metaRows={metaRows}
                 metaOpen={metaOpen}
                 onToggleMeta={handleToggleMeta}
                 onToggleRerun={toggleRerunPanel}
+                onQuickRerun={handleQuickRerun}
                 onDelete={handleDelete}
                 onClose={onClose}
                 closeButtonRef={closeButtonRef}
@@ -1824,10 +2002,10 @@ export default function MediaViewerModal({
                               ) : null}
                             </div>
                           ) : null}
-                          <div className="media-info-value is-prompt rerun-prompt-box" role="list">
-                            <div className="ui-chip-row">
+                          <div className={`media-info-value is-prompt rerun-prompt-box ${dragIndex !== null ? 'is-reordering' : ''}`} role="list">
+                            <div className="ui-chip-row rerun-chip-row">
                               {promptElements.length
-                                ? promptElements.map((el) => {
+                                ? promptElements.map((el, idx) => {
                                   const aliasKey = String(el.text || '').trim().toLowerCase();
                                   const aliasLabel = aliasDisplayLookup.get(aliasKey) || `$${el.text}$`;
                                   const expandedAlias = aliasLookup?.get(aliasKey);
@@ -1843,19 +2021,44 @@ export default function MediaViewerModal({
                                   const weightInfo = getElementWeight(promptText || '', el);
                                   const weight = weightInfo?.weight ?? 1;
                                   const showWeight = Math.abs(weight - 1) > 1e-6;
+                                  const isDragging = dragIndex === idx;
+                                  const isDropTarget = dropIndex === idx && dragIndex !== null && dragIndex !== idx;
                                   return (
-                                    <button
+                                    <span
                                       key={`${el.type}-${el.text}-${el.start}`}
-                                      type="button"
-                                      className={`ui-chip is-clickable rerun-token max-w-full whitespace-normal leading-snug ${el.type === 'alias' ? 'is-accent' : ''}`}
-                                      onClick={() => openStrengthFor(el, editorLabel)}
+                                      role="button"
+                                      tabIndex={0}
+                                      draggable
+                                      className={`ui-chip is-clickable rerun-token rerun-token-drag max-w-full whitespace-normal leading-snug ${el.type === 'alias' ? 'is-alias' : 'is-raw'} ${isDragging ? 'is-dragging' : ''} ${isDropTarget ? 'is-drop-target' : ''}`}
+                                      onDragStart={(e) => handleDragStart(e, idx)}
+                                      onDragEnd={handleDragEnd}
+                                      onDragOver={(e) => handleDragOver(e, idx)}
+                                      onDragLeave={handleDragLeave}
+                                      onDrop={(e) => handleDrop(e, idx)}
+                                      onTouchStart={(e) => handleTouchStart(e, idx)}
+                                      onTouchMove={handleTouchMove}
+                                      onTouchEnd={handleTouchEnd}
+                                      onTouchCancel={handleTouchCancel}
+                                      onClick={() => {
+                                        if (dragIndex !== null) return;
+                                        openStrengthFor(el, editorLabel);
+                                      }}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter' || e.key === ' ') {
+                                          e.preventDefault();
+                                          openStrengthFor(el, editorLabel);
+                                        }
+                                      }}
                                       title={el.type === 'alias' ? `Alias: $${el.text}$` : `Tag: ${el.text}`}
                                     >
+                                      <span className="rerun-token-grip" aria-hidden="true">
+                                        <IconGrip size={8} />
+                                      </span>
                                       <span className="break-words">{tokenLabel}</span>
                                       {showWeight ? (
                                         <span className="rerun-chip-weight">{formatTokenWeight(weight)}×</span>
                                       ) : null}
-                                    </button>
+                                    </span>
                                   );
                                 })
                                 : null}

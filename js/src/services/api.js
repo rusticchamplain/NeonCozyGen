@@ -137,6 +137,17 @@ export async function deleteGalleryItem({ filename = '', subfolder = '' } = {}, 
   return jpost('/cozygen/api/gallery/delete', { filename, subfolder }, options);
 }
 
+export async function deleteAllGalleryItems(
+  { subfolder = '', recursive = true, confirm = 'delete-all' } = {},
+  options = {}
+) {
+  return jpost('/cozygen/api/gallery/delete_all', {
+    subfolder,
+    recursive,
+    confirm,
+  }, options);
+}
+
 /* ---- Prompt aliases ---- */
 export async function getPromptAliases() {
   return jget('/cozygen/api/aliases');

@@ -9,7 +9,7 @@ import Button from '../../../ui/primitives/Button';
 import Select from '../../../ui/primitives/Select';
 import { useGallery } from '../hooks/useGallery';
 import { useMediaViewer } from '../hooks/useMediaViewer';
-import { clearCache, deleteGalleryItem } from '../../../services/api';
+import { clearCache, deleteAllGalleryItems, deleteGalleryItem } from '../../../services/api';
 import {
   IconEmpty,
   IconFolderOpen,
@@ -203,6 +203,7 @@ export default function Gallery() {
   });
   const [deleteBusyKey, setDeleteBusyKey] = useState('');
   const [rerunTargetKey, setRerunTargetKey] = useState('');
+  const [deleteAllBusy, setDeleteAllBusy] = useState(false);
   useEffect(() => {
     try {
       window.localStorage.setItem(VIEW_MODE_STORAGE_KEY, viewMode);
@@ -231,6 +232,32 @@ export default function Gallery() {
       alert('Failed to clear cache: ' + (err.message || 'Unknown error'));
     }
   }, [refresh]);
+
+  const handleDeleteAllGallery = useCallback(async () => {
+    if (deleteAllBusy) return;
+    const targetLabel = path ? `folder "${path}"` : 'the gallery root';
+    const ok = window.confirm(`Delete all media in ${targetLabel}? This cannot be undone.`);
+    if (!ok) return;
+    setDeleteAllBusy(true);
+    try {
+      await deleteAllGalleryItems({
+        subfolder: path,
+        recursive: true,
+        confirm: 'delete-all',
+      });
+      refresh();
+      alert('Deleted all media in the gallery.');
+    } catch (err) {
+      if (err?.unauthorized) {
+        window.location.hash = '#/login';
+        return;
+      }
+      const message = err?.payload?.error || err?.message || 'Unable to delete gallery media.';
+      alert(message);
+    } finally {
+      setDeleteAllBusy(false);
+    }
+  }, [deleteAllBusy, path, refresh]);
 
   const itemKey = useCallback((item) =>
     item?.type === 'directory'
@@ -423,15 +450,24 @@ export default function Gallery() {
                 >
                   <IconRefresh size={16} />
                 </Button>
-                <Button
-                  size="xs"
-                  onClick={handleClearCache}
-                  title="Clear thumbnail cache"
-                  aria-label="Clear cache"
-                >
-                  Clear Cache
-                </Button>
               </div>
+              <Button
+                size="xs"
+                variant="danger"
+                onClick={handleDeleteAllGallery}
+                disabled={deleteAllBusy}
+                aria-label="Delete all gallery media"
+              >
+                {deleteAllBusy ? 'Deleting…' : 'Delete all'}
+              </Button>
+              <Button
+                size="xs"
+                onClick={handleClearCache}
+                title="Clear thumbnail cache"
+                aria-label="Clear cache"
+              >
+                Clear Cache
+              </Button>
             </div>
           </div>
 
@@ -644,6 +680,15 @@ export default function Gallery() {
                   <IconRefresh size={14} />
                   <span>Clear cache</span>
                 </span>
+              </Button>
+              <Button
+                size="sm"
+                variant="danger"
+                onClick={handleDeleteAllGallery}
+                disabled={deleteAllBusy}
+                aria-label="Delete all gallery media"
+              >
+                {deleteAllBusy ? 'Deleting…' : 'Delete all'}
               </Button>
             </div>
           </div>

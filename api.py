@@ -19,7 +19,7 @@ from aiohttp import web
 from PIL import Image, ImageDraw, ImageOps
 
 from ComfyUI_CozyGen import auth
-from .prompt_raw_store import get_prompt_raw_by_file, store_prompt_raw
+from .prompt_raw_store import get_prompt_raw_by_file, remove_prompt_file, store_prompt_raw
 
 routes = web.RouteTableDef()
 logger = logging.getLogger(__name__)
@@ -882,6 +882,62 @@ async def gallery_delete(request: web.Request):
     global _GALLERY_CACHE
     _GALLERY_CACHE.clear()
     return web.json_response({"ok": True, "filename": filename, "subfolder": subfolder})
+
+
+def _delete_gallery_files(base: str, folder: str, recursive: bool):
+    deleted = 0
+    errors = []
+    for root, dirs, files in os.walk(folder):
+        if not recursive:
+            dirs[:] = []
+        for name in files:
+            target = os.path.join(root, name)
+            if not os.path.isfile(target):
+                continue
+            try:
+                os.remove(target)
+                rel_dir = os.path.relpath(root, base)
+                if rel_dir == ".":
+                    rel_dir = ""
+                else:
+                    rel_dir = rel_dir.replace("\\", "/")
+                remove_prompt_file(name, rel_dir)
+                deleted += 1
+            except Exception as err:
+                errors.append(f"{target}: {err}")
+    return {"deleted": deleted, "errors": errors}
+
+
+@routes.post("/cozygen/api/gallery/delete_all")
+async def gallery_delete_all(request: web.Request):
+    try:
+        payload = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid json payload"}, status=400)
+
+    confirm = (payload.get("confirm") or "").strip().lower()
+    if confirm not in ("delete-all", "delete_all", "deleteall"):
+        return web.json_response({"error": "confirm flag required"}, status=400)
+
+    subfolder = (payload.get("subfolder") or "").strip()
+    recursive = bool(payload.get("recursive", True))
+
+    base = folder_paths.get_output_directory()
+    folder = os.path.normpath(os.path.join(base, subfolder))
+    if not folder.startswith(base):
+        return web.json_response({"error": "forbidden"}, status=403)
+    if not os.path.isdir(folder):
+        return web.json_response({"error": "not found"}, status=404)
+
+    result = await asyncio.to_thread(_delete_gallery_files, base, folder, recursive)
+
+    global _GALLERY_CACHE
+    _GALLERY_CACHE.clear()
+
+    response = {"ok": True, "deleted": result.get("deleted", 0)}
+    if result.get("errors"):
+        response["errors"] = result["errors"]
+    return web.json_response(response)
 
 
 def _latest_mtime(path: str, recursive: bool, show_hidden: bool) -> float:

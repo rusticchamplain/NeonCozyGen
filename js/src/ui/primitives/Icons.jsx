@@ -300,3 +300,20 @@ export const IconCopy = (props) => (
     <path d="M7 15H6a2 2 0 01-2-2V6a2 2 0 012-2h7" />
   </Icon>
 );
+
+// Dice/Shuffle - rapid re-run with random seed
+export const IconDice = (props) => (
+  <Icon {...props}>
+    <rect x="3" y="3" width="18" height="18" rx="3" />
+    <circle cx="8" cy="8" r="1.5" fill="currentColor" stroke="none" />
+    <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
+    <circle cx="16" cy="16" r="1.5" fill="currentColor" stroke="none" />
+  </Icon>
+);
+
+// Lightning bolt - quick action
+export const IconBolt = (props) => (
+  <Icon {...props}>
+    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" fill="currentColor" stroke="none" />
+  </Icon>
+);

@@ -262,7 +262,9 @@ export default function Aliases({ inline = false }) {
     rows.forEach((row) => {
       if (row.category) set.add(row.category);
     });
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
+    return Array.from(set).sort((a, b) =>
+      formatCategoryLabel(a).localeCompare(formatCategoryLabel(b))
+    );
   }, [rows, categoryList]);
 
   const availableSubcategories = useMemo(() => {

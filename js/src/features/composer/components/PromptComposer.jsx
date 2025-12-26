@@ -3,7 +3,7 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } f
 import BottomSheet from '../../../ui/primitives/BottomSheet';
 import Button from '../../../ui/primitives/Button';
 import SegmentedTabs from '../../../ui/primitives/SegmentedTabs';
-import TokenStrengthSheet from '../../../ui/composites/TokenStrengthSheet';
+import TokenEditSheet from '../../../ui/composites/TokenEditSheet';
 import Select from '../../../ui/primitives/Select';
 import { IconGrip, IconX, IconTag, IconAlias, IconEdit } from '../../../ui/primitives/Icons';
 import { formatCategoryLabel, formatSubcategoryLabel, presentAliasEntry } from '../../../utils/aliasPresentation';
@@ -17,6 +17,7 @@ import {
   setElementWeight,
   reorderElements,
   removeElement,
+  replaceElement,
 } from '../../../utils/tokenWeights';
 import { getDanbooruTagCategories, searchDanbooruTags } from '../../../services/api';
 import { useVirtualList } from '../../../hooks/useVirtualList';
@@ -58,6 +59,16 @@ export default function PromptComposer({
   const touchStartRef = useRef(null);
   const [strengthOpen, setStrengthOpen] = useState(false);
   const [strengthToken, setStrengthToken] = useState(null);
+  const [tokenEditSearch, setTokenEditSearch] = useState('');
+  const deferredTokenEditSearch = useDeferredValue(tokenEditSearch);
+  const [tokenEditCategory, setTokenEditCategory] = useState('All');
+  const [tokenEditTagItems, setTokenEditTagItems] = useState([]);
+  const [tokenEditTagTotal, setTokenEditTagTotal] = useState(0);
+  const [tokenEditTagOffset, setTokenEditTagOffset] = useState(0);
+  const [tokenEditTagLoading, setTokenEditTagLoading] = useState(false);
+  const [tokenEditTagLoadingMore, setTokenEditTagLoadingMore] = useState(false);
+  const tokenEditSearchAbortRef = useRef(null);
+  const tokenEditLoadAbortRef = useRef(null);
 
   // Tag library state
   const tagSearchRef = useRef(null);
@@ -138,6 +149,13 @@ export default function PromptComposer({
       setSelectedTokenIndex(null);
       setStrengthOpen(false);
       setStrengthToken(null);
+      setTokenEditSearch('');
+      setTokenEditCategory('All');
+      setTokenEditTagItems([]);
+      setTokenEditTagTotal(0);
+      setTokenEditTagOffset(0);
+      setTokenEditTagLoading(false);
+      setTokenEditTagLoadingMore(false);
       setComposerInput('');
       // Reset tag library state
       setTagQuery('');
@@ -208,7 +226,9 @@ export default function PromptComposer({
     aliasEntries.forEach((e) => {
       if (e.category) set.add(e.category);
     });
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
+    return Array.from(set).sort((a, b) =>
+      formatCategoryLabel(a).localeCompare(formatCategoryLabel(b))
+    );
   }, [aliasEntries]);
 
   const subcategories = useMemo(() => {
@@ -250,7 +270,10 @@ export default function PromptComposer({
         const subA = (a.subcategory || '').toLowerCase();
         const subB = (b.subcategory || '').toLowerCase();
         if (subA !== subB) return subA.localeCompare(subB);
-        return a.token.localeCompare(b.token);
+        // Sort by display name for better readability
+        const nameA = (a.displayName || a.name || a.token || '').toLowerCase();
+        const nameB = (b.displayName || b.name || b.token || '').toLowerCase();
+        return nameA.localeCompare(nameB);
       });
   }, [aliasEntries, pickerCategory, pickerSubcategory, deferredPickerSearch]);
 
@@ -312,6 +335,79 @@ export default function PromptComposer({
     })();
     return () => { cancelled = true; };
   }, [open, activeTab, tagCategories.length]);
+
+  const loadTagsForTokenEdit = useCallback(async () => {
+    if (tokenEditTagLoading) return;
+    if (tokenEditSearchAbortRef.current) {
+      tokenEditSearchAbortRef.current.abort();
+    }
+    const controller = new AbortController();
+    tokenEditSearchAbortRef.current = controller;
+    try {
+      setTokenEditTagLoading(true);
+      const res = await searchDanbooruTags(
+        {
+          q: deferredTokenEditSearch,
+          category: '',
+          sort: 'count',
+          minCount: '',
+          limit: 100,
+          offset: 0,
+        },
+        { signal: controller.signal }
+      );
+      const nextItems = Array.isArray(res?.items) ? res.items : [];
+      setTokenEditTagItems(nextItems);
+      setTokenEditTagTotal(Number(res?.total || 0));
+      setTokenEditTagOffset(nextItems.length);
+    } catch (err) {
+      if (err?.name === 'AbortError') return;
+      setTokenEditTagItems([]);
+      setTokenEditTagTotal(0);
+      setTokenEditTagOffset(0);
+    } finally {
+      setTokenEditTagLoading(false);
+    }
+  }, [deferredTokenEditSearch, tokenEditTagLoading]);
+
+  const loadMoreTagsForTokenEdit = useCallback(async () => {
+    if (tokenEditTagLoading || tokenEditTagLoadingMore) return;
+    if (tokenEditTagItems.length >= tokenEditTagTotal) return;
+    if (tokenEditLoadAbortRef.current) {
+      tokenEditLoadAbortRef.current.abort();
+    }
+    const controller = new AbortController();
+    tokenEditLoadAbortRef.current = controller;
+    try {
+      setTokenEditTagLoadingMore(true);
+      const res = await searchDanbooruTags(
+        {
+          q: deferredTokenEditSearch,
+          category: '',
+          sort: 'count',
+          minCount: '',
+          limit: 100,
+          offset: tokenEditTagOffset,
+        },
+        { signal: controller.signal }
+      );
+      const nextItems = Array.isArray(res?.items) ? res.items : [];
+      setTokenEditTagItems((prev) => [...prev, ...nextItems]);
+      setTokenEditTagTotal(Number(res?.total || 0));
+      setTokenEditTagOffset(tokenEditTagOffset + nextItems.length);
+    } catch (err) {
+      if (err?.name === 'AbortError') return;
+    } finally {
+      setTokenEditTagLoadingMore(false);
+    }
+  }, [
+    deferredTokenEditSearch,
+    tokenEditTagItems.length,
+    tokenEditTagLoading,
+    tokenEditTagLoadingMore,
+    tokenEditTagOffset,
+    tokenEditTagTotal,
+  ]);
 
   const tagCacheKey = useCallback((q, c, s, minCount, limit, offset) => {
     return [q || '', c || '', s || '', String(minCount || 0), String(limit || 0), String(offset || 0)].join('::');
@@ -490,8 +586,22 @@ export default function PromptComposer({
       if (tagLoadAbortRef.current) {
         tagLoadAbortRef.current.controller?.abort?.();
       }
+      if (tokenEditSearchAbortRef.current) {
+        tokenEditSearchAbortRef.current.abort?.();
+      }
+      if (tokenEditLoadAbortRef.current) {
+        tokenEditLoadAbortRef.current.abort?.();
+      }
     };
   }, []);
+
+  useEffect(() => {
+    if (!strengthOpen) return undefined;
+    const handle = window.setTimeout(() => {
+      loadTagsForTokenEdit();
+    }, 250);
+    return () => window.clearTimeout(handle);
+  }, [strengthOpen, deferredTokenEditSearch, loadTagsForTokenEdit]);
 
   const {
     containerRef: tagListRef,
@@ -734,6 +844,8 @@ export default function PromptComposer({
       displayName,
       weight: weightInfo?.weight ?? 1,
     });
+    setTokenEditSearch('');
+    setTokenEditCategory('All');
     setStrengthOpen(true);
   };
 
@@ -1245,33 +1357,86 @@ export default function PromptComposer({
       </div>
   );
 
+  const tokenEditAliases = useMemo(() => {
+    return aliasEntries.map((entry) => ({
+      key: entry.key || entry.token,
+      token: entry.token,
+      displayName: entry.displayName || entry.name || entry.token,
+      category: entry.category,
+      subcategory: entry.subcategory,
+      name: entry.name,
+    }));
+  }, [aliasEntries]);
+
+  const tokenEditTags = useMemo(() => {
+    return tokenEditTagItems.map((t) => ({
+      key: `${t.tag}-${t.category}`,
+      tag: t.tag,
+      displayName: t.tag,
+      category: t.category,
+      count: t.count,
+    }));
+  }, [tokenEditTagItems]);
+
+  const handleTokenEditReplace = useCallback((item) => {
+    if (!strengthToken?.element) return;
+    const nextType = item.type === 'alias' ? 'alias' : 'tag';
+    const nextToken = item.token || item.tag || '';
+    updatePromptValue((prev) => {
+      const raw = String(prev || '');
+      const weightInfo = getElementWeight(raw, strengthToken.element);
+      const cleaned = String(nextToken || '').replace(/^\$|\$$/g, '').trim();
+      if (!cleaned) return raw;
+      const core = nextType === 'alias' ? `$${cleaned}$` : cleaned;
+      const replacement = weightInfo
+        ? `(${core}:${formatTokenWeight(weightInfo.weight)})`
+        : core;
+      return replaceElement(raw, strengthToken.element, replacement);
+    });
+    setStrengthOpen(false);
+    setStrengthToken(null);
+  }, [strengthToken, updatePromptValue]);
+
+  const handleTokenEditWeightChange = useCallback((weight) => {
+    if (!strengthToken?.element) return;
+    updatePromptValue((prev) => setElementWeight(prev || '', strengthToken.element, weight));
+    setStrengthToken((prev) => (prev ? { ...prev, weight } : null));
+  }, [strengthToken, updatePromptValue]);
+
   const strengthSheet = (
-    <TokenStrengthSheet
+    <TokenEditSheet
       open={strengthOpen}
-      onClose={() => setStrengthOpen(false)}
-      title={strengthToken?.element?.type === 'alias' ? 'Alias strength' : 'Tag strength'}
-      tokenLabel={
-        strengthToken
-          ? strengthToken.element?.type === 'alias'
-            ? `${strengthToken.displayName} • $${strengthToken.element?.text}$`
-            : strengthToken.displayName
-          : ''
-      }
+      onClose={() => {
+        setStrengthOpen(false);
+        setStrengthToken(null);
+      }}
+      mode="edit"
+      tokenType={strengthToken?.element?.type || 'tag'}
+      tokenLabel={strengthToken?.element?.text || ''}
+      tokenDisplay={strengthToken?.displayName || ''}
       weight={strengthToken?.weight ?? 1}
-      onApply={(w) => {
-        if (!strengthToken?.element) return;
-        updatePromptValue((prev) => setElementWeight(prev || '', strengthToken.element, w));
-      }}
-      onRemoveWeight={() => {
-        if (!strengthToken?.element) return;
-        updatePromptValue((prev) => setElementWeight(prev || '', strengthToken.element, null));
-      }}
-      onDeleteToken={() => {
+      onWeightChange={handleTokenEditWeightChange}
+      deferWeightApply
+      onDelete={() => {
         if (!strengthToken?.element) return;
         handleRemoveElement(strengthToken.element);
       }}
+      aliases={tokenEditAliases}
+      aliasCategories={categoryOptions}
+      aliasLoading={false}
+      tags={tokenEditTags}
+      tagLoading={tokenEditTagLoading || tokenEditTagLoadingMore}
+      tagHasMore={tokenEditTagItems.length < tokenEditTagTotal}
+      onLoadTags={loadTagsForTokenEdit}
+      onLoadMoreTags={loadMoreTagsForTokenEdit}
+      replacementSearch={tokenEditSearch}
+      onReplacementSearchChange={setTokenEditSearch}
+      onReplace={handleTokenEditReplace}
+      activeCategory={tokenEditCategory}
+      onCategoryChange={setTokenEditCategory}
     />
   );
+
 
   const pageHeader = (
     <div className="page-bar composer-bar">

@@ -1,6 +1,15 @@
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import BottomSheet from '../primitives/BottomSheet';
+import Select from '../primitives/Select';
 import { formatTokenWeight } from '../../utils/tokenWeights';
+import {
+  deriveAliasSubcategory,
+  formatCategoryLabel,
+  formatSubcategoryLabel,
+} from '../../utils/aliasPresentation';
+
+const INITIAL_VISIBLE = 30;
+const LOAD_MORE_COUNT = 20;
 
 function clamp(n, min, max) {
   const v = Number(n);
@@ -24,6 +33,7 @@ export default function TokenEditSheet({
   tokenDisplay = '',
   weight = 1,
   onWeightChange,
+  deferWeightApply = false,
   onDelete,
   onAdd, // Called when adding a new token (add mode)
   // Alias replacement data
@@ -33,7 +43,9 @@ export default function TokenEditSheet({
   // Tag replacement data
   tags = [],
   tagLoading = false,
+  tagHasMore = false,
   onLoadTags,
+  onLoadMoreTags,
   // Search & replace
   replacementSearch = '',
   onReplacementSearchChange,
@@ -47,13 +59,78 @@ export default function TokenEditSheet({
   const [draft, setDraft] = useState(initial);
   const [showReplace, setShowReplace] = useState(false);
   const [replaceType, setReplaceType] = useState(tokenType); // 'alias' | 'tag'
+  const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE);
+  const [replacementSubcategory, setReplacementSubcategory] = useState('All');
+  const listRef = useRef(null);
 
   useEffect(() => {
     if (!open) return;
     setDraft(initial);
     setShowReplace(isAddMode); // In add mode, show browser immediately
     setReplaceType(tokenType);
+    setVisibleCount(INITIAL_VISIBLE);
   }, [open, initial, tokenType, isAddMode]);
+
+  // Reset visible count when search/category/type changes
+  useEffect(() => {
+    setVisibleCount(INITIAL_VISIBLE);
+  }, [replacementSearch, activeCategory, replaceType]);
+
+  useEffect(() => {
+    setReplacementSubcategory('All');
+  }, [replaceType, activeCategory]);
+
+  const getAliasSubcategoryForEntry = (entry) => {
+    if (!entry) return 'other';
+    const derived = deriveAliasSubcategory(entry.name || entry.token || '', entry.category || '');
+    const base = String(entry.subcategory || derived || '').trim();
+    return base || 'other';
+  };
+
+  const getTagCategoryForEntry = (entry) => {
+    if (!entry) return 'other';
+    const cat = String(entry.category || '').trim();
+    return cat || 'other';
+  };
+
+  const aliasSubcategoryOptions = useMemo(() => {
+    if (replaceType !== 'alias') {
+      return [{ value: 'All', label: 'All subcategories' }];
+    }
+    const set = new Set(['All']);
+    aliases.forEach((entry) => {
+      if (activeCategory !== 'All' && entry?.category && entry.category !== activeCategory) return;
+      set.add(getAliasSubcategoryForEntry(entry));
+    });
+    const sorted = Array.from(set).sort((a, b) => a.localeCompare(b));
+    return sorted.map((sub) => ({
+      value: sub,
+      label: sub === 'other' ? 'Other' : formatSubcategoryLabel(sub) || sub,
+    }));
+  }, [aliases, activeCategory, replaceType]);
+
+  const tagCategoryOptions = useMemo(() => {
+    if (replaceType !== 'tag') {
+      return [{ value: 'All', label: 'All categories' }];
+    }
+    const set = new Set(['All']);
+    tags.forEach((entry) => {
+      set.add(getTagCategoryForEntry(entry));
+    });
+    const sorted = Array.from(set).sort((a, b) => a.localeCompare(b));
+    return sorted.map((cat) => ({
+      value: cat,
+      label: cat === 'other' ? 'Other' : formatSubcategoryLabel(cat) || cat,
+    }));
+  }, [tags, replaceType]);
+
+  const subcategoryOptions = replaceType === 'alias' ? aliasSubcategoryOptions : tagCategoryOptions;
+
+  useEffect(() => {
+    if (!subcategoryOptions.some((opt) => opt.value === replacementSubcategory)) {
+      setReplacementSubcategory('All');
+    }
+  }, [subcategoryOptions, replacementSubcategory]);
 
   // Load tags when Replace section is expanded and viewing tags (or in add mode)
   useEffect(() => {
@@ -62,39 +139,91 @@ export default function TokenEditSheet({
     }
   }, [open, showReplace, replaceType, onLoadTags, isAddMode]);
 
+  // Infinite scroll handler
+  const handleScroll = useCallback((e) => {
+    const el = e.target;
+    if (!el) return;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 100;
+    if (!nearBottom) return;
+
+    // Load more items
+    setVisibleCount((prev) => prev + LOAD_MORE_COUNT);
+
+    // For tags, also request more from server if needed
+    if (replaceType === 'tag' && tagHasMore && !tagLoading) {
+      onLoadMoreTags?.();
+    }
+  }, [replaceType, tagHasMore, tagLoading, onLoadMoreTags]);
+
   // Auto-apply weight changes
   const handleWeightChange = useCallback((newWeight) => {
     const clamped = clamp(newWeight, 0.2, 2.0);
     setDraft(clamped);
-    onWeightChange?.(clamped);
-  }, [onWeightChange]);
+    if (!deferWeightApply) {
+      onWeightChange?.(clamped);
+    }
+  }, [deferWeightApply, onWeightChange]);
 
   const handleSliderChange = useCallback((e) => {
     handleWeightChange(parseFloat(e.target.value));
   }, [handleWeightChange]);
 
-  // Filter replacements based on type, search, and category
+  // Filter and sort replacements based on type, search, and category
+
   const filteredReplacements = useMemo(() => {
     const term = String(replacementSearch || '').trim().toLowerCase();
 
     if (replaceType === 'alias') {
       return aliases.filter((entry) => {
         if (activeCategory !== 'All' && (entry.category || '') !== activeCategory) return false;
+        if (replacementSubcategory !== 'All') {
+          const sub = getAliasSubcategoryForEntry(entry);
+          if (sub !== replacementSubcategory) return false;
+        }
         if (!term) return true;
         const display = String(entry.displayName || entry.name || '').toLowerCase();
         const token = String(entry.token || '').toLowerCase();
         return display.includes(term) || token.includes(term);
       });
-    } else {
-      return tags.filter((t) => {
-        if (!term) return true;
-        return String(t.tag || '').toLowerCase().includes(term);
-      });
     }
-  }, [replaceType, replacementSearch, activeCategory, aliases, tags]);
+    return tags.filter((t) => {
+      if (replacementSubcategory !== 'All') {
+        const cat = getTagCategoryForEntry(t);
+        if (cat !== replacementSubcategory) return false;
+      }
+      if (!term) return true;
+      return String(t.tag || '').toLowerCase().includes(term);
+    });
+  }, [replaceType, replacementSearch, activeCategory, aliases, tags, replacementSubcategory]);
+
+  const sortedReplacements = useMemo(() => {
+    if (!filteredReplacements.length) return filteredReplacements;
+    const entries = [...filteredReplacements];
+    entries.sort((a, b) => {
+      const getName = (entry) =>
+        String(entry.displayName || entry.name || entry.tag || entry.token || '').trim().toLowerCase();
+      if (replaceType === 'alias') {
+        const subA = getAliasSubcategoryForEntry(a);
+        const subB = getAliasSubcategoryForEntry(b);
+        if (subA !== subB) return subA.localeCompare(subB);
+        const nameA = getName(a);
+        const nameB = getName(b);
+        if (nameA !== nameB) return nameA.localeCompare(nameB);
+        return 0;
+      }
+      const catA = getTagCategoryForEntry(a);
+      const catB = getTagCategoryForEntry(b);
+      if (catA !== catB) return catA.localeCompare(catB);
+      const nameA = getName(a);
+      const nameB = getName(b);
+      return nameA.localeCompare(nameB);
+    });
+    return entries;
+  }, [filteredReplacements, replaceType]);
 
   const isLoading = replaceType === 'alias' ? aliasLoading : tagLoading;
-  const isEmpty = filteredReplacements.length === 0 && !isLoading;
+  const isEmpty = sortedReplacements.length === 0 && !isLoading;
+  const formatCategory = replaceType === 'alias' ? formatCategoryLabel : formatSubcategoryLabel;
 
   const pretty = formatTokenWeight(draft);
   const isAlias = tokenType === 'alias';
@@ -210,7 +339,7 @@ export default function TokenEditSheet({
                 </button>
               </div>
 
-              {/* Search and Category Filter Row */}
+              {/* Search Row */}
               <div className="token-edit-filter-row">
                 <input
                   type="search"
@@ -219,8 +348,10 @@ export default function TokenEditSheet({
                   placeholder={replaceType === 'alias' ? 'Search aliases…' : 'Search tags…'}
                   className="ui-control ui-input token-edit-search"
                 />
+              </div>
 
-                {/* Category Dropdown - only for aliases */}
+              {/* Category + Sort Row */}
+              <div className="token-edit-filter-row">
                 {replaceType === 'alias' && aliasCategories.length > 1 && (
                   <select
                     value={activeCategory}
@@ -230,23 +361,38 @@ export default function TokenEditSheet({
                   >
                     {aliasCategories.map((cat) => (
                       <option key={cat} value={cat}>
-                        {cat === 'All' ? 'All Categories' : cat}
+                        {cat === 'All' ? 'All Categories' : formatCategoryLabel(cat)}
                       </option>
                     ))}
                   </select>
                 )}
+                {subcategoryOptions.length > 1 && (
+                  <Select
+                    value={replacementSubcategory}
+                    onChange={setReplacementSubcategory}
+                    size="sm"
+                    aria-label={replaceType === 'alias' ? 'Filter by subcategory' : 'Filter by category'}
+                    options={subcategoryOptions}
+                    wrapperClassName="token-edit-sort-select"
+                  />
+                )}
               </div>
 
               {/* Results List */}
-              <div className="token-edit-replace-list">
-                {isLoading ? (
+              <div
+                ref={listRef}
+                className="token-edit-replace-list"
+                onScroll={handleScroll}
+              >
+                {isLoading && sortedReplacements.length === 0 ? (
                   <div className="token-edit-replace-empty">Loading…</div>
                 ) : isEmpty ? (
                   <div className="token-edit-replace-empty">
                     {replacementSearch ? 'No matches found' : `No ${replaceType === 'alias' ? 'aliases' : 'tags'} available`}
                   </div>
                 ) : (
-                  filteredReplacements.slice(0, 30).map((item) => {
+                  <>
+                  {sortedReplacements.slice(0, visibleCount).map((item) => {
                     const key = item.key || item.token || item.tag || item.displayName;
                     const name = item.displayName || item.name || item.tag || item.token;
                     const isAliasItem = !!item.token;
@@ -271,11 +417,23 @@ export default function TokenEditSheet({
                         </span>
                         <span className="token-edit-replace-name">{name}</span>
                         {item.category && (
-                          <span className="token-edit-replace-category">{item.category}</span>
+                          <span className="token-edit-replace-category">{formatCategory(item.category)}</span>
                         )}
                       </button>
                     );
-                  })
+                  })}
+                  {/* Show remaining count or loading indicator */}
+                  {visibleCount < sortedReplacements.length && (
+                    <div className="token-edit-replace-more">
+                      {sortedReplacements.length - visibleCount} more available
+                    </div>
+                  )}
+                  {replaceType === 'tag' && tagHasMore && visibleCount >= sortedReplacements.length && (
+                    <div className="token-edit-replace-more">
+                      {tagLoading ? 'Loading more…' : 'Scroll for more'}
+                    </div>
+                  )}
+                  </>
                 )}
               </div>
             </div>
@@ -287,7 +445,12 @@ export default function TokenEditSheet({
           <button
             type="button"
             className="token-edit-apply"
-            onClick={onClose}
+            onClick={() => {
+              if (!isAddMode && deferWeightApply) {
+                onWeightChange?.(draft);
+              }
+              onClose?.();
+            }}
           >
             {isAddMode ? 'Done' : 'Apply'}
           </button>

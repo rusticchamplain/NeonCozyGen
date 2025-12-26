@@ -98,6 +98,20 @@ def _prune_store(data):
             files.pop(key, None)
 
 
+def remove_prompt_file(filename, subfolder=""):
+    key = _build_file_key(filename, subfolder)
+    if not key:
+        return False
+    with _LOCK:
+        data = _ensure_cache()
+        files = data.setdefault("files", {})
+        if key in files:
+            files.pop(key, None)
+            _save_store(data)
+            return True
+    return False
+
+
 def store_prompt_raw(prompt_id, raw_map):
     if not prompt_id:
         return False

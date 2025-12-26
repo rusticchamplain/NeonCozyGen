@@ -1202,6 +1202,74 @@
   background: rgba(94, 241, 212, 0.12);
 }
 
+/* Alias tokens - purple/indigo accent */
+.ui-chip.is-alias {
+  border-color: rgba(143, 162, 255, 0.35);
+  background: linear-gradient(135deg,
+    rgba(143, 162, 255, 0.12),
+    rgba(109, 139, 255, 0.06)
+  );
+  color: rgba(220, 230, 255, 0.95);
+  position: relative;
+}
+
+.ui-chip.is-alias::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 60%;
+  border-radius: 0 2px 2px 0;
+  background: linear-gradient(180deg,
+    rgba(143, 162, 255, 0.8),
+    rgba(109, 139, 255, 0.5)
+  );
+}
+
+.ui-chip.is-alias:hover {
+  border-color: rgba(143, 162, 255, 0.55);
+  background: linear-gradient(135deg,
+    rgba(143, 162, 255, 0.18),
+    rgba(109, 139, 255, 0.1)
+  );
+}
+
+/* Raw tag tokens - teal/cyan accent */
+.ui-chip.is-raw {
+  border-color: rgba(94, 241, 212, 0.25);
+  background: linear-gradient(135deg,
+    rgba(94, 241, 212, 0.08),
+    rgba(68, 225, 197, 0.04)
+  );
+  color: rgba(220, 245, 240, 0.95);
+  position: relative;
+}
+
+.ui-chip.is-raw::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 60%;
+  border-radius: 0 2px 2px 0;
+  background: linear-gradient(180deg,
+    rgba(94, 241, 212, 0.7),
+    rgba(68, 225, 197, 0.4)
+  );
+}
+
+.ui-chip.is-raw:hover {
+  border-color: rgba(94, 241, 212, 0.45);
+  background: linear-gradient(135deg,
+    rgba(94, 241, 212, 0.14),
+    rgba(68, 225, 197, 0.08)
+  );
+}
+
 .ui-chip.is-dragging {
   opacity: 0.4;
   transform: scale(0.95);

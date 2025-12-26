@@ -49,11 +49,27 @@ function titleWord(word) {
 function derivePoseSubcategory(name = '') {
   const raw = String(name || '').trim().toLowerCase();
   if (!raw) return '';
+  const prefix = raw.split('_')[0] || '';
+
+  // Media-inspired poses
+  if (prefix === 'cinema') return 'cinema';
+  if (prefix === 'game') return 'game';
+  if (prefix === 'art') return 'art';
+
+  // Body position categories
+  if (prefix === 'stand') return 'stand';
+  if (prefix === 'sit') return 'sit';
+  if (prefix === 'lie') return 'lie';
+  if (prefix === 'action') return 'action';
+
+  // Adult/NSFW poses
+  if (prefix === 'nsfw') return 'nsfw';
+
+  // Legacy prefixes
   if (raw.startsWith('flirty_')) return 'flirty';
 
   // High-energy / movement / combat + stealth all grouped as Action
   if (
-    raw.startsWith('action_') ||
     raw.startsWith('dynamic_') ||
     raw.startsWith('stealth_') ||
     raw.startsWith('athletic_') ||
@@ -112,6 +128,11 @@ function deriveOutfitSubcategory(name = '') {
   if (prefix === 'uniform') return 'uniform';
   if (prefix === 'formal') return 'formal';
   if (prefix === 'alt') return 'alt';
+  if (prefix === 'sensual') return 'sensual';
+  if (prefix === 'trad') return 'trad';
+  if (prefix === 'pro') return 'pro';
+  if (prefix === 'sporty') return 'sporty';
+  if (prefix === 'fantasy') return 'fantasy';
 
   if (
     prefix === 'casual' ||
@@ -143,6 +164,46 @@ function deriveLightingSubcategory(name = '') {
   return prefix || 'other';
 }
 
+function deriveNsfwSubcategory(name = '') {
+  const raw = String(name || '').trim().toLowerCase();
+  if (!raw) return '';
+  const prefix = raw.split('_')[0] || '';
+
+  // NSFW subcategories based on prefix
+  const validSubcategories = [
+    'penetration', 'oral', 'anal', 'masturbation', 'toys', 'handjob', 'footjob', 'paizuri',
+    'group', 'bdsm', 'femdom', 'maledom', 'lesbian', 'pregnant', 'water', 'public', 'clothed',
+    'cumshot', 'aftercare', 'kissing', 'teasing', 'specialty', 'positions', 'pov', 'ahegao',
+    'lactation', 'squirting', 'furniture', 'vehicle', 'flexible', 'tentacle', 'futanari',
+    'size', 'spanking', 'pegging'
+  ];
+
+  if (validSubcategories.includes(prefix)) {
+    return prefix;
+  }
+
+  // Default fallback
+  return 'other';
+}
+
+function deriveCharSubcategory(name = '') {
+  const raw = String(name || '').trim().toLowerCase();
+  if (!raw) return '';
+  const prefix = raw.split('_')[0] || '';
+
+  // Character subcategories based on prefix
+  const validSubcategories = [
+    'fantasy', 'scifi', 'horror', 'cyber', 'hist', 'waste', 'occult', 'myth'
+  ];
+
+  if (validSubcategories.includes(prefix)) {
+    return prefix;
+  }
+
+  // Default fallback
+  return 'other';
+}
+
 export function deriveAliasSubcategory(name = '', category = '') {
   const trimmed = String(name || '').trim();
   const cat = String(category || '').trim().toLowerCase();
@@ -158,6 +219,14 @@ export function deriveAliasSubcategory(name = '', category = '') {
 
   if (cat === 'lighting') {
     return deriveLightingSubcategory(trimmed) || 'effects';
+  }
+
+  if (cat === 'nsfw') {
+    return deriveNsfwSubcategory(trimmed) || 'other';
+  }
+
+  if (cat === 'char') {
+    return deriveCharSubcategory(trimmed) || 'other';
   }
 
   const idx = trimmed.indexOf('_');
@@ -239,19 +308,27 @@ export function formatCategoryLabel(category = '') {
   if (!raw) return '';
   if (raw === 'All') return 'All';
   const mapping = {
-    action: 'Actions',
-    camera: 'Camera',
-    body: 'Body',
-    char: 'Characters',
-    mood: 'Mood',
-    outfit: 'Outfits',
-    pose: 'Poses',
-    prop: 'Props',
-    scene: 'Scenes',
-    weather: 'Weather',
-    style: 'Style',
-    hair: 'Hair',
-    lighting: 'Lighting',
+    // SUBJECT - Who/what is in the frame
+    char: 'SUBJECT - Characters',
+    body: 'SUBJECT - Body',
+    outfit: 'SUBJECT - Outfits',
+    accessory: 'SUBJECT - Accessories',
+
+    // ACTION - What they're doing
+    pose: 'ACTION - Poses',
+    action: 'ACTION - Actions',
+    nsfw: 'ACTION - NSFW',
+
+    // SCENE - Where/environment
+    scene: 'SCENE - Scenes',
+    weather: 'SCENE - Weather',
+    prop: 'SCENE - Props',
+
+    // COMPOSITION - How it looks (technical)
+    camera: 'COMPOSITION - Camera',
+    lighting: 'COMPOSITION - Lighting',
+    style: 'COMPOSITION - Style',
+    mood: 'COMPOSITION - Mood',
   };
   return mapping[raw] || titleWord(raw);
 }

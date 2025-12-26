@@ -2,7 +2,7 @@
 import { memo, useEffect, useRef } from 'react';
 import { usePageVisibility } from '../../../hooks/usePageVisibility';
 import Button from '../../../ui/primitives/Button';
-import { IconTweak, IconTrash } from '../../../ui/primitives/Icons';
+import { IconTweak, IconTrash, IconDice } from '../../../ui/primitives/Icons';
 
 const looksLikeVideo = (name = '') =>
   /\.(mp4|webm|mov|mkv)$/i.test(name);
@@ -104,7 +104,9 @@ function GalleryItem({
   onSelect,
   onDelete,
   onRerun,
+  onQuickRerun,
   isDeleting = false,
+  isQuickRunning = false,
   variant = 'grid', // 'grid' | 'feed'
   autoPlay = false,
 }) {
@@ -159,6 +161,7 @@ function GalleryItem({
   const hasPromptMeta = Boolean(meta?.has_prompt || meta?.prompt || meta?.model || (Array.isArray(meta?.loras) && meta.loras.length));
   const isPng = typeof filename === 'string' && filename.toLowerCase().endsWith('.png');
   const canRerun = Boolean(onRerun) && !isDir && hasPromptMeta && isPng;
+  const canQuickRerun = Boolean(onQuickRerun) && !isDir && hasPromptMeta && isPng;
 
   const handleDelete = (e) => {
     e.stopPropagation();
@@ -168,6 +171,11 @@ function GalleryItem({
   const handleRerun = (e) => {
     e.stopPropagation();
     onRerun?.(item);
+  };
+
+  const handleQuickRerun = (e) => {
+    e.stopPropagation();
+    onQuickRerun?.(item);
   };
 
   // ----- DIRECTORY TILE (grid only) -----
@@ -251,6 +259,20 @@ function GalleryItem({
             <IconTrash size={12} />
           </Button>
         ) : null}
+        {canQuickRerun ? (
+          <Button
+            size="mini"
+            variant="ghost"
+            iconOnly
+            className="gallery-tile-quickrun"
+            onClick={handleQuickRerun}
+            disabled={isQuickRunning}
+            aria-label="Quick re-run"
+            title="Re-run with random seed"
+          >
+            <IconDice size={12} />
+          </Button>
+        ) : null}
         {canRerun ? (
           <Button
             size="mini"
@@ -311,6 +333,20 @@ function GalleryItem({
           title={isDeleting ? 'Deleting…' : 'Delete item'}
         >
           <IconTrash size={12} />
+        </Button>
+      ) : null}
+      {canQuickRerun ? (
+        <Button
+          size="mini"
+          variant="ghost"
+          iconOnly
+          className="gallery-tile-quickrun"
+          onClick={handleQuickRerun}
+          disabled={isQuickRunning}
+          aria-label="Quick re-run"
+          title="Re-run with random seed"
+        >
+          <IconDice size={12} />
         </Button>
       ) : null}
       {canRerun ? (

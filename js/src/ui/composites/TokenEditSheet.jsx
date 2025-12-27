@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import BottomSheet from '../primitives/BottomSheet';
 import Select from '../primitives/Select';
+import TopicTabs from '../primitives/TopicTabs';
 import { formatTokenWeight } from '../../utils/tokenWeights';
 import {
   deriveAliasSubcategory,
   formatCategoryLabel,
   formatSubcategoryLabel,
 } from '../../utils/aliasPresentation';
+import { filterCategoriesByTopic, getCategoryTopic } from '../../utils/categoryTopics';
 
 const INITIAL_VISIBLE = 30;
 const LOAD_MORE_COUNT = 20;
@@ -53,6 +55,8 @@ export default function TokenEditSheet({
   // Category filter
   activeCategory = 'All',
   onCategoryChange,
+  initialCategory = 'All',
+  initialSubcategory = 'All',
 }) {
   const isAddMode = mode === 'add';
   const initial = useMemo(() => clamp(weight || 1, 0.2, 2.0), [weight]);
@@ -60,7 +64,9 @@ export default function TokenEditSheet({
   const [showReplace, setShowReplace] = useState(false);
   const [replaceType, setReplaceType] = useState(tokenType); // 'alias' | 'tag'
   const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE);
+  const [replacementTopic, setReplacementTopic] = useState('All');
   const [replacementSubcategory, setReplacementSubcategory] = useState('All');
+  const initialSubcategoryAppliedRef = useRef(false);
   const listRef = useRef(null);
 
   useEffect(() => {
@@ -69,16 +75,41 @@ export default function TokenEditSheet({
     setShowReplace(isAddMode); // In add mode, show browser immediately
     setReplaceType(tokenType);
     setVisibleCount(INITIAL_VISIBLE);
+    initialSubcategoryAppliedRef.current = false;
+    setReplacementTopic('All');
+    setReplacementSubcategory(initialSubcategory || 'All');
   }, [open, initial, tokenType, isAddMode]);
 
   // Reset visible count when search/category/type changes
   useEffect(() => {
     setVisibleCount(INITIAL_VISIBLE);
-  }, [replacementSearch, activeCategory, replaceType]);
+  }, [replacementSearch, activeCategory, replaceType, replacementTopic]);
+
+  // Reset category and subcategory when topic changes
+  useEffect(() => {
+    if (replaceType === 'alias') {
+      onCategoryChange?.('All');
+      setReplacementSubcategory('All');
+    }
+  }, [replacementTopic, replaceType, onCategoryChange]);
 
   useEffect(() => {
+    if (!open) return;
+    if (!initialSubcategoryAppliedRef.current && initialSubcategory && replaceType === 'alias') {
+      setReplacementSubcategory(initialSubcategory);
+      initialSubcategoryAppliedRef.current = true;
+      return;
+    }
     setReplacementSubcategory('All');
-  }, [replaceType, activeCategory]);
+  }, [replaceType, activeCategory, initialSubcategory, open]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (replaceType !== 'alias') return;
+    if (!initialCategory || initialCategory === 'All') return;
+    if (activeCategory === initialCategory) return;
+    onCategoryChange?.(initialCategory);
+  }, [open, replaceType, initialCategory, activeCategory, onCategoryChange]);
 
   const getAliasSubcategoryForEntry = (entry) => {
     if (!entry) return 'other';
@@ -175,11 +206,19 @@ export default function TokenEditSheet({
 
     if (replaceType === 'alias') {
       return aliases.filter((entry) => {
+        // Filter by topic first
+        if (replacementTopic !== 'All') {
+          const categoryTopic = getCategoryTopic(entry.category);
+          if (categoryTopic !== replacementTopic) return false;
+        }
+        // Then by category
         if (activeCategory !== 'All' && (entry.category || '') !== activeCategory) return false;
+        // Then by subcategory
         if (replacementSubcategory !== 'All') {
           const sub = getAliasSubcategoryForEntry(entry);
           if (sub !== replacementSubcategory) return false;
         }
+        // Finally by search term
         if (!term) return true;
         const display = String(entry.displayName || entry.name || '').toLowerCase();
         const token = String(entry.token || '').toLowerCase();
@@ -194,7 +233,7 @@ export default function TokenEditSheet({
       if (!term) return true;
       return String(t.tag || '').toLowerCase().includes(term);
     });
-  }, [replaceType, replacementSearch, activeCategory, aliases, tags, replacementSubcategory]);
+  }, [replaceType, replacementSearch, activeCategory, aliases, tags, replacementSubcategory, replacementTopic]);
 
   const sortedReplacements = useMemo(() => {
     if (!filteredReplacements.length) return filteredReplacements;
@@ -225,6 +264,12 @@ export default function TokenEditSheet({
   const isEmpty = sortedReplacements.length === 0 && !isLoading;
   const formatCategory = replaceType === 'alias' ? formatCategoryLabel : formatSubcategoryLabel;
 
+  // Filter categories by active topic
+  const filteredAliasCategories = useMemo(() => {
+    if (replaceType !== 'alias') return aliasCategories;
+    return filterCategoriesByTopic(aliasCategories, replacementTopic);
+  }, [aliasCategories, replacementTopic, replaceType]);
+
   const pretty = formatTokenWeight(draft);
   const isAlias = tokenType === 'alias';
   const title = isAddMode ? 'Add to Prompt' : (isAlias ? 'Edit Alias' : 'Edit Tag');
@@ -232,11 +277,15 @@ export default function TokenEditSheet({
   // Reset category when switching types, load tags on demand
   const handleTypeChange = (type) => {
     setReplaceType(type);
-    onCategoryChange?.('All');
     onReplacementSearchChange?.('');
     if (type === 'tag') {
+      onCategoryChange?.('All');
       onLoadTags?.();
+      return;
     }
+    initialSubcategoryAppliedRef.current = false;
+    onCategoryChange?.(initialCategory || 'All');
+    setReplacementSubcategory(initialSubcategory || 'All');
   };
 
   return (
@@ -245,7 +294,7 @@ export default function TokenEditSheet({
       onClose={onClose}
       title={title}
     >
-      <div className="token-edit-sheet">
+      <div className={`token-edit-sheet ${(showReplace || isAddMode) ? 'is-replace-open' : ''}`.trim()}>
         {/* Token Identity - only in edit mode */}
         {!isAddMode && (
           <div className="token-edit-identity">
@@ -262,7 +311,7 @@ export default function TokenEditSheet({
         )}
 
         {/* Strength Control - only in edit mode */}
-        {!isAddMode && (
+        {!isAddMode && !showReplace && (
           <div className="token-edit-section">
             <div className="token-edit-strength-row">
               <span className="token-edit-section-label">Strength</span>
@@ -319,63 +368,70 @@ export default function TokenEditSheet({
 
           {(showReplace || isAddMode) && (
             <div className="token-edit-replace-panel">
-              {/* Type Toggle - Alias vs Tag */}
-              <div className="token-edit-type-toggle">
-                <button
-                  type="button"
-                  className={`token-edit-type-btn ${replaceType === 'alias' ? 'is-active' : ''}`}
-                  onClick={() => handleTypeChange('alias')}
-                >
-                  <span className="token-edit-type-icon">$</span>
-                  Aliases
-                </button>
-                <button
-                  type="button"
-                  className={`token-edit-type-btn ${replaceType === 'tag' ? 'is-active' : ''}`}
-                  onClick={() => handleTypeChange('tag')}
-                >
-                  <span className="token-edit-type-icon">#</span>
-                  Tags
-                </button>
-              </div>
-
-              {/* Search Row */}
-              <div className="token-edit-filter-row">
-                <input
-                  type="search"
-                  value={replacementSearch}
-                  onChange={(e) => onReplacementSearchChange?.(e.target.value)}
-                  placeholder={replaceType === 'alias' ? 'Search aliases…' : 'Search tags…'}
-                  className="ui-control ui-input token-edit-search"
-                />
-              </div>
-
-              {/* Category + Sort Row */}
-              <div className="token-edit-filter-row">
-                {replaceType === 'alias' && aliasCategories.length > 1 && (
-                  <select
-                    value={activeCategory}
-                    onChange={(e) => onCategoryChange?.(e.target.value)}
-                    className="ui-control ui-select token-edit-category-select"
-                    aria-label="Filter by category"
+              <div className="token-edit-replace-header">
+                {/* Type Toggle - Alias vs Tag */}
+                <div className="token-edit-type-toggle">
+                  <button
+                    type="button"
+                    className={`token-edit-type-btn ${replaceType === 'alias' ? 'is-active' : ''}`}
+                    onClick={() => handleTypeChange('alias')}
                   >
-                    {aliasCategories.map((cat) => (
-                      <option key={cat} value={cat}>
-                        {cat === 'All' ? 'All Categories' : formatCategoryLabel(cat)}
-                      </option>
-                    ))}
-                  </select>
+                    <span className="token-edit-type-icon">$</span>
+                    Aliases
+                  </button>
+                  <button
+                    type="button"
+                    className={`token-edit-type-btn ${replaceType === 'tag' ? 'is-active' : ''}`}
+                    onClick={() => handleTypeChange('tag')}
+                  >
+                    <span className="token-edit-type-icon">#</span>
+                    Tags
+                  </button>
+                </div>
+
+                {/* Topic Tabs - only for aliases */}
+                {replaceType === 'alias' && (
+                  <TopicTabs activeTopic={replacementTopic} onTopicChange={setReplacementTopic} />
                 )}
-                {subcategoryOptions.length > 1 && (
-                  <Select
-                    value={replacementSubcategory}
-                    onChange={setReplacementSubcategory}
-                    size="sm"
-                    aria-label={replaceType === 'alias' ? 'Filter by subcategory' : 'Filter by category'}
-                    options={subcategoryOptions}
-                    wrapperClassName="token-edit-sort-select"
+
+                {/* Search Row */}
+                <div className="token-edit-filter-row">
+                  <input
+                    type="search"
+                    value={replacementSearch}
+                    onChange={(e) => onReplacementSearchChange?.(e.target.value)}
+                    placeholder={replaceType === 'alias' ? 'Search aliases…' : 'Search tags…'}
+                    className="ui-control ui-input token-edit-search"
                   />
-                )}
+                </div>
+
+                {/* Category + Sort Row */}
+                <div className="token-edit-filter-row">
+                  {replaceType === 'alias' && filteredAliasCategories.length > 1 && (
+                    <select
+                      value={activeCategory}
+                      onChange={(e) => onCategoryChange?.(e.target.value)}
+                      className="ui-control ui-select token-edit-category-select"
+                      aria-label="Filter by category"
+                    >
+                      {filteredAliasCategories.map((cat) => (
+                        <option key={cat} value={cat}>
+                          {cat === 'All' ? 'All Categories' : formatCategoryLabel(cat)}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  {subcategoryOptions.length > 1 && (
+                    <Select
+                      value={replacementSubcategory}
+                      onChange={setReplacementSubcategory}
+                      size="sm"
+                      aria-label={replaceType === 'alias' ? 'Filter by subcategory' : 'Filter by category'}
+                      options={subcategoryOptions}
+                      wrapperClassName="token-edit-sort-select"
+                    />
+                  )}
+                </div>
               </div>
 
               {/* Results List */}
@@ -416,9 +472,6 @@ export default function TokenEditSheet({
                           {isAliasItem ? '$' : '#'}
                         </span>
                         <span className="token-edit-replace-name">{name}</span>
-                        {item.category && (
-                          <span className="token-edit-replace-category">{formatCategory(item.category)}</span>
-                        )}
                       </button>
                     );
                   })}

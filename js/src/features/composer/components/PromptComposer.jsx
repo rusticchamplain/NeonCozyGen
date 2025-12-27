@@ -5,10 +5,13 @@ import Button from '../../../ui/primitives/Button';
 import SegmentedTabs from '../../../ui/primitives/SegmentedTabs';
 import TokenEditSheet from '../../../ui/composites/TokenEditSheet';
 import Select from '../../../ui/primitives/Select';
+import TopicTabs from '../../../ui/primitives/TopicTabs';
 import { IconGrip, IconX, IconTag, IconAlias, IconEdit } from '../../../ui/primitives/Icons';
 import { formatCategoryLabel, formatSubcategoryLabel, presentAliasEntry } from '../../../utils/aliasPresentation';
+import { filterCategoriesByTopic, getCategoryTopic } from '../../../utils/categoryTopics';
 import ComposerSelectionBar from './ComposerSelectionBar';
 import TagComposerRow from './TagComposerRow';
+import useMediaQuery from '../../../hooks/useMediaQuery';
 
 import {
   formatTokenWeight,
@@ -44,12 +47,15 @@ export default function PromptComposer({
   const [localValue, setLocalValue] = useState(value);
   const [pickerSearch, setPickerSearch] = useState('');
   const deferredPickerSearch = useDeferredValue(pickerSearch);
+  const [pickerTopic, setPickerTopic] = useState('All');
   const [pickerCategory, setPickerCategory] = useState('All');
   const [pickerSubcategory, setPickerSubcategory] = useState('All');
   const [visibleCount, setVisibleCount] = useState(30);
   const [activeTab, setActiveTab] = useState('compose'); // 'compose' | 'aliases'
   const isPage = variant === 'page';
   const isVisible = isPage || open;
+  const isSmall = useMediaQuery('(max-width: 640px)', false);
+  const [expandedOpen, setExpandedOpen] = useState(!isSmall);
 
   // Drag and drop state
   const [dragIndex, setDragIndex] = useState(null);
@@ -62,6 +68,7 @@ export default function PromptComposer({
   const [tokenEditSearch, setTokenEditSearch] = useState('');
   const deferredTokenEditSearch = useDeferredValue(tokenEditSearch);
   const [tokenEditCategory, setTokenEditCategory] = useState('All');
+  const [tokenEditSubcategory, setTokenEditSubcategory] = useState('All');
   const [tokenEditTagItems, setTokenEditTagItems] = useState([]);
   const [tokenEditTagTotal, setTokenEditTagTotal] = useState(0);
   const [tokenEditTagOffset, setTokenEditTagOffset] = useState(0);
@@ -151,6 +158,7 @@ export default function PromptComposer({
       setStrengthToken(null);
       setTokenEditSearch('');
       setTokenEditCategory('All');
+      setTokenEditSubcategory('All');
       setTokenEditTagItems([]);
       setTokenEditTagTotal(0);
       setTokenEditTagOffset(0);
@@ -170,6 +178,10 @@ export default function PromptComposer({
       setTagError('');
     }
   }, [open, value]);
+
+  useEffect(() => {
+    setExpandedOpen(!isSmall);
+  }, [isSmall]);
 
   useEffect(() => {
     if (dragIndex === null) return undefined;
@@ -226,10 +238,11 @@ export default function PromptComposer({
     aliasEntries.forEach((e) => {
       if (e.category) set.add(e.category);
     });
-    return Array.from(set).sort((a, b) =>
+    const allCategories = Array.from(set).sort((a, b) =>
       formatCategoryLabel(a).localeCompare(formatCategoryLabel(b))
     );
-  }, [aliasEntries]);
+    return filterCategoriesByTopic(allCategories, pickerTopic);
+  }, [aliasEntries, pickerTopic]);
 
   const subcategories = useMemo(() => {
     const set = new Set(['All']);
@@ -255,9 +268,17 @@ export default function PromptComposer({
     const term = deferredPickerSearch.trim().toLowerCase();
     return aliasEntries
       .filter((e) => {
+        // Filter by topic first
+        if (pickerTopic !== 'All') {
+          const categoryTopic = getCategoryTopic(e.category);
+          if (categoryTopic !== pickerTopic) return false;
+        }
+        // Then by category
         if (pickerCategory !== 'All' && (e.category || '') !== pickerCategory) return false;
+        // Then by subcategory
         if (pickerSubcategory !== 'All' && (e.subcategory || 'other') !== pickerSubcategory)
           return false;
+        // Finally by search term
         if (!term) return true;
         return (
           e.token?.toLowerCase().includes(term) ||
@@ -275,7 +296,7 @@ export default function PromptComposer({
         const nameB = (b.displayName || b.name || b.token || '').toLowerCase();
         return nameA.localeCompare(nameB);
       });
-  }, [aliasEntries, pickerCategory, pickerSubcategory, deferredPickerSearch]);
+  }, [aliasEntries, pickerTopic, pickerCategory, pickerSubcategory, deferredPickerSearch]);
 
   const visibleAliases = useMemo(
     () => filteredAliases.slice(0, visibleCount),
@@ -284,11 +305,16 @@ export default function PromptComposer({
 
   useEffect(() => {
     setVisibleCount(30);
-  }, [pickerCategory, pickerSubcategory, pickerSearch, aliasEntries]);
+  }, [pickerTopic, pickerCategory, pickerSubcategory, pickerSearch, aliasEntries]);
 
   useEffect(() => {
     setPickerSubcategory('All');
   }, [pickerCategory]);
+
+  useEffect(() => {
+    setPickerCategory('All');
+    setPickerSubcategory('All');
+  }, [pickerTopic]);
 
   // Infinite scroll with IntersectionObserver sentinel
   useEffect(() => {
@@ -618,7 +644,27 @@ export default function PromptComposer({
     overscan: 8,
     minItems: 90,
   });
-  const visibleTags = tagsVirtualized ? tagItems.slice(tagStart, tagEnd) : tagItems;
+  const normalizedTagQuery = useMemo(
+    () => String(tagQuery || '').trim().toLowerCase(),
+    [tagQuery]
+  );
+  const orderedTagItems = useMemo(() => {
+    if (!normalizedTagQuery) return tagItems;
+    const exactMatches = [];
+    const rest = [];
+    tagItems.forEach((tag) => {
+      const name = String(tag?.tag || '').toLowerCase();
+      if (name === normalizedTagQuery) {
+        exactMatches.push(tag);
+      } else {
+        rest.push(tag);
+      }
+    });
+    return exactMatches.length ? [...exactMatches, ...rest] : tagItems;
+  }, [tagItems, normalizedTagQuery]);
+  const visibleTags = tagsVirtualized
+    ? orderedTagItems.slice(tagStart, tagEnd)
+    : orderedTagItems;
 
   // Tag library: infinite scroll sentinel
   useEffect(() => {
@@ -823,20 +869,20 @@ export default function PromptComposer({
     updatePromptValue((prev) => removeElement(prev || '', element));
   };
 
-  const moveElementBy = useCallback((idx, delta) => {
-    if (!elements?.length) return;
-    const target = idx + delta;
-    if (target < 0 || target >= elements.length) return;
-    updatePromptValue((prev) => reorderElements(prev || '', elements, idx, target));
-    setSelectedTokenIndex(target);
-  }, [elements, updatePromptValue]);
-
   const openStrengthFor = (element) => {
     if (!element) return;
     let displayName = element.text;
     if (element.type === 'alias') {
       const entry = aliasByToken.get(element.text.toLowerCase());
       displayName = entry?.displayName || element.text;
+    }
+    if (element.type === 'alias') {
+      const entry = aliasByToken.get(element.text.toLowerCase());
+      setTokenEditCategory(entry?.category || 'All');
+      setTokenEditSubcategory(entry?.subcategory || 'All');
+    } else {
+      setTokenEditCategory('All');
+      setTokenEditSubcategory('All');
     }
     const weightInfo = getElementWeight(localValue || '', element);
     setStrengthToken({
@@ -896,8 +942,8 @@ export default function PromptComposer({
 
   // Touch handlers for mobile drag-and-drop
   const handleTouchStart = useCallback((e, idx) => {
-    const isHandle = e.target?.closest?.('.composer-token-drag-handle');
-    if (!isHandle) return;
+    const isInteractive = e.target?.closest?.('button, a, input, select, textarea, .composer-token-shift');
+    if (isInteractive) return;
     const touch = e.touches[0];
     const timer = window.setTimeout(() => {
       if (!touchStartRef.current) return;
@@ -979,17 +1025,19 @@ export default function PromptComposer({
   if (!isVisible) return null;
 
   const composerShell = (
-    <div className={`composer-shell ${isPage ? 'ui-card' : ''}`}>
-        <SegmentedTabs
-          ariaLabel="Composer tabs"
-          value={activeTab}
-          onChange={setActiveTab}
-          items={[
-            { key: 'compose', label: 'Compose', icon: <IconEdit size={14} /> },
-            { key: 'aliases', label: 'Aliases', icon: <IconAlias size={14} /> },
-            { key: 'tags', label: 'Tags', icon: <IconTag size={14} /> },
-          ]}
-        />
+    <div className={`composer-shell ${isPage ? 'ui-card' : ''} ${showSelectionFloat ? 'has-selection-float' : ''}`}>
+        <div className="composer-tabs-wrap">
+          <SegmentedTabs
+            ariaLabel="Composer tabs"
+            value={activeTab}
+            onChange={setActiveTab}
+            items={[
+              { key: 'compose', label: 'Compose', icon: <IconEdit size={14} /> },
+              { key: 'aliases', label: 'Aliases', icon: <IconAlias size={14} /> },
+              { key: 'tags', label: 'Tags', icon: <IconTag size={14} /> },
+            ]}
+          />
+        </div>
 
         <div className={`composer-panel composer-panel-compose ${activeTab === 'compose' ? 'is-visible' : ''}`}>
           <div className="composer-editor">
@@ -1086,32 +1134,6 @@ export default function PromptComposer({
                           {formatTokenWeight(weight)}×
                         </span>
                       )}
-                      <div className="composer-token-shift" role="group" aria-label="Reorder token">
-                        <Button
-                          size="mini"
-                          variant="ghost"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            moveElementBy(idx, -1);
-                          }}
-                          aria-label="Move up"
-                          disabled={idx === 0}
-                        >
-                          ▲
-                        </Button>
-                        <Button
-                          size="mini"
-                          variant="ghost"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            moveElementBy(idx, 1);
-                          }}
-                          aria-label="Move down"
-                          disabled={idx === elements.length - 1}
-                        >
-                          ▼
-                        </Button>
-                      </div>
                       <Button
                         size="mini"
                         variant="danger"
@@ -1132,77 +1154,107 @@ export default function PromptComposer({
             )}
           </div>
 
-          <div className="composer-expanded">
-            <div className="composer-expanded-header">
+          <div className={`composer-expanded ${expandedOpen ? 'is-open' : 'is-collapsed'}`}>
+            <div
+              className="composer-expanded-header"
+              role="button"
+              tabIndex={0}
+              aria-expanded={expandedOpen}
+              aria-controls="composer-expanded-box"
+              onClick={() => setExpandedOpen((prev) => !prev)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  setExpandedOpen((prev) => !prev);
+                }
+              }}
+            >
               <span className="composer-expanded-label">Expanded prompt</span>
-              <span className="composer-expanded-meta">
-                {expandedPrompt.text ? `${expandedPrompt.text.length} chars` : 'Empty'}
-              </span>
+              <div className="composer-expanded-actions">
+                <span className="composer-expanded-meta">
+                  {expandedPrompt.text ? `${expandedPrompt.text.length} chars` : 'Empty'}
+                </span>
+              </div>
             </div>
-            <div className="composer-expanded-box" aria-label="Expanded prompt">
-              {expandedPrompt.text ? (
-                expandedPrompt.parts.map((part, idx) => (
-                  part.isAlias ? (
-                    <span key={`alias-${idx}`} className="composer-expanded-alias">
-                      {part.text}
-                    </span>
-                  ) : (
-                    <span key={`text-${idx}`}>{part.text}</span>
-                  )
-                ))
-              ) : (
-                'No prompt yet.'
-              )}
-            </div>
+            {expandedOpen ? (
+              <div
+                id="composer-expanded-box"
+                className="composer-expanded-box"
+                aria-label="Expanded prompt"
+              >
+                {expandedPrompt.text ? (
+                  expandedPrompt.parts.map((part, idx) => (
+                    part.isAlias ? (
+                      <span key={`alias-${idx}`} className="composer-expanded-alias">
+                        {part.text}
+                      </span>
+                    ) : (
+                      <span key={`text-${idx}`}>{part.text}</span>
+                    )
+                  ))
+                ) : (
+                  'No prompt yet.'
+                )}
+              </div>
+            ) : null}
           </div>
         </div>
 
         <div className={`composer-panel composer-panel-aliases ${activeTab === 'aliases' ? 'is-visible' : ''}`}>
-          <div className="composer-filters">
-            <div className="input-with-action">
-              <input
-                ref={searchInputRef}
-                type="text"
-                value={pickerSearch}
-                onChange={(e) => setPickerSearch(e.target.value)}
-                placeholder="Search aliases…"
-                className="composer-search ui-control ui-input"
-                aria-label="Search aliases"
-              />
-              <Button
-                size="xs"
-                variant="ghost"
-                onClick={() => setPickerSearch('')}
-                disabled={!pickerSearch}
-              >
-                Clear
-              </Button>
-            </div>
-            <Select
-              value={pickerCategory}
-              onChange={setPickerCategory}
-              wrapperClassName="composer-subcategory-select"
-              aria-label="Filter by category"
-              size="sm"
-              searchThreshold={0}
-              options={categoryOptions.map((c) => ({
-                value: c,
-                label: c === 'All' ? 'Category: All' : formatCategoryLabel(c),
-              }))}
-            />
-            {subcategoryOptions.length > 2 && (
+          <div className="composer-browser-header">
+            <div className="composer-filters">
+              <TopicTabs activeTopic={pickerTopic} onTopicChange={setPickerTopic} />
+              <div className="input-with-action">
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  value={pickerSearch}
+                  onChange={(e) => setPickerSearch(e.target.value)}
+                  placeholder="Search aliases…"
+                  className="composer-search ui-control ui-input"
+                  aria-label="Search aliases"
+                />
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  onClick={() => setPickerSearch('')}
+                  disabled={!pickerSearch}
+                >
+                  Clear
+                </Button>
+              </div>
               <Select
-                value={pickerSubcategory}
-                onChange={setPickerSubcategory}
+                value={pickerCategory}
+                onChange={setPickerCategory}
                 wrapperClassName="composer-subcategory-select"
+                aria-label="Filter by category"
                 size="sm"
                 searchThreshold={0}
-                options={subcategoryOptions.map((c) => ({
+                options={categoryOptions.map((c) => ({
                   value: c,
-                  label: c === 'All' ? 'All subcategories' : formatSubcategoryLabel(c),
+                  label: c === 'All' ? 'Category: All' : formatCategoryLabel(c),
                 }))}
               />
-            )}
+              {subcategoryOptions.length > 2 && (
+                <Select
+                  value={pickerSubcategory}
+                  onChange={setPickerSubcategory}
+                  wrapperClassName="composer-subcategory-select"
+                  size="sm"
+                  searchThreshold={0}
+                  options={subcategoryOptions.map((c) => ({
+                    value: c,
+                    label: c === 'All' ? 'All subcategories' : formatSubcategoryLabel(c),
+                  }))}
+                />
+              )}
+            </div>
+
+            <div className="composer-browser-meta">
+              <span>
+                Showing {visibleAliases.length} of {filteredAliases.length} aliases
+              </span>
+            </div>
           </div>
 
           <div className="composer-alias-list">
@@ -1244,79 +1296,92 @@ export default function PromptComposer({
           className={`composer-panel composer-panel-tags ${activeTab === 'tags' ? 'is-visible' : ''}`}
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="composer-filters">
-            <div className="input-with-action">
-              <input
-                ref={tagSearchRef}
-                type="search"
-                value={tagQuery}
-                onChange={(e) => setTagQuery(e.target.value)}
-                placeholder="Search tags… (e.g. smile, city, sword)"
-                className="composer-search ui-control ui-input"
-                aria-label="Search tags"
-              />
-              <Button
-                size="xs"
-                variant="ghost"
-                onClick={() => setTagQuery('')}
-                disabled={!tagQuery}
-              >
-                Clear
-              </Button>
-            </div>
-            <Select
-              value={tagCategory}
-              onChange={setTagCategory}
-              wrapperClassName="composer-subcategory-select"
-              aria-label="Filter by category"
-              size="sm"
-              searchThreshold={0}
-              options={[
-                { value: '', label: 'Category: All' },
-                ...tagCategories.map((c) => ({
-                  value: c.key,
-                  label: `${formatSubcategoryLabel(c.key)} (${Number(c.actual || c.count || 0).toLocaleString()})`,
-                })),
-              ]}
-            />
-            <div className="composer-sort-row">
+          <div className="composer-browser-header">
+            <div className="composer-filters">
+              <div className="input-with-action">
+                <input
+                  ref={tagSearchRef}
+                  type="search"
+                  value={tagQuery}
+                  onChange={(e) => setTagQuery(e.target.value)}
+                  placeholder="Search tags… (e.g. smile, city, sword)"
+                  className="composer-search ui-control ui-input"
+                  aria-label="Search tags"
+                />
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  onClick={() => setTagQuery('')}
+                  disabled={!tagQuery}
+                >
+                  Clear
+                </Button>
+              </div>
               <Select
-                value={tagSort}
-                onChange={setTagSort}
+                value={tagCategory}
+                onChange={setTagCategory}
                 wrapperClassName="composer-subcategory-select"
-                aria-label="Sort tags"
+                aria-label="Filter by category"
                 size="sm"
+                searchThreshold={0}
                 options={[
-                  { value: 'count', label: 'Sort: Popular' },
-                  { value: 'alpha', label: 'Sort: A–Z' },
+                  { value: '', label: 'Category: All' },
+                  ...tagCategories.map((c) => ({
+                    value: c.key,
+                    label: `${formatSubcategoryLabel(c.key)} (${Number(c.actual || c.count || 0).toLocaleString()})`,
+                  })),
                 ]}
               />
-              <div className="composer-min-count">
-                <span className="composer-filter-divider" aria-hidden="true">|</span>
-                <label className="composer-min-count-label" htmlFor="composer-min-count">
-                  Minimum count
-                </label>
-                <input
-                  id="composer-min-count"
-                  type="number"
-                  inputMode="numeric"
-                  min={0}
-                  step={1}
-                  value={tagMinCount}
-                  onChange={(e) => {
-                    const nextValue = e.target.value;
-                    if (nextValue === '' || Number(nextValue) >= 0) {
-                      setTagMinCount(nextValue);
-                    }
-                  }}
-                  className="ui-control ui-input is-compact composer-min-count-input"
-                  placeholder="0"
+              <div className="composer-sort-row">
+                <Select
+                  value={tagSort}
+                  onChange={setTagSort}
+                  wrapperClassName="composer-subcategory-select"
+                  aria-label="Sort tags"
+                  size="sm"
+                  options={[
+                    { value: 'count', label: 'Sort: Popular' },
+                    { value: 'alpha', label: 'Sort: A–Z' },
+                  ]}
                 />
+                <div className="composer-min-count">
+                  <span className="composer-filter-divider" aria-hidden="true">|</span>
+                  <label className="composer-min-count-label" htmlFor="composer-min-count">
+                    Minimum count
+                  </label>
+                  <input
+                    id="composer-min-count"
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    step={1}
+                    value={tagMinCount}
+                    onChange={(e) => {
+                      const nextValue = e.target.value;
+                      if (nextValue === '' || Number(nextValue) >= 0) {
+                        setTagMinCount(nextValue);
+                      }
+                    }}
+                    className="ui-control ui-input is-compact composer-min-count-input"
+                    placeholder="0"
+                  />
+                </div>
               </div>
             </div>
-          </div>
 
-          {tagError ? <div className="composer-tags-error">{tagError}</div> : null}
+            {tagError ? <div className="composer-tags-error">{tagError}</div> : null}
+
+            <div className="composer-browser-meta">
+              <span>
+                {tagLoading
+                  ? 'Loading tags…'
+                  : tagTotal
+                    ? `${tagItems.length} of ${tagTotal} tags`
+                    : `${tagItems.length} tags`}
+              </span>
+              {tagLoadingMore ? <span>Loading more…</span> : null}
+            </div>
+          </div>
 
           <div className="composer-alias-list composer-tags-grid" role="list" ref={tagListRef}>
             {tagLoading ? (
@@ -1434,6 +1499,8 @@ export default function PromptComposer({
       onReplace={handleTokenEditReplace}
       activeCategory={tokenEditCategory}
       onCategoryChange={setTokenEditCategory}
+      initialCategory={tokenEditCategory}
+      initialSubcategory={tokenEditSubcategory}
     />
   );
 

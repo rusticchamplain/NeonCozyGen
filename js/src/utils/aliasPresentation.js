@@ -51,70 +51,15 @@ function derivePoseSubcategory(name = '') {
   if (!raw) return '';
   const prefix = raw.split('_')[0] || '';
 
-  // Media-inspired poses
-  if (prefix === 'cinema') return 'cinema';
-  if (prefix === 'game') return 'game';
-  if (prefix === 'art') return 'art';
+  // Consolidated subcategories (renamed for clarity)
+  if (prefix === 'media') return 'media';
+  if (prefix === 'posture') return 'posture';
+  if (prefix === 'dynamic') return 'dynamic';
+  if (prefix === 'interaction') return 'interaction';
+  // Note: 'expression' moved to body category
 
-  // Body position categories
-  if (prefix === 'stand') return 'stand';
-  if (prefix === 'sit') return 'sit';
-  if (prefix === 'lie') return 'lie';
-  if (prefix === 'action') return 'action';
-
-  // Adult/NSFW poses
-  if (prefix === 'nsfw') return 'nsfw';
-
-  // Legacy prefixes
-  if (raw.startsWith('flirty_')) return 'flirty';
-
-  // High-energy / movement / combat + stealth all grouped as Action
-  if (
-    raw.startsWith('dynamic_') ||
-    raw.startsWith('stealth_') ||
-    raw.startsWith('athletic_') ||
-    raw.startsWith('running_') ||
-    raw.startsWith('walking_')
-  ) {
-    return 'action';
-  }
-
-  // Quiet / resting / seated / reclining
-  if (
-    raw.startsWith('sleepy_') ||
-    raw.startsWith('relaxed_') ||
-    raw.startsWith('reclining_') ||
-    raw.startsWith('sitting_') ||
-    raw.startsWith('kneeling_')
-  ) {
-    return 'rest';
-  }
-
-  // Expression-led / emotional tones
-  if (
-    raw.startsWith('happy_') ||
-    raw.startsWith('sad_') ||
-    raw.startsWith('angry_') ||
-    raw.startsWith('nervous_') ||
-    raw.startsWith('smug_') ||
-    raw.startsWith('surprised_') ||
-    raw.startsWith('scared_') ||
-    raw.startsWith('tipsy_')
-  ) {
-    return 'emotion';
-  }
-
-  // Deliberate / posed / cinematic framing
-  if (
-    raw.startsWith('composed_') ||
-    raw.startsWith('contemplative_') ||
-    raw.startsWith('looking_')
-  ) {
-    return 'posed';
-  }
-
-  // Default bucket: everyday gestures + activities + traditional poses
-  return 'everyday';
+  // Fallback: if no match, return the prefix itself
+  return prefix || 'other';
 }
 
 function deriveOutfitSubcategory(name = '') {
@@ -151,7 +96,9 @@ function deriveOutfitSubcategory(name = '') {
 function deriveLightingSubcategory(name = '') {
   const raw = String(name || '').trim().toLowerCase();
   if (!raw) return '';
-  const prefix = raw.split('_')[0] || '';
+  const parts = raw.split('_').filter(Boolean);
+  const prefix = parts[0] || '';
+  const secondary = parts[1] || '';
 
   // Group lighting into a small set of predictable buckets.
   if (['fire', 'candlelight', 'embers'].includes(prefix)) return 'fire';
@@ -161,6 +108,20 @@ function deriveLightingSubcategory(name = '') {
   if (['golden', 'sunbeam', 'dappled'].includes(prefix)) return 'natural';
   if (['lens', 'light'].includes(prefix)) return 'effects';
 
+  if (prefix === 'special') {
+    if (['candlelight', 'embers', 'fire'].includes(secondary)) return 'fire';
+    if (secondary === 'moonlight') return 'night';
+    if (secondary === 'neon') return 'neon';
+    if (['stage', 'spotlight', 'studio'].includes(secondary)) return 'studio';
+    if (['sunbeam', 'golden', 'dappled'].includes(secondary)) return 'natural';
+    if (secondary) return 'effects';
+  }
+
+  if (prefix === 'particle') {
+    if (['sunbeam', 'dust'].includes(secondary)) return 'natural';
+    return 'effects';
+  }
+
   return prefix || 'other';
 }
 
@@ -169,13 +130,11 @@ function deriveNsfwSubcategory(name = '') {
   if (!raw) return '';
   const prefix = raw.split('_')[0] || '';
 
-  // NSFW subcategories based on prefix
+  // NSFW subcategories based on prefix (19 categories)
   const validSubcategories = [
-    'penetration', 'oral', 'anal', 'masturbation', 'toys', 'handjob', 'footjob', 'paizuri',
-    'group', 'bdsm', 'femdom', 'maledom', 'lesbian', 'pregnant', 'water', 'public', 'clothed',
-    'cumshot', 'aftercare', 'kissing', 'teasing', 'specialty', 'positions', 'pov', 'ahegao',
-    'lactation', 'squirting', 'furniture', 'vehicle', 'flexible', 'tentacle', 'futanari',
-    'size', 'spanking', 'pegging'
+    'aftercare', 'bdsm', 'clothed', 'cumshot', 'flexible', 'footjob', 'foreplay',
+    'furniture', 'group', 'handjob', 'lesbian', 'locations', 'masturbation', 'oral',
+    'paizuri', 'penetration', 'pregnant', 'special', 'toys'
   ];
 
   if (validSubcategories.includes(prefix)) {
@@ -191,9 +150,9 @@ function deriveCharSubcategory(name = '') {
   if (!raw) return '';
   const prefix = raw.split('_')[0] || '';
 
-  // Character subcategories based on prefix
+  // Character subcategories (renamed for clarity)
   const validSubcategories = [
-    'fantasy', 'scifi', 'horror', 'cyber', 'hist', 'waste', 'occult', 'myth'
+    'fantasy', 'scifi', 'horror', 'cyberpunk', 'historical', 'wasteland', 'occult', 'mythology'
   ];
 
   if (validSubcategories.includes(prefix)) {
@@ -202,6 +161,14 @@ function deriveCharSubcategory(name = '') {
 
   // Default fallback
   return 'other';
+}
+
+function deriveHairSubcategory(name = '') {
+  const raw = String(name || '').trim().toLowerCase();
+  if (!raw) return '';
+  const parts = raw.split('_').filter(Boolean);
+  if (parts[0] === 'hair' && parts[1]) return parts[1];
+  return parts[0] || 'other';
 }
 
 export function deriveAliasSubcategory(name = '', category = '') {
@@ -225,8 +192,12 @@ export function deriveAliasSubcategory(name = '', category = '') {
     return deriveNsfwSubcategory(trimmed) || 'other';
   }
 
-  if (cat === 'char') {
+  if (cat === 'character') {
     return deriveCharSubcategory(trimmed) || 'other';
+  }
+
+  if (cat === 'hair') {
+    return deriveHairSubcategory(trimmed) || 'other';
   }
 
   const idx = trimmed.indexOf('_');
@@ -307,28 +278,59 @@ export function formatCategoryLabel(category = '') {
   const raw = String(category || '').trim();
   if (!raw) return '';
   if (raw === 'All') return 'All';
+
+  // Handle prompt subcategories dynamically
+  if (raw.startsWith('prompts_')) {
+    const subcat = raw.replace('prompts_', '');
+    return `PROMPTS - ${titleWord(subcat)}`;
+  }
+
   const mapping = {
     // SUBJECT - Who/what is in the frame
-    char: 'SUBJECT - Characters',
+    character: 'SUBJECT - Character',
+    media_char: 'SUBJECT - Media Character',
     body: 'SUBJECT - Body',
-    outfit: 'SUBJECT - Outfits',
-    accessory: 'SUBJECT - Accessories',
+    expression: 'SUBJECT - Expression',
+    outfit: 'SUBJECT - Outfit',
+    accessory: 'SUBJECT - Accessory',
 
-    // ACTION - What they're doing
-    pose: 'ACTION - Poses',
-    action: 'ACTION - Actions',
-    nsfw: 'ACTION - NSFW',
+    // POSE - Poses and actions
+    dynamic: 'POSE - Dynamic',
+    interaction: 'POSE - Interaction',
+    media_pose: 'POSE - Media',
+    posture: 'POSE - Posture',
+    nsfw: 'POSE - NSFW',
 
-    // SCENE - Where/environment
-    scene: 'SCENE - Scenes',
+    // SCENE - Where/environment/atmosphere
+    indoor: 'SCENE - Indoor',
+    outdoor: 'SCENE - Outdoor',
+    urban: 'SCENE - Urban',
+    everyday: 'SCENE - Everyday',
+    media: 'SCENE - Media',
+    art: 'SCENE - Art',
+    history: 'SCENE - History',
+    speculative: 'SCENE - Speculative',
     weather: 'SCENE - Weather',
-    prop: 'SCENE - Props',
 
-    // COMPOSITION - How it looks (technical)
-    camera: 'COMPOSITION - Camera',
-    lighting: 'COMPOSITION - Lighting',
-    style: 'COMPOSITION - Style',
-    mood: 'COMPOSITION - Mood',
+    // STYLES - Artistic aesthetics
+    artistic: 'STYLES - Artistic',
+    film: 'STYLES - Film',
+    game: 'STYLES - Game',
+    photo: 'STYLES - Photo',
+    vintage: 'STYLES - Vintage',
+
+    // CAMERA - Technical aspects
+    angles: 'CAMERA - Angles',
+    distance: 'CAMERA - Distance',
+    lens: 'CAMERA - Lens',
+    technique: 'CAMERA - Technique',
+    device: 'CAMERA - Device',
+    lighting: 'CAMERA - Lighting',
+    render: 'CAMERA - Render',
+    filter: 'CAMERA - Filter',
+
+    // PROMPTS - Full scene compositions (fallback for old format)
+    prompts: 'PROMPTS - Full Scenes',
   };
   return mapping[raw] || titleWord(raw);
 }

@@ -16,6 +16,23 @@ export function parsePromptElements(text = '') {
   const elements = [];
   let i = 0;
 
+  const isWeightWrapperStart = (value, idx) => {
+    if (value[idx] !== '(') return false;
+    let colonIdx = -1;
+    let j = idx + 1;
+    while (j < value.length) {
+      const ch = value[j];
+      if (ch === '\n') return false;
+      if (ch === ':') colonIdx = j;
+      if (ch === ')') break;
+      j++;
+    }
+    if (j >= value.length || value[j] !== ')') return false;
+    if (colonIdx === -1) return false;
+    const weightStr = value.slice(colonIdx + 1, j).trim();
+    return /^\d+(\.\d+)?$/u.test(weightStr);
+  };
+
   while (i < raw.length) {
     // Skip leading whitespace and commas
     while (i < raw.length && /[\s,]/.test(raw[i])) i++;
@@ -27,7 +44,7 @@ export function parsePromptElements(text = '') {
     let content = '';
 
     // Check for weight wrapper: (content:weight)
-    const hasWeightWrapper = raw[i] === '(';
+    const hasWeightWrapper = isWeightWrapperStart(raw, i);
     if (hasWeightWrapper) {
       start = i;
       i++; // skip '('
@@ -63,7 +80,6 @@ export function parsePromptElements(text = '') {
       const tagStart = i;
       while (i < raw.length) {
         if (raw[i] === ',' || raw[i] === '$' || raw[i] === '\n') break;
-        if (raw[i] === '(') break;
         content += raw[i];
         i++;
       }

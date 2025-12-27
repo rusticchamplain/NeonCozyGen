@@ -168,6 +168,7 @@ export default function MediaViewerModal({
   const [tokenEditSearch, setTokenEditSearch] = useState('');
   const deferredTokenEditSearch = useDeferredValue(tokenEditSearch);
   const [tokenEditCategory, setTokenEditCategory] = useState('All');
+  const [tokenEditSubcategory, setTokenEditSubcategory] = useState('All');
   const [dragIndex, setDragIndex] = useState(null);
   const [dropIndex, setDropIndex] = useState(null);
   const tokensListRef = useRef(null);
@@ -923,6 +924,15 @@ export default function MediaViewerModal({
     return map;
   }, [aliasEntries]);
 
+  const aliasByToken = useMemo(() => {
+    const map = new Map();
+    aliasEntries.forEach((entry) => {
+      if (!entry?.token) return;
+      map.set(String(entry.token).toLowerCase(), entry);
+    });
+    return map;
+  }, [aliasEntries]);
+
   const aliasCategories = useMemo(() => {
     const set = new Set();
     aliasEntries.forEach((entry) => {
@@ -1346,13 +1356,20 @@ export default function MediaViewerModal({
 
   const openStrengthFor = useCallback((element, displayName) => {
     if (!element) return;
+    if (element.type === 'alias') {
+      const entry = aliasByToken.get(String(element.text || '').toLowerCase());
+      setTokenEditCategory(entry?.category || 'All');
+      setTokenEditSubcategory(entry?.subcategory || 'All');
+    } else {
+      setTokenEditCategory('All');
+      setTokenEditSubcategory('All');
+    }
     const weightInfo = getElementWeight(promptText || '', element);
     const weight = weightInfo?.weight ?? 1;
     setStrengthToken({ element, displayName, weight });
     setTokenEditSearch('');
-    setTokenEditCategory('All');
     setStrengthOpen(true);
-  }, [promptText]);
+  }, [aliasByToken, promptText]);
 
   const handleRemoveElement = useCallback((element) => {
     if (!element) return;
@@ -1777,6 +1794,8 @@ export default function MediaViewerModal({
       onReplace={handleTokenEditReplace}
       activeCategory={tokenEditCategory}
       onCategoryChange={setTokenEditCategory}
+      initialCategory={tokenEditCategory}
+      initialSubcategory={tokenEditSubcategory}
     />
   );
 
@@ -1815,6 +1834,8 @@ export default function MediaViewerModal({
       onAdd={handleTokenAdd}
       activeCategory={tokenEditCategory}
       onCategoryChange={setTokenEditCategory}
+      initialCategory={tokenEditCategory}
+      initialSubcategory={tokenEditSubcategory}
     />
   );
 

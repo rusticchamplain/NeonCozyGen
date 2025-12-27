@@ -6,6 +6,7 @@ import { validateDanbooruTags } from '../../../services/api';
 import BottomSheet from '../../../ui/primitives/BottomSheet';
 import Button from '../../../ui/primitives/Button';
 import Select from '../../../ui/primitives/Select';
+import TopicTabs from '../../../ui/primitives/TopicTabs';
 import { IconTag, IconX } from '../../../ui/primitives/Icons';
 import useMediaQuery from '../../../hooks/useMediaQuery';
 import {
@@ -13,6 +14,7 @@ import {
   formatCategoryLabel,
   formatSubcategoryLabel,
 } from '../../../utils/aliasPresentation';
+import { filterCategoriesByTopic, getCategoryTopic } from '../../../utils/categoryTopics';
 import { useVirtualList } from '../../../hooks/useVirtualList';
 import AliasRow from '../components/AliasRow';
 import {
@@ -46,6 +48,7 @@ export default function Aliases({ inline = false }) {
 
   const [rows, setRows] = useState(() => rowsFromAliases(aliases, aliasCategories));
   const [categoryList, setCategoryList] = useState(() => Array.isArray(persistedCategoryList) ? persistedCategoryList : []);
+  const [topicFilter, setTopicFilter] = useState('All');
   const [categoryFilter, setCategoryFilter] = useState('All');
   const [subcategoryFilter, setSubcategoryFilter] = useState('All');
   const [query, setQuery] = useState('');
@@ -91,6 +94,12 @@ export default function Aliases({ inline = false }) {
       setEditorOpen(false);
     }
   }, [aliases, aliasCategories, selectedId, dirty]);
+
+  // Reset filters when topic changes
+  useEffect(() => {
+    setCategoryFilter('All');
+    setSubcategoryFilter('All');
+  }, [topicFilter]);
 
   const draftAliases = useMemo(() => rowsToAliasMap(rows), [rows]);
 
@@ -193,12 +202,22 @@ export default function Aliases({ inline = false }) {
     const q = deferredQuery.trim().toLowerCase();
     const base = rows.filter((row) => {
       const cat = (row.category || '').trim();
+
+      // Filter by topic first
+      if (topicFilter !== 'All') {
+        const categoryTopic = getCategoryTopic(cat);
+        if (categoryTopic !== topicFilter) return false;
+      }
+
+      // Then by category
       if (categoryFilter === '' && cat) return false;
       if (categoryFilter !== 'All' && categoryFilter !== '' && cat !== categoryFilter) return false;
 
+      // Then by subcategory
       const sub = deriveAliasSubcategory(row.name || '', row.category || '');
       if (subcategoryFilter !== 'All' && sub !== subcategoryFilter) return false;
 
+      // Finally by search term
       if (!q) return true;
       const token = cat ? `${cat}:${row.name}` : row.name;
       return (
@@ -212,7 +231,7 @@ export default function Aliases({ inline = false }) {
     const order = [...base];
     order.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     return order;
-  }, [rows, categoryFilter, subcategoryFilter, deferredQuery]);
+  }, [rows, topicFilter, categoryFilter, subcategoryFilter, deferredQuery]);
   const {
     containerRef: aliasListRef,
     startIndex: aliasStart,
@@ -262,10 +281,11 @@ export default function Aliases({ inline = false }) {
     rows.forEach((row) => {
       if (row.category) set.add(row.category);
     });
-    return Array.from(set).sort((a, b) =>
+    const allCategories = Array.from(set).sort((a, b) =>
       formatCategoryLabel(a).localeCompare(formatCategoryLabel(b))
     );
-  }, [rows, categoryList]);
+    return filterCategoriesByTopic(allCategories, topicFilter);
+  }, [rows, categoryList, topicFilter]);
 
   const availableSubcategories = useMemo(() => {
     const set = new Set();
@@ -795,6 +815,7 @@ export default function Aliases({ inline = false }) {
         <div className="library-toolbar screen-sticky">
           <div className="library-toolbar-inner">
             <div className="composer-filters">
+              <TopicTabs activeTopic={topicFilter} onTopicChange={setTopicFilter} />
               <div className="input-with-action">
                 <input
                   ref={searchInputRef}

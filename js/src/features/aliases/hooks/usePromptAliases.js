@@ -141,11 +141,15 @@ export default function usePromptAliases() {
   const aliasLookup = useMemo(() => {
     const base = buildAliasLookup(aliases);
     const extended = new Map(base);
+    const delim = '::';
     Object.entries(aliasCategories || {}).forEach(([name, cat]) => {
       const categoryKey = String(cat || '').trim();
-      if (categoryKey && aliases?.[name]) {
-        extended.set(`${categoryKey}:${name}`, aliases[name]);
-      }
+      const rawKey = String(name || '').trim();
+      if (!categoryKey || !rawKey || !aliases?.[name]) return;
+      const parts = rawKey.split(delim);
+      const baseName = parts.length > 1 ? parts.slice(1).join(delim) : rawKey;
+      if (!baseName) return;
+      extended.set(`${categoryKey}:${baseName}`, aliases[name]);
     });
     return extended;
   }, [aliases, aliasCategories]);
